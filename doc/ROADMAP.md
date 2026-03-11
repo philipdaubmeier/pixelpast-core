@@ -77,6 +77,16 @@
 - Backup strategy
 - Monitoring of ingestion workers from UI
 
+## Phase 8 – Even more Ingestion Workers
+
+- Messenger (WhatsApp/Signal/Telegram metadata) import
+- GitHub Commits
+- Home Assistant events (Motion sensors, actuator events)
+- Even more smarthome: heating, photovoltaics, power consumption
+- Health (Strava, Garmin, Google Fit - Heartrate, Steps)
+- Weather history (via public APIs)
+- News of the day (via public sources)
+
 ## Long-Term Goal
 
 A personal, agent-compatible (MCP) knowledge layer
