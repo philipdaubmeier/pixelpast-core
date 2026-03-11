@@ -12,10 +12,16 @@ license = { text = "MIT" }
 authors = [
   { name = "Philip Daubmeier" },
 ]
-dependencies = []
+dependencies = [
+  "alembic>=1.14",
+  "fastapi>=0.115",
+  "pydantic-settings>=2.6",
+  "sqlalchemy>=2.0",
+]
 
 [project.optional-dependencies]
 dev = [
+  "httpx>=0.28",
   "pytest>=8.0",
   "ruff>=0.11.0",
 ]
