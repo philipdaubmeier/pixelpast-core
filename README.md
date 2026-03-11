@@ -32,9 +32,14 @@ It is your data — structured, queryable, visual.
 
 ## Core Concept
 
-At its core, PixelPast revolves around a universal `Event` model.
+At its core, PixelPast revolves around a chronology-centered canonical model.
 
-Everything becomes a time-based event:
+`Event` and `Asset` are both first-class temporal entities:
+
+- `Event` captures meaningful occurrences such as meetings, trips, and song plays
+- `Asset` captures stored digital objects such as photos, videos, and documents
+
+Everything becomes a time-based event or asset:
 
 - A photo
 - A meeting
@@ -43,12 +48,37 @@ Everything becomes a time-based event:
 - A trip
 - A work activity
 
-These events are aggregated into daily activity summaries and rendered as:
+These events and assets are aggregated into daily activity summaries and rendered as:
 
 - Multi-year calendar heatmaps
 - Zoomable month views
 - Detailed day timelines
 - Filtered cross-source views
+
+## Repository Layout
+
+The Python package is intentionally split by architectural role:
+
+- `src/pixelpast/domain`: domain entities and business-facing types
+- `src/pixelpast/persistence`: persistence models, repositories, and database integration
+- `src/pixelpast/api`: API schemas and HTTP-facing contracts
+- `src/pixelpast/ingestion`: source connectors and ingestion pipelines
+- `src/pixelpast/analytics`: derived data jobs and analytics logic
+- `src/pixelpast/cli`: command-line entrypoints
+- `src/pixelpast/shared`: small cross-cutting helpers only when clearly justified
+
+This keeps the repository aligned with the explicit `Raw -> Canonical -> Derived`
+separation described in the project documentation.
+
+## Development Setup
+
+Install the package in editable mode and run the baseline checks:
+
+```text
+pip install -e .[dev]
+ruff check .
+pytest
+```
 
 ## 🤝 Contributing
 
