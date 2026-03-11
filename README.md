@@ -9,7 +9,7 @@ rich, cross-linked day-level stories.
 
 > PixelPast — Your life, rendered as pixels.
 
-## ✨ What is PixelPast?
+## What is PixelPast?
 
 We all generate digital traces:
 
