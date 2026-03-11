@@ -35,6 +35,7 @@ Typer-based command structure:
 ## Database Conventions
 
 - All timestamps stored in UTC
+- Location coordinates stored as nullable WGS84 decimal degree values (`latitude`, `longitude`) using `REAL` columns. This keeps ingestion simple and supports efficient bounding-box queries, e.g. 48.137285, 11.575478
 - JSON fields allowed for extensibility
 - No denormalization without justification
 - Indexes required for:
