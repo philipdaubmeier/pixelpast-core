@@ -29,12 +29,13 @@ def create_database_engine(settings: Settings | None = None) -> Engine:
 
 def create_session_factory(
     settings: Settings | None = None,
+    engine: Engine | None = None,
 ) -> sessionmaker[Session]:
     """Create a configured SQLAlchemy session factory."""
 
-    engine = create_database_engine(settings=settings)
+    runtime_engine = engine or create_database_engine(settings=settings)
     return sessionmaker(
-        bind=engine,
+        bind=runtime_engine,
         autoflush=False,
         autocommit=False,
         expire_on_commit=False,
