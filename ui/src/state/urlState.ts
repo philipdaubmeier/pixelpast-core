@@ -14,10 +14,14 @@ function parseList(value: string | null): string[] {
     return [];
   }
 
-  return value
-    .split(",")
-    .map((entry) => entry.trim())
-    .filter(Boolean);
+  return Array.from(
+    new Set(
+      value
+        .split(",")
+        .map((entry) => entry.trim())
+        .filter(Boolean),
+    ),
+  );
 }
 
 export function readPersistentUiState(search: string): PersistentUiState {

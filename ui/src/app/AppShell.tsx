@@ -5,7 +5,8 @@ import { TopBar } from "./layout/TopBar";
 import { MapPanel } from "../features/context/components/MapPanel";
 import { PersonsPanel } from "../features/context/components/PersonsPanel";
 import { TagsPanel } from "../features/context/components/TagsPanel";
-import { mockPersons, mockTags } from "../mocks/timeline";
+import { mockDayContexts, mockPersons, mockTags } from "../mocks/timeline";
+import { buildExplorationProjection } from "../projections/exploration";
 import type {
   DayContextProjection,
   HeatmapDayProjection,
@@ -33,15 +34,16 @@ export function AppShell({
     toggleTag,
   } = useUiState();
 
-  const visiblePersons =
-    state.hoveredDate !== null
-      ? activeDayContext?.persons ?? []
-      : mockPersons.filter((person) => state.selectedPersons.includes(person.id));
-
-  const visibleTags =
-    state.hoveredDate !== null
-      ? activeDayContext?.tags ?? []
-      : mockTags.filter((tag) => state.selectedTags.includes(tag.path));
+  const exploration = buildExplorationProjection({
+    heatmapDays,
+    dayContextsByDate: mockDayContexts,
+    activeDayContext,
+    allPersons: mockPersons,
+    allTags: mockTags,
+    state,
+  });
+  const activeViewMode =
+    viewModes.find((viewMode) => viewMode.id === state.viewMode) ?? null;
 
   return (
     <main className="min-h-screen p-5 lg:p-7">
@@ -49,16 +51,21 @@ export function AppShell({
         <TopBar
           viewModes={viewModes}
           activeViewMode={state.viewMode}
-          selectedPersons={state.selectedPersons}
-          selectedTags={state.selectedTags}
+          activeViewModeLabel={activeViewMode?.label ?? state.viewMode}
+          selectedPersons={exploration.selectedPersons}
+          selectedTags={exploration.selectedTags}
+          matchingDayCount={exploration.matchingDayCount}
+          hasPersistentFilters={exploration.hasPersistentFilters}
           hoveredDate={state.hoveredDate}
           onSelectViewMode={setViewMode}
+          onTogglePerson={togglePerson}
+          onToggleTag={toggleTag}
           onClearSelections={clearSelections}
         />
         <MainSplitLayout
           left={
             <LeftGridPane
-              days={heatmapDays}
+              days={exploration.gridDays}
               viewMode={state.viewMode}
               hoveredDate={state.hoveredDate}
               onHover={setHoveredDate}
@@ -67,21 +74,22 @@ export function AppShell({
           right={
             <RightContextPane>
               <PersonsPanel
-                persons={visiblePersons}
+                persons={exploration.visiblePersons}
                 selectedPersonIds={state.selectedPersons}
                 hoveredDate={state.hoveredDate}
                 onTogglePerson={togglePerson}
               />
               <TagsPanel
-                tags={visibleTags}
+                tags={exploration.visibleTags}
                 selectedTags={state.selectedTags}
                 hoveredDate={state.hoveredDate}
                 onToggleTag={toggleTag}
               />
               <MapPanel
                 hoveredDate={state.hoveredDate}
-                mapPoints={activeDayContext?.mapPoints ?? []}
-                summary={activeDayContext?.summaryCounts ?? null}
+                mapPoints={exploration.mapPoints}
+                summary={exploration.mapSummary}
+                hasPersistentFilters={exploration.hasPersistentFilters}
               />
             </RightContextPane>
           }

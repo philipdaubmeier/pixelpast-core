@@ -1,8 +1,8 @@
-import type { HeatmapDayProjection } from "../../../projections/timeline";
+import type { HeatmapDayRenderProjection } from "../../../projections/exploration";
 import type { ViewMode } from "../../../state/ui-state";
 
 type DayCellProps = {
-  day: HeatmapDayProjection;
+  day: HeatmapDayRenderProjection;
   viewMode: ViewMode;
   isHovered: boolean;
   onHover: (date: string | null) => void;
@@ -11,7 +11,7 @@ type DayCellProps = {
 const toneByViewMode: Record<
   ViewMode,
   Record<
-    HeatmapDayProjection["colorValue"],
+    HeatmapDayRenderProjection["colorValue"],
     { backgroundColor: string; opacity: number }
   >
 > = {
@@ -42,7 +42,18 @@ const toneByViewMode: Record<
 };
 
 export function DayCell({ day, viewMode, isHovered, onHover }: DayCellProps) {
-  const tone = toneByViewMode[viewMode][day.colorValue];
+  const tone = toneByViewMode[viewMode][day.renderColorValue];
+  const opacity = day.isDimmed ? Math.max(0.16, tone.opacity * 0.26) : tone.opacity;
+  const title = [
+    day.date,
+    `${day.eventCount} events`,
+    `${day.assetCount} assets`,
+    day.hasPersistentFilters
+      ? day.matchesPersistentFilters
+        ? "matches persistent filters"
+        : "outside current filters"
+      : "no persistent filters",
+  ].join(" - ");
 
   return (
     <button
@@ -61,12 +72,13 @@ export function DayCell({ day, viewMode, isHovered, onHover }: DayCellProps) {
           : "hover:scale-105 hover:border-slate-800/20",
       ].join(" ")}
       style={{
-        ...tone,
+        backgroundColor: tone.backgroundColor,
+        opacity,
         gridColumnStart: day.weekIndex + 1,
         gridRowStart: day.weekdayIndex + 1,
       }}
       aria-label={day.date}
-      title={`${day.date} - ${day.eventCount} events - ${day.assetCount} assets`}
+      title={title}
     />
   );
 }

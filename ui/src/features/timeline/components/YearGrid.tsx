@@ -1,11 +1,11 @@
 import { forwardRef } from "react";
-import type { HeatmapDayProjection } from "../../../projections/timeline";
+import type { HeatmapDayRenderProjection } from "../../../projections/exploration";
 import type { ViewMode } from "../../../state/ui-state";
 import { DayCell } from "./DayCell";
 
 type YearGridProps = {
   year: number;
-  days: HeatmapDayProjection[];
+  days: HeatmapDayRenderProjection[];
   viewMode: ViewMode;
   hoveredDate: string | null;
   onHover: (date: string | null) => void;

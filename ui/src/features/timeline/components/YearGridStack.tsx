@@ -1,10 +1,10 @@
 import { useEffect, useRef } from "react";
-import type { HeatmapDayProjection } from "../../../projections/timeline";
+import type { HeatmapDayRenderProjection } from "../../../projections/exploration";
 import type { ViewMode } from "../../../state/ui-state";
 import { YearGrid } from "./YearGrid";
 
 type YearGridStackProps = {
-  days: HeatmapDayProjection[];
+  days: HeatmapDayRenderProjection[];
   viewMode: ViewMode;
   hoveredDate: string | null;
   onHover: (date: string | null) => void;
@@ -18,7 +18,7 @@ export function YearGridStack({
 }: YearGridStackProps) {
   const yearRefs = useRef<Record<number, HTMLElement | null>>({});
   const hasInitializedViewport = useRef(false);
-  const groupedYears = days.reduce<Map<number, HeatmapDayProjection[]>>(
+  const groupedYears = days.reduce<Map<number, HeatmapDayRenderProjection[]>>(
     (accumulator, day) => {
       const entry = accumulator.get(day.year);
 

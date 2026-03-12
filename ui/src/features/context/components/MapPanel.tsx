@@ -4,6 +4,7 @@ import type { MapPointProjection } from "../../../projections/timeline";
 type MapPanelProps = {
   hoveredDate: string | null;
   mapPoints: MapPointProjection[];
+  hasPersistentFilters: boolean;
   summary: {
     events: number;
     assets: number;
@@ -11,7 +12,12 @@ type MapPanelProps = {
   } | null;
 };
 
-export function MapPanel({ hoveredDate, mapPoints, summary }: MapPanelProps) {
+export function MapPanel({
+  hoveredDate,
+  mapPoints,
+  hasPersistentFilters,
+  summary,
+}: MapPanelProps) {
   return (
     <PanelCard
       eyebrow="Context"
@@ -25,7 +31,9 @@ export function MapPanel({ hoveredDate, mapPoints, summary }: MapPanelProps) {
       <div className="subtle-grid relative min-h-[10rem] overflow-hidden rounded-[22px] border border-white/70 bg-stone-100/70">
         {mapPoints.length === 0 ? (
           <div className="flex h-40 items-center justify-center text-sm text-slate-500">
-            Hover a day to project its coordinates here.
+            {hasPersistentFilters
+              ? "No mocked coordinates matched the current persistent filters."
+              : "Hover a day to project its coordinates here."}
           </div>
         ) : (
           <>

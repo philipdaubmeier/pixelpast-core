@@ -1,32 +1,69 @@
+import type {
+  PersonProjection,
+  TagProjection,
+} from "../../../projections/timeline";
+
 type FilterBarProps = {
-  selectedPersons: string[];
-  selectedTags: string[];
+  activeViewModeLabel: string;
+  selectedPersons: PersonProjection[];
+  selectedTags: TagProjection[];
+  matchingDayCount: number;
+  hasPersistentFilters: boolean;
   hoveredDate: string | null;
+  onRemovePerson: (personId: string) => void;
+  onRemoveTag: (tagPath: string) => void;
   onClear: () => void;
 };
 
 export function FilterBar({
+  activeViewModeLabel,
   selectedPersons,
   selectedTags,
+  matchingDayCount,
+  hasPersistentFilters,
   hoveredDate,
+  onRemovePerson,
+  onRemoveTag,
   onClear,
 }: FilterBarProps) {
   return (
     <div className="flex flex-wrap items-center gap-3">
       <div className="rounded-full bg-white/70 px-4 py-2 text-sm text-slate-700">
-        {selectedPersons.length} person filter
-        {selectedPersons.length === 1 ? "" : "s"}
+        View: {activeViewModeLabel}
       </div>
       <div className="rounded-full bg-white/70 px-4 py-2 text-sm text-slate-700">
-        {selectedTags.length} tag filter{selectedTags.length === 1 ? "" : "s"}
+        {hasPersistentFilters
+          ? `${matchingDayCount} matching day${matchingDayCount === 1 ? "" : "s"}`
+          : "No persistent filters active"}
       </div>
       <div className="rounded-full bg-white/70 px-4 py-2 text-sm text-slate-700">
         Hover: {hoveredDate ?? "none"}
       </div>
+      {selectedPersons.map((person) => (
+        <button
+          key={person.id}
+          type="button"
+          onClick={() => onRemovePerson(person.id)}
+          className="rounded-full border border-[color:var(--pp-border)] bg-white px-4 py-2 text-sm text-slate-700 transition hover:border-slate-900 hover:text-slate-900"
+        >
+          Person: {person.name} x
+        </button>
+      ))}
+      {selectedTags.map((tag) => (
+        <button
+          key={tag.path}
+          type="button"
+          onClick={() => onRemoveTag(tag.path)}
+          className="rounded-full border border-[color:var(--pp-border)] bg-white px-4 py-2 text-sm text-slate-700 transition hover:border-slate-900 hover:text-slate-900"
+        >
+          Tag: {tag.label} x
+        </button>
+      ))}
       <button
         type="button"
         onClick={onClear}
-        className="rounded-full border border-[color:var(--pp-border)] px-4 py-2 text-sm text-slate-700 transition hover:bg-white"
+        disabled={!hasPersistentFilters}
+        className="rounded-full border border-[color:var(--pp-border)] px-4 py-2 text-sm text-slate-700 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-45"
       >
         Clear selections
       </button>

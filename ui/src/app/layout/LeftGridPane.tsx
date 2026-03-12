@@ -1,9 +1,9 @@
 import { YearGridStack } from "../../features/timeline/components/YearGridStack";
-import type { HeatmapDayProjection } from "../../projections/timeline";
+import type { HeatmapDayRenderProjection } from "../../projections/exploration";
 import type { ViewMode } from "../../state/ui-state";
 
 type LeftGridPaneProps = {
-  days: HeatmapDayProjection[];
+  days: HeatmapDayRenderProjection[];
   viewMode: ViewMode;
   hoveredDate: string | null;
   onHover: (date: string | null) => void;
@@ -32,7 +32,10 @@ export function LeftGridPane({
             {yearRangeLabel}
           </h2>
         </div>
-        <p className="panel-copy">Oldest year first, current year auto-focused.</p>
+        <p className="panel-copy">
+          Oldest year first, current year auto-focused, persistent filters recolor
+          the grid.
+        </p>
       </div>
       <div
         className="h-[calc(100vh-17rem)] min-h-[32rem] overflow-y-auto pr-2"
