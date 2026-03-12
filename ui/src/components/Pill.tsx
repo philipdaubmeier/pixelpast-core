@@ -2,12 +2,14 @@ import type { PropsWithChildren } from "react";
 
 type PillProps = PropsWithChildren<{
   active?: boolean;
+  hoverHighlighted?: boolean;
   muted?: boolean;
   onClick?: () => void;
 }>;
 
 export function Pill({
   active = false,
+  hoverHighlighted = false,
   muted = false,
   onClick,
   children,
@@ -23,6 +25,9 @@ export function Pill({
           : muted
             ? "border-transparent bg-white/60 text-slate-500"
             : "border-[color:var(--pp-border)] bg-white/70 text-slate-700 hover:bg-white",
+        hoverHighlighted
+          ? "ring-2 ring-amber-400/70 ring-offset-2 ring-offset-[color:rgba(250,247,240,0.95)]"
+          : "",
       ].join(" ")}
     >
       {children}

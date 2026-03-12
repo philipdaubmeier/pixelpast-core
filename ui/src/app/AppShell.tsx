@@ -75,13 +75,11 @@ export function AppShell({
             <RightContextPane>
               <PersonsPanel
                 persons={exploration.visiblePersons}
-                selectedPersonIds={state.selectedPersons}
                 hoveredDate={state.hoveredDate}
                 onTogglePerson={togglePerson}
               />
               <TagsPanel
                 tags={exploration.visibleTags}
-                selectedTags={state.selectedTags}
                 hoveredDate={state.hoveredDate}
                 onToggleTag={toggleTag}
               />

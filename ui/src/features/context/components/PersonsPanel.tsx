@@ -1,17 +1,15 @@
 import { PanelCard } from "../../../components/PanelCard";
 import { Pill } from "../../../components/Pill";
-import type { PersonProjection } from "../../../projections/timeline";
+import type { PersonPanelItemProjection } from "../../../projections/exploration";
 
 type PersonsPanelProps = {
-  persons: PersonProjection[];
-  selectedPersonIds: string[];
+  persons: PersonPanelItemProjection[];
   hoveredDate: string | null;
   onTogglePerson: (personId: string) => void;
 };
 
 export function PersonsPanel({
   persons,
-  selectedPersonIds,
   hoveredDate,
   onTogglePerson,
 }: PersonsPanelProps) {
@@ -33,7 +31,8 @@ export function PersonsPanel({
             {persons.map((person) => (
               <Pill
                 key={person.id}
-                active={selectedPersonIds.includes(person.id)}
+                active={person.isSelected}
+                hoverHighlighted={person.isHoverHighlighted}
                 onClick={() => onTogglePerson(person.id)}
               >
                 {person.name}
@@ -44,7 +43,15 @@ export function PersonsPanel({
             {persons.map((person) => (
               <div
                 key={`${person.id}-meta`}
-                className="flex items-center justify-between rounded-2xl bg-white/60 px-3 py-2 text-sm"
+                className={[
+                  "flex items-center justify-between rounded-2xl border px-3 py-2 text-sm transition",
+                  person.isSelected
+                    ? "border-slate-900/15 bg-slate-900/5"
+                    : "border-transparent bg-white/60",
+                  person.isHoverHighlighted
+                    ? "ring-2 ring-amber-400/60 ring-offset-2 ring-offset-[color:rgba(250,247,240,0.9)]"
+                    : "",
+                ].join(" ")}
               >
                 <span className="font-medium text-slate-800">{person.name}</span>
                 <span className="text-slate-500">{person.role}</span>

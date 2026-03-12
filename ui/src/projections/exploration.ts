@@ -29,10 +29,20 @@ export type HeatmapDayRenderProjection = HeatmapDayProjection & {
   matchesPersistentFilters: boolean;
 };
 
+export type PersonPanelItemProjection = PersonProjection & {
+  isSelected: boolean;
+  isHoverHighlighted: boolean;
+};
+
+export type TagPanelItemProjection = TagProjection & {
+  isSelected: boolean;
+  isHoverHighlighted: boolean;
+};
+
 export type ExplorationProjection = {
   gridDays: HeatmapDayRenderProjection[];
-  visiblePersons: PersonProjection[];
-  visibleTags: TagProjection[];
+  visiblePersons: PersonPanelItemProjection[];
+  visibleTags: TagPanelItemProjection[];
   selectedPersons: PersonProjection[];
   selectedTags: TagProjection[];
   hasPersistentFilters: boolean;
@@ -173,6 +183,44 @@ function resolveSelectedTags(
   });
 }
 
+function buildVisiblePersons(
+  selectedPersons: PersonProjection[],
+  hoveredPersons: PersonProjection[],
+  allPersons: PersonProjection[],
+): PersonPanelItemProjection[] {
+  const selectedPersonIds = new Set(
+    selectedPersons.map((person) => person.id),
+  );
+  const hoveredPersonIds = new Set(hoveredPersons.map((person) => person.id));
+
+  return uniqueBy(
+    [...selectedPersons, ...hoveredPersons, ...allPersons],
+    (person) => person.id,
+  ).map((person) => ({
+    ...person,
+    isSelected: selectedPersonIds.has(person.id),
+    isHoverHighlighted: hoveredPersonIds.has(person.id),
+  }));
+}
+
+function buildVisibleTags(
+  selectedTags: TagProjection[],
+  hoveredTags: TagProjection[],
+  allTags: TagProjection[],
+): TagPanelItemProjection[] {
+  const selectedTagPaths = new Set(selectedTags.map((tag) => tag.path));
+  const hoveredTagPaths = new Set(hoveredTags.map((tag) => tag.path));
+
+  return uniqueBy(
+    [...selectedTags, ...hoveredTags, ...allTags],
+    (tag) => tag.path,
+  ).map((tag) => ({
+    ...tag,
+    isSelected: selectedTagPaths.has(tag.path),
+    isHoverHighlighted: hoveredTagPaths.has(tag.path),
+  }));
+}
+
 function buildGridDays(
   heatmapDays: HeatmapDayProjection[],
   viewMode: ViewMode,
@@ -276,8 +324,10 @@ export function buildExplorationProjection({
     allPersons,
   );
   const selectedTags = resolveSelectedTags(state.selectedTags, allTags);
-  const hoveredPersons = activeDayContext?.persons ?? [];
-  const hoveredTags = activeDayContext?.tags ?? [];
+  const hoveredPersons =
+    state.hoveredDate !== null ? activeDayContext?.persons ?? [] : [];
+  const hoveredTags =
+    state.hoveredDate !== null ? activeDayContext?.tags ?? [] : [];
   const gridDays = buildGridDays(
     heatmapDays,
     state.viewMode,
@@ -296,14 +346,12 @@ export function buildExplorationProjection({
 
   return {
     gridDays,
-    visiblePersons: uniqueBy(
-      [...selectedPersons, ...hoveredPersons, ...allPersons],
-      (person) => person.id,
+    visiblePersons: buildVisiblePersons(
+      selectedPersons,
+      hoveredPersons,
+      allPersons,
     ),
-    visibleTags: uniqueBy(
-      [...selectedTags, ...hoveredTags, ...allTags],
-      (tag) => tag.path,
-    ),
+    visibleTags: buildVisibleTags(selectedTags, hoveredTags, allTags),
     selectedPersons,
     selectedTags,
     hasPersistentFilters:

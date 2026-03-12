@@ -1,17 +1,15 @@
 import { PanelCard } from "../../../components/PanelCard";
 import { Pill } from "../../../components/Pill";
-import type { TagProjection } from "../../../projections/timeline";
+import type { TagPanelItemProjection } from "../../../projections/exploration";
 
 type TagsPanelProps = {
-  tags: TagProjection[];
-  selectedTags: string[];
+  tags: TagPanelItemProjection[];
   hoveredDate: string | null;
   onToggleTag: (tagPath: string) => void;
 };
 
 export function TagsPanel({
   tags,
-  selectedTags,
   hoveredDate,
   onToggleTag,
 }: TagsPanelProps) {
@@ -33,7 +31,8 @@ export function TagsPanel({
             {tags.map((tag) => (
               <Pill
                 key={tag.path}
-                active={selectedTags.includes(tag.path)}
+                active={tag.isSelected}
+                hoverHighlighted={tag.isHoverHighlighted}
                 onClick={() => onToggleTag(tag.path)}
               >
                 {tag.label}
@@ -44,7 +43,15 @@ export function TagsPanel({
             {tags.map((tag) => (
               <div
                 key={`${tag.path}-meta`}
-                className="rounded-2xl bg-white/60 px-3 py-2 text-sm text-slate-700"
+                className={[
+                  "rounded-2xl border px-3 py-2 text-sm text-slate-700 transition",
+                  tag.isSelected
+                    ? "border-slate-900/15 bg-slate-900/5"
+                    : "border-transparent bg-white/60",
+                  tag.isHoverHighlighted
+                    ? "ring-2 ring-amber-400/60 ring-offset-2 ring-offset-[color:rgba(250,247,240,0.9)]"
+                    : "",
+                ].join(" ")}
               >
                 {tag.path}
               </div>
