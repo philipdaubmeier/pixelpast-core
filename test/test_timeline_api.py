@@ -100,6 +100,26 @@ def test_heatmap_endpoint_returns_daily_aggregates_in_range_order() -> None:
         shutil.rmtree(workspace_root, ignore_errors=True)
 
 
+def test_heatmap_endpoint_rejects_invalid_range() -> None:
+    workspace_root = _create_workspace_dir(prefix="timeline-api-heatmap-invalid")
+    runtime = None
+    try:
+        runtime = _create_runtime(workspace_root=workspace_root)
+        app = create_app(settings=runtime.settings)
+
+        with TestClient(app) as client:
+            response = client.get("/heatmap?start=2024-01-03&end=2024-01-01")
+
+        assert response.status_code == 400
+        assert response.json() == {
+            "detail": "start must be less than or equal to end",
+        }
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
 def test_day_detail_endpoint_returns_events_only() -> None:
     workspace_root = _create_workspace_dir(prefix="timeline-api-day-events")
     runtime = None
@@ -139,6 +159,27 @@ def test_day_detail_endpoint_returns_events_only() -> None:
                     "summary": None,
                 },
             ],
+        }
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_day_detail_endpoint_returns_empty_items_for_empty_day() -> None:
+    workspace_root = _create_workspace_dir(prefix="timeline-api-day-empty")
+    runtime = None
+    try:
+        runtime = _create_runtime(workspace_root=workspace_root)
+        app = create_app(settings=runtime.settings)
+
+        with TestClient(app) as client:
+            response = client.get("/days/2024-01-02")
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "date": "2024-01-02",
+            "items": [],
         }
     finally:
         if runtime is not None:

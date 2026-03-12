@@ -59,7 +59,6 @@ These events and assets are aggregated into daily activity summaries and rendere
 
 The Python package is intentionally split by architectural role:
 
-- `src/pixelpast/domain`: domain entities and business-facing types
 - `src/pixelpast/persistence`: persistence models, repositories, and database integration
 - `src/pixelpast/api`: API schemas and HTTP-facing contracts
 - `src/pixelpast/ingestion`: source connectors and ingestion pipelines

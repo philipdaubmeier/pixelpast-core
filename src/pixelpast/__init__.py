@@ -4,7 +4,6 @@ __all__ = [
     "analytics",
     "api",
     "cli",
-    "domain",
     "ingestion",
     "persistence",
     "shared",

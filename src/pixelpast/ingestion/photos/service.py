@@ -6,7 +6,6 @@ import logging
 from dataclasses import dataclass
 
 from pixelpast.ingestion.photos.connector import PhotoConnector
-from pixelpast.persistence.models import ImportRun
 from pixelpast.persistence.repositories import (
     AssetRepository,
     ImportRunRepository,
@@ -56,6 +55,7 @@ class PhotoIngestionService:
             )
             import_run = import_run_repository.create(source_id=source.id, mode="full")
             session.commit()
+            import_run_id = import_run.id
 
             try:
                 discovery = self._connector.discover(resolved_root)
@@ -80,12 +80,11 @@ class PhotoIngestionService:
 
                 status = "partial_failure" if discovery.errors else "completed"
                 persisted_import_run = _require_import_run(
-                    session.get(ImportRun, import_run.id),
-                    import_run.id,
-                )
-                import_run_repository.mark_finished(
-                    persisted_import_run,
-                    status=status,
+                    import_run_repository.mark_finished_by_id(
+                        import_run_id=import_run_id,
+                        status=status,
+                    ),
+                    import_run_id,
                 )
                 session.commit()
                 return PhotoIngestionResult(
@@ -96,19 +95,18 @@ class PhotoIngestionService:
                 )
             except Exception:
                 session.rollback()
-                persisted_import_run = session.get(ImportRun, import_run.id)
+                persisted_import_run = import_run_repository.mark_finished_by_id(
+                    import_run_id=import_run_id,
+                    status="failed",
+                )
                 if persisted_import_run is not None:
-                    import_run_repository.mark_finished(
-                        persisted_import_run,
-                        status="failed",
-                    )
                     session.commit()
                 raise
         finally:
             session.close()
 
 
-def _require_import_run(import_run: ImportRun | None, import_run_id: int) -> ImportRun:
+def _require_import_run(import_run, import_run_id: int):
     """Return a persisted import run or raise a deterministic error."""
 
     if import_run is None:

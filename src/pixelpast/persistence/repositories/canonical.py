@@ -23,10 +23,14 @@ class SourceRepository:
     def __init__(self, session: Session) -> None:
         self._session = session
 
-    def get_by_type(self, *, source_type: str) -> Source | None:
-        """Return the first configured source matching a connector type."""
+    def get_by_type_and_name(self, *, source_type: str, name: str) -> Source | None:
+        """Return the configured source matching a connector type and name."""
 
-        statement = select(Source).where(Source.type == source_type).order_by(Source.id)
+        statement = (
+            select(Source)
+            .where(Source.type == source_type, Source.name == name)
+            .order_by(Source.id)
+        )
         return self._session.execute(statement).scalars().first()
 
     def get_or_create(
@@ -38,7 +42,7 @@ class SourceRepository:
     ) -> Source:
         """Return an existing source or create one for the connector."""
 
-        source = self.get_by_type(source_type=source_type)
+        source = self.get_by_type_and_name(source_type=source_type, name=name)
         if source is None:
             source = Source(name=name, type=source_type, config=dict(config))
             self._session.add(source)
@@ -78,6 +82,12 @@ class ImportRunRepository:
         self._session.flush()
         return import_run
 
+    def get_by_id(self, *, import_run_id: int) -> ImportRun | None:
+        """Return an import run by identifier."""
+
+        statement = select(ImportRun).where(ImportRun.id == import_run_id)
+        return self._session.execute(statement).scalar_one_or_none()
+
     def mark_finished(
         self,
         import_run: ImportRun,
@@ -91,6 +101,24 @@ class ImportRunRepository:
         import_run.finished_at = finished_at or utc_now()
         self._session.flush()
         return import_run
+
+    def mark_finished_by_id(
+        self,
+        *,
+        import_run_id: int,
+        status: str,
+        finished_at: datetime | None = None,
+    ) -> ImportRun | None:
+        """Mark an import run as finished when only the identifier is available."""
+
+        import_run = self.get_by_id(import_run_id=import_run_id)
+        if import_run is None:
+            return None
+        return self.mark_finished(
+            import_run,
+            status=status,
+            finished_at=finished_at,
+        )
 
 
 class AssetRepository:

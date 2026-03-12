@@ -86,6 +86,16 @@ def test_alembic_upgrade_head_runs() -> None:
             assert {index["name"] for index in inspector.get_indexes("asset")} == {
                 "ix_asset_timestamp",
             }
+            asset_unique_constraints = inspector.get_unique_constraints("asset")
+            assert {constraint["name"] for constraint in asset_unique_constraints} == {
+                "uq_asset_external_id",
+            }
+            source_unique_constraints = inspector.get_unique_constraints("source")
+            assert {
+                constraint["name"] for constraint in source_unique_constraints
+            } == {
+                "uq_source_type_name",
+            }
         finally:
             engine.dispose()
     finally:

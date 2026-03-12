@@ -8,7 +8,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
+import pytest
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from pixelpast.ingestion.photos import (
     PhotoAssetCandidate,
@@ -19,6 +21,7 @@ from pixelpast.ingestion.photos import (
     PhotoIngestionService,
 )
 from pixelpast.persistence.models import Asset, ImportRun, Source
+from pixelpast.persistence.repositories.canonical import AssetRepository
 from pixelpast.shared.runtime import create_runtime_context, initialize_database
 from pixelpast.shared.settings import Settings
 
@@ -197,6 +200,58 @@ def test_photo_connector_partial_failure_is_reported_and_persisted(
         shutil.rmtree(workspace_root, ignore_errors=True)
 
 
+def test_photo_ingestion_marks_run_failed_and_rolls_back_assets(
+    monkeypatch,
+) -> None:
+    workspace_root = _create_workspace_dir(prefix="photo-failed-run")
+    runtime = None
+    try:
+        photos_root = workspace_root / "photos"
+        photos_root.mkdir()
+
+        runtime = _create_runtime(
+            workspace_root=workspace_root,
+            photos_root=photos_root,
+        )
+
+        call_count = 0
+
+        original_asset_upsert = AssetRepository.upsert
+
+        def fail_on_second_upsert(self, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 2:
+                raise RuntimeError("boom")
+            return original_asset_upsert(self, **kwargs)
+
+        monkeypatch.setattr(
+            AssetRepository,
+            "upsert",
+            fail_on_second_upsert,
+        )
+
+        with pytest.raises(RuntimeError, match="boom"):
+            PhotoIngestionService(connector=_FatalFailureConnector()).ingest(
+                runtime=runtime
+            )
+
+        with runtime.session_factory() as session:
+            assets = list(session.execute(select(Asset)).scalars())
+            import_runs = list(
+                session.execute(select(ImportRun).order_by(ImportRun.id)).scalars()
+            )
+
+        assert assets == []
+        assert len(import_runs) == 1
+        assert import_runs[0].status == "failed"
+        assert import_runs[0].finished_at is not None
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
 def test_photo_connector_builds_filename_and_mtime_fallbacks() -> None:
     workspace_root = _create_workspace_dir(prefix="photo-fallbacks")
     try:
@@ -231,6 +286,105 @@ def test_photo_connector_builds_filename_and_mtime_fallbacks() -> None:
         shutil.rmtree(workspace_root, ignore_errors=True)
 
 
+def test_asset_external_id_is_unique_at_database_level() -> None:
+    workspace_root = _create_workspace_dir(prefix="photo-asset-unique")
+    runtime = None
+    try:
+        photos_root = workspace_root / "photos"
+        photos_root.mkdir()
+        runtime = _create_runtime(
+            workspace_root=workspace_root,
+            photos_root=photos_root,
+        )
+
+        with pytest.raises(IntegrityError):
+            with runtime.session_factory() as session:
+                session.add_all(
+                    [
+                        Asset(
+                            external_id="duplicate-id",
+                            media_type="photo",
+                            timestamp=datetime(2024, 1, 1, 0, 0, tzinfo=UTC),
+                            latitude=None,
+                            longitude=None,
+                            metadata_json={},
+                        ),
+                        Asset(
+                            external_id="duplicate-id",
+                            media_type="photo",
+                            timestamp=datetime(2024, 1, 1, 1, 0, tzinfo=UTC),
+                            latitude=None,
+                            longitude=None,
+                            metadata_json={},
+                        ),
+                    ]
+                )
+                session.commit()
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_source_type_and_name_are_unique_at_database_level() -> None:
+    workspace_root = _create_workspace_dir(prefix="photo-source-unique")
+    runtime = None
+    try:
+        photos_root = workspace_root / "photos"
+        photos_root.mkdir()
+        runtime = _create_runtime(
+            workspace_root=workspace_root,
+            photos_root=photos_root,
+        )
+
+        with pytest.raises(IntegrityError):
+            with runtime.session_factory() as session:
+                session.add_all(
+                    [
+                        Source(name="Photos", type="photos", config={}),
+                        Source(name="Photos", type="photos", config={}),
+                    ]
+                )
+                session.commit()
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_sources_can_share_type_when_name_differs() -> None:
+    workspace_root = _create_workspace_dir(prefix="photo-source-shared-type")
+    runtime = None
+    try:
+        photos_root = workspace_root / "photos"
+        photos_root.mkdir()
+        runtime = _create_runtime(
+            workspace_root=workspace_root,
+            photos_root=photos_root,
+        )
+
+        with runtime.session_factory() as session:
+            session.add_all(
+                [
+                    Source(name="Photos A", type="photos", config={}),
+                    Source(name="Photos B", type="photos", config={}),
+                ]
+            )
+            session.commit()
+
+            sources = list(
+                session.execute(
+                    select(Source).where(Source.type == "photos").order_by(Source.name)
+                ).scalars()
+            )
+
+        assert [source.name for source in sources] == ["Photos A", "Photos B"]
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
 class _PartialFailureConnector(PhotoConnector):
     """Test connector that simulates one successful asset and one failure."""
 
@@ -251,6 +405,33 @@ class _PartialFailureConnector(PhotoConnector):
                     message="decode error",
                 )
             ],
+        )
+
+
+class _FatalFailureConnector(PhotoConnector):
+    """Test connector that triggers a failure during asset persistence."""
+
+    def discover(self, root: Path) -> PhotoDiscoveryResult:
+        return PhotoDiscoveryResult(
+            assets=[
+                PhotoAssetCandidate(
+                    external_id=(root / "one.jpg").resolve().as_posix(),
+                    media_type="photo",
+                    timestamp=datetime(2024, 1, 1, 0, 0, tzinfo=UTC),
+                    latitude=None,
+                    longitude=None,
+                    metadata_json={},
+                ),
+                PhotoAssetCandidate(
+                    external_id=(root / "two.jpg").resolve().as_posix(),
+                    media_type="photo",
+                    timestamp=datetime(2024, 1, 1, 1, 0, tzinfo=UTC),
+                    latitude=None,
+                    longitude=None,
+                    metadata_json={},
+                ),
+            ],
+            errors=[],
         )
 
 
