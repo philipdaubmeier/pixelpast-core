@@ -462,6 +462,20 @@ Prefer:
 
 Do not leak ORM models directly through the API.
 
+## UI Core Principles
+
+PixelPast is a visual exploration instrument centered around chronology.
+
+The calendar grid is the primary projection surface and must always remain visible.
+All contextual views (persons, tags, map, derived modes) react to the grid.
+
+Two interaction layers exist:
+- Hover = temporary contextual highlight
+- Selection = persistent filtering and recoloring
+
+The UI operates on timeline projections (not raw tables).
+Simplicity and temporal clarity take priority over feature density.
+
 ## UI Guidance
 
 The UI stack is expected to use:
@@ -470,13 +484,6 @@ The UI stack is expected to use:
 - TypeScript
 - Tailwind
 - D3 for heatmap visualizations
-
-The UI should focus on exploration:
-
-- multi-year heatmap
-- zoom levels
-- day detail timeline
-- filters by source, person, and event type
 
 Do not move backend or canonical business logic into the UI.
 
