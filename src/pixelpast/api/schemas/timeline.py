@@ -69,7 +69,6 @@ class ExplorationDay(BaseModel):
     has_data: bool
     person_ids: list[int]
     tag_paths: list[str]
-    view_mode_color_values: dict[str, ColorValue]
 
 
 class ExplorationResponse(BaseModel):

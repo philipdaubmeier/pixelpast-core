@@ -137,9 +137,7 @@ class TimelineQueryService:
 
         event_counts = self._count_items_by_day(event_days)
         asset_counts = self._count_items_by_day(asset_days)
-        person_ids_by_day, person_names_by_day, persons = self._build_person_catalog(
-            person_links
-        )
+        person_ids_by_day, persons = self._build_person_catalog(person_links)
         tag_paths_by_day, tags = self._build_tag_catalog(tag_links)
 
         days = [
@@ -149,7 +147,6 @@ class TimelineQueryService:
                 event_counts=event_counts,
                 asset_counts=asset_counts,
                 person_ids_by_day=person_ids_by_day,
-                person_names_by_day=person_names_by_day,
                 tag_paths_by_day=tag_paths_by_day,
             )
             for current_day in _iter_inclusive_dates(range_start, range_end)
@@ -222,16 +219,14 @@ class TimelineQueryService:
     def _build_person_catalog(
         self,
         links: list[DayPersonLinkSnapshot],
-    ) -> tuple[dict[date, list[int]], dict[date, list[str]], list[ExplorationPerson]]:
+    ) -> tuple[dict[date, list[int]], list[ExplorationPerson]]:
         """Build dense day-to-person ids plus the visible person catalog."""
 
         person_ids_by_day: dict[date, set[int]] = defaultdict(set)
-        person_names_by_day: dict[date, set[str]] = defaultdict(set)
         persons_by_id: dict[int, ExplorationPerson] = {}
 
         for link in links:
             person_ids_by_day[link.day].add(link.person_id)
-            person_names_by_day[link.day].add(link.person_name)
             persons_by_id.setdefault(
                 link.person_id,
                 ExplorationPerson(
@@ -249,10 +244,6 @@ class TimelineQueryService:
             {
                 day: sorted(person_ids)
                 for day, person_ids in person_ids_by_day.items()
-            },
-            {
-                day: sorted(person_names, key=str.casefold)
-                for day, person_names in person_names_by_day.items()
             },
             persons,
         )
@@ -293,7 +284,6 @@ class TimelineQueryService:
         event_counts: dict[date, int],
         asset_counts: dict[date, int],
         person_ids_by_day: dict[date, list[int]],
-        person_names_by_day: dict[date, list[str]],
         tag_paths_by_day: dict[date, list[str]],
     ) -> ExplorationDay:
         """Compose a single dense exploration day."""
@@ -311,7 +301,6 @@ class TimelineQueryService:
             else event_count + asset_count
         )
         person_ids = person_ids_by_day.get(day, [])
-        person_names = person_names_by_day.get(day, [])
         tag_paths = tag_paths_by_day.get(day, [])
         has_data = event_count > 0 or asset_count > 0 or activity_score > 0
         color_value = _get_activity_color_value(activity_score)
@@ -325,22 +314,6 @@ class TimelineQueryService:
             has_data=has_data,
             person_ids=person_ids,
             tag_paths=tag_paths,
-            view_mode_color_values={
-                "activity": color_value,
-                "travel": _get_travel_color_value(
-                    activity_score=activity_score,
-                    person_names=person_names,
-                    tag_paths=tag_paths,
-                ),
-                "sports": _get_sports_color_value(
-                    activity_score=activity_score,
-                    tag_paths=tag_paths,
-                ),
-                "party_probability": _get_party_probability_color_value(
-                    person_ids=person_ids,
-                    tag_paths=tag_paths,
-                ),
-            },
         )
 
 
@@ -365,46 +338,3 @@ def _get_activity_color_value(activity_score: int) -> str:
     if activity_score < 70:
         return "medium"
     return "high"
-
-
-def _get_travel_color_value(
-    *,
-    activity_score: int,
-    person_names: list[str],
-    tag_paths: list[str],
-) -> str:
-    """Port the current frontend travel view heuristic."""
-
-    if any(tag_path.startswith("travel/") for tag_path in tag_paths):
-        return "high"
-    if any(person_name.casefold() == "milo" for person_name in person_names):
-        return "medium"
-    return "low" if activity_score >= 55 else "empty"
-
-
-def _get_sports_color_value(*, activity_score: int, tag_paths: list[str]) -> str:
-    """Port the current frontend sports view heuristic."""
-
-    if any(tag_path.startswith("activity/") for tag_path in tag_paths):
-        return "high"
-    if activity_score >= 78:
-        return "medium"
-    return "low" if activity_score >= 60 else "empty"
-
-
-def _get_party_probability_color_value(
-    *,
-    person_ids: list[int],
-    tag_paths: list[str],
-) -> str:
-    """Port the current frontend social-density heuristic."""
-
-    if len(person_ids) >= 2:
-        return "high"
-    if len(person_ids) == 1:
-        return "medium"
-    return (
-        "low"
-        if any(tag_path.startswith("people/") for tag_path in tag_paths)
-        else "empty"
-    )

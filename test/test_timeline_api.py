@@ -78,12 +78,6 @@ def test_exploration_endpoint_returns_current_year_dense_grid_when_empty() -> No
             "has_data": False,
             "person_ids": [],
             "tag_paths": [],
-            "view_mode_color_values": {
-                "activity": "empty",
-                "travel": "empty",
-                "sports": "empty",
-                "party_probability": "empty",
-            },
         }
         assert payload["days"][-1]["date"] == f"{current_year}-12-31"
     finally:
@@ -92,7 +86,7 @@ def test_exploration_endpoint_returns_current_year_dense_grid_when_empty() -> No
         shutil.rmtree(workspace_root, ignore_errors=True)
 
 
-def test_exploration_endpoint_returns_dense_days_catalog_and_backend_colors() -> None:
+def test_exploration_endpoint_returns_dense_days_catalog_without_taxonomy_logic() -> None:
     workspace_root = _create_workspace_dir(prefix="timeline-api-exploration-range")
     runtime = None
     try:
@@ -110,22 +104,22 @@ def test_exploration_endpoint_returns_dense_days_catalog_and_backend_colors() ->
                 aliases=None,
                 metadata_json={"role": "Travel buddy"},
             )
-            travel_tag = Tag(
-                label="Europe",
-                path="travel/europe",
+            project_tag = Tag(
+                label="Project Apollo",
+                path="projects/apollo",
                 metadata_json=None,
             )
-            people_tag = Tag(
-                label="Family",
-                path="people/family",
+            family_tag = Tag(
+                label="Family Anna",
+                path="family/anna",
                 metadata_json=None,
             )
-            activity_tag = Tag(
-                label="Outdoors",
-                path="activity/outdoors",
+            mood_tag = Tag(
+                label="Focused",
+                path="mood/focused",
                 metadata_json=None,
             )
-            session.add_all([source, anna, milo, travel_tag, people_tag, activity_tag])
+            session.add_all([source, anna, milo, project_tag, family_tag, mood_tag])
             session.flush()
 
             day_two_event = Event(
@@ -167,9 +161,9 @@ def test_exploration_endpoint_returns_dense_days_catalog_and_backend_colors() ->
                 [
                     EventPerson(event_id=day_two_event.id, person_id=anna.id),
                     AssetPerson(asset_id=day_two_asset.id, person_id=milo.id),
-                    EventTag(event_id=day_two_event.id, tag_id=travel_tag.id),
-                    AssetTag(asset_id=day_two_asset.id, tag_id=people_tag.id),
-                    EventTag(event_id=day_three_event.id, tag_id=activity_tag.id),
+                    EventTag(event_id=day_two_event.id, tag_id=project_tag.id),
+                    AssetTag(asset_id=day_two_asset.id, tag_id=family_tag.id),
+                    EventTag(event_id=day_three_event.id, tag_id=mood_tag.id),
                     DailyAggregate(
                         date=date(2024, 1, 2),
                         total_events=1,
@@ -227,16 +221,16 @@ def test_exploration_endpoint_returns_dense_days_catalog_and_backend_colors() ->
             ],
             "tags": [
                 {
-                    "path": "activity/outdoors",
-                    "label": "Outdoors",
+                    "path": "family/anna",
+                    "label": "Family Anna",
                 },
                 {
-                    "path": "people/family",
-                    "label": "Family",
+                    "path": "mood/focused",
+                    "label": "Focused",
                 },
                 {
-                    "path": "travel/europe",
-                    "label": "Europe",
+                    "path": "projects/apollo",
+                    "label": "Project Apollo",
                 },
             ],
             "days": [
@@ -249,12 +243,6 @@ def test_exploration_endpoint_returns_dense_days_catalog_and_backend_colors() ->
                     "has_data": False,
                     "person_ids": [],
                     "tag_paths": [],
-                    "view_mode_color_values": {
-                        "activity": "empty",
-                        "travel": "empty",
-                        "sports": "empty",
-                        "party_probability": "empty",
-                    },
                 },
                 {
                     "date": "2024-01-02",
@@ -264,13 +252,7 @@ def test_exploration_endpoint_returns_dense_days_catalog_and_backend_colors() ->
                     "color_value": "medium",
                     "has_data": True,
                     "person_ids": [1, 2],
-                    "tag_paths": ["people/family", "travel/europe"],
-                    "view_mode_color_values": {
-                        "activity": "medium",
-                        "travel": "high",
-                        "sports": "empty",
-                        "party_probability": "high",
-                    },
+                    "tag_paths": ["family/anna", "projects/apollo"],
                 },
                 {
                     "date": "2024-01-03",
@@ -280,13 +262,7 @@ def test_exploration_endpoint_returns_dense_days_catalog_and_backend_colors() ->
                     "color_value": "low",
                     "has_data": True,
                     "person_ids": [],
-                    "tag_paths": ["activity/outdoors"],
-                    "view_mode_color_values": {
-                        "activity": "low",
-                        "travel": "empty",
-                        "sports": "high",
-                        "party_probability": "empty",
-                    },
+                    "tag_paths": ["mood/focused"],
                 },
             ],
         }
@@ -354,12 +330,6 @@ def test_exploration_endpoint_resolves_available_timeline_and_pads_years() -> No
             "has_data": True,
             "person_ids": [],
             "tag_paths": [],
-            "view_mode_color_values": {
-                "activity": "low",
-                "travel": "empty",
-                "sports": "empty",
-                "party_probability": "empty",
-            },
         }
         assert day_by_date["2025-02-03"] == {
             "date": "2025-02-03",
@@ -370,12 +340,6 @@ def test_exploration_endpoint_resolves_available_timeline_and_pads_years() -> No
             "has_data": True,
             "person_ids": [],
             "tag_paths": [],
-            "view_mode_color_values": {
-                "activity": "low",
-                "travel": "empty",
-                "sports": "empty",
-                "party_probability": "empty",
-            },
         }
     finally:
         if runtime is not None:
