@@ -42,6 +42,14 @@ function AppBootstrap() {
   }, []);
 
   useEffect(() => {
+    if (state.hoveredDate === null) {
+      startTransition(() => {
+        setActiveDayContext(null);
+      });
+
+      return;
+    }
+
     let cancelled = false;
 
     async function loadDayContext() {

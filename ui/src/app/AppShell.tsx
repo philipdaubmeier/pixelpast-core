@@ -34,18 +34,14 @@ export function AppShell({
   } = useUiState();
 
   const visiblePersons =
-    activeDayContext !== null &&
-    activeDayContext.persons.length > 0 &&
     state.hoveredDate !== null
-      ? activeDayContext.persons
-      : mockPersons;
+      ? activeDayContext?.persons ?? []
+      : mockPersons.filter((person) => state.selectedPersons.includes(person.id));
 
   const visibleTags =
-    activeDayContext !== null &&
-    activeDayContext.tags.length > 0 &&
     state.hoveredDate !== null
-      ? activeDayContext.tags
-      : mockTags;
+      ? activeDayContext?.tags ?? []
+      : mockTags.filter((tag) => state.selectedTags.includes(tag.path));
 
   return (
     <main className="min-h-screen p-5 lg:p-7">

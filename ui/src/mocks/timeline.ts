@@ -1,6 +1,7 @@
 import type {
   DayContextProjection,
   HeatmapDayProjection,
+  MapPointProjection,
   PersonProjection,
   TagProjection,
   ViewModeOption,
@@ -137,6 +138,72 @@ export const mockTags: TagProjection[] = [
   { path: "activity/outdoors", label: "Outdoors" },
 ];
 
+const personById = new Map(
+  mockPersons.map((person) => [person.id, person] satisfies [string, PersonProjection]),
+);
+const tagByPath = new Map(
+  mockTags.map((tag) => [tag.path, tag] satisfies [string, TagProjection]),
+);
+const mapLabels = [
+  "Berlin",
+  "Potsdam",
+  "Venice",
+  "Munich",
+  "Zurich",
+  "Prague",
+  "Hamburg",
+  "Leipzig",
+];
+
+function createMapPoints(day: HeatmapDayProjection): MapPointProjection[] {
+  if (!day.hasData) {
+    return [];
+  }
+
+  const pointCount =
+    day.tagPaths.some((tagPath) => tagPath.startsWith("travel/"))
+      ? 2
+      : day.personIds.length > 0
+        ? 1
+        : 0;
+
+  return Array.from({ length: pointCount }, (_, index) => {
+    const labelIndex =
+      (day.weekIndex + day.weekdayIndex + day.year + index) % mapLabels.length;
+    const x = 18 + ((day.weekIndex * 11 + index * 17) % 58);
+    const y = 22 + ((day.weekdayIndex * 13 + day.year + index * 19) % 52);
+
+    return {
+      id: `${day.date}-point-${index + 1}`,
+      label: mapLabels[labelIndex],
+      x,
+      y,
+    };
+  });
+}
+
+function buildDayContext(day: HeatmapDayProjection): DayContextProjection {
+  const persons = day.personIds
+    .map((personId) => personById.get(personId))
+    .filter((person): person is PersonProjection => person !== undefined);
+  const tags = day.tagPaths
+    .map((tagPath) => tagByPath.get(tagPath))
+    .filter((tag): tag is TagProjection => tag !== undefined);
+  const mapPoints = createMapPoints(day);
+
+  return {
+    date: day.date,
+    persons,
+    tags,
+    mapPoints,
+    summaryCounts: {
+      events: day.eventCount,
+      assets: day.assetCount,
+      places: mapPoints.length,
+    },
+  };
+}
+
 export const mockHeatmapDays: HeatmapDayProjection[] = [
   ...buildYearDays(2021),
   ...buildYearDays(2022),
@@ -146,32 +213,7 @@ export const mockHeatmapDays: HeatmapDayProjection[] = [
   ...buildYearDays(2026),
 ];
 
-export const mockDayContexts: Record<string, DayContextProjection> = {
-  "2026-01-09": {
-    date: "2026-01-09",
-    persons: [mockPersons[0], mockPersons[2]],
-    tags: [mockTags[0], mockTags[2]],
-    mapPoints: [
-      { id: "berlin", label: "Berlin", x: 42, y: 36 },
-      { id: "potsdam", label: "Potsdam", x: 54, y: 48 },
-    ],
-    summaryCounts: { events: 4, assets: 2, places: 2 },
-  },
-  "2026-01-16": {
-    date: "2026-01-16",
-    persons: [mockPersons[1]],
-    tags: [mockTags[1]],
-    mapPoints: [{ id: "venice", label: "Venice", x: 61, y: 59 }],
-    summaryCounts: { events: 3, assets: 5, places: 1 },
-  },
-  "2026-01-23": {
-    date: "2026-01-23",
-    persons: [mockPersons[0], mockPersons[1]],
-    tags: [mockTags[0], mockTags[1]],
-    mapPoints: [
-      { id: "munich", label: "Munich", x: 45, y: 69 },
-      { id: "zurich", label: "Zurich", x: 34, y: 74 },
-    ],
-    summaryCounts: { events: 6, assets: 4, places: 2 },
-  },
-};
+export const mockDayContexts: Record<string, DayContextProjection> =
+  Object.fromEntries(
+    mockHeatmapDays.map((day) => [day.date, buildDayContext(day)]),
+  );

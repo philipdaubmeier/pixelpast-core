@@ -15,6 +15,8 @@ export function TagsPanel({
   hoveredDate,
   onToggleTag,
 }: TagsPanelProps) {
+  const hasTags = tags.length > 0;
+
   return (
     <PanelCard
       eyebrow="Context"
@@ -25,27 +27,37 @@ export function TagsPanel({
           : "Tag chips are persistent filters; hover remains temporary and contextual."
       }
     >
-      <div className="flex flex-wrap gap-2">
-        {tags.map((tag) => (
-          <Pill
-            key={tag.path}
-            active={selectedTags.includes(tag.path)}
-            onClick={() => onToggleTag(tag.path)}
-          >
-            {tag.label}
-          </Pill>
-        ))}
-      </div>
-      <div className="mt-4 space-y-2">
-        {tags.map((tag) => (
-          <div
-            key={`${tag.path}-meta`}
-            className="rounded-2xl bg-white/60 px-3 py-2 text-sm text-slate-700"
-          >
-            {tag.path}
+      {hasTags ? (
+        <>
+          <div className="flex flex-wrap gap-2">
+            {tags.map((tag) => (
+              <Pill
+                key={tag.path}
+                active={selectedTags.includes(tag.path)}
+                onClick={() => onToggleTag(tag.path)}
+              >
+                {tag.label}
+              </Pill>
+            ))}
           </div>
-        ))}
-      </div>
+          <div className="mt-4 space-y-2">
+            {tags.map((tag) => (
+              <div
+                key={`${tag.path}-meta`}
+                className="rounded-2xl bg-white/60 px-3 py-2 text-sm text-slate-700"
+              >
+                {tag.path}
+              </div>
+            ))}
+          </div>
+        </>
+      ) : (
+        <div className="flex h-full min-h-32 items-center justify-center rounded-[22px] border border-dashed border-[color:var(--pp-border)] bg-white/35 px-4 text-center text-sm text-slate-500">
+          {hoveredDate
+            ? "No mocked tag context is attached to this day."
+            : "Hover a day to inspect its tags. Persistent tag filters remain independent from hover."}
+        </div>
+      )}
     </PanelCard>
   );
 }

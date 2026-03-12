@@ -27,3 +27,9 @@ env/
 var/
 ui/node_modules/
 ui/dist/
+ui/tailwind.config.d.ts
+ui/tailwind.config.js
+ui/tsconfig.app.tsbuildinfo
+ui/tsconfig.node.tsbuildinfo
+ui/vite.config.d.ts
+ui/vite.config.js

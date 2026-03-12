@@ -34,7 +34,10 @@ export function LeftGridPane({
         </div>
         <p className="panel-copy">Oldest year first, current year auto-focused.</p>
       </div>
-      <div className="h-[calc(100vh-17rem)] min-h-[32rem] overflow-y-auto pr-2">
+      <div
+        className="h-[calc(100vh-17rem)] min-h-[32rem] overflow-y-auto pr-2"
+        onMouseLeave={() => onHover(null)}
+      >
         <YearGridStack
           days={days}
           viewMode={viewMode}
