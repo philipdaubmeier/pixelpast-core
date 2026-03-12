@@ -1,15 +1,18 @@
 """Runtime foundation smoke tests."""
 
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 from uuid import uuid4
 
 from alembic.config import Config
 from fastapi.testclient import TestClient
-from sqlalchemy import text
+from sqlalchemy import create_engine, inspect, text
+from sqlalchemy.orm import Session
 
 from alembic import command
 from pixelpast.api.app import create_app
 from pixelpast.persistence.base import Base
+from pixelpast.persistence.models import Asset, Event, Source
 from pixelpast.persistence.session import session_scope
 from pixelpast.shared.settings import Settings
 
@@ -54,7 +57,107 @@ def test_alembic_upgrade_head_runs() -> None:
     try:
         command.upgrade(config, "head")
         assert database_path.exists()
-        assert Base.metadata.tables == {}
+        engine = create_engine(f"sqlite:///{database_path.as_posix()}")
+        try:
+            inspector = inspect(engine)
+
+            assert set(inspector.get_table_names()) == {
+                "alembic_version",
+                "asset",
+                "asset_person",
+                "asset_tag",
+                "event",
+                "event_asset",
+                "event_person",
+                "event_tag",
+                "import_run",
+                "person",
+                "person_group",
+                "person_group_member",
+                "source",
+                "tag",
+            }
+            assert {index["name"] for index in inspector.get_indexes("event")} == {
+                "ix_event_source_id",
+                "ix_event_timestamp_start",
+                "ix_event_type",
+            }
+            assert {index["name"] for index in inspector.get_indexes("asset")} == {
+                "ix_asset_timestamp",
+            }
+        finally:
+            engine.dispose()
     finally:
         if database_path.exists():
             database_path.unlink()
+
+
+def test_metadata_contains_canonical_tables() -> None:
+    assert set(Base.metadata.tables) == {
+        "asset",
+        "asset_person",
+        "asset_tag",
+        "event",
+        "event_asset",
+        "event_person",
+        "event_tag",
+        "import_run",
+        "person",
+        "person_group",
+        "person_group_member",
+        "source",
+        "tag",
+    }
+
+
+def test_utc_datetime_roundtrip_uses_aware_utc_values() -> None:
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    event_timestamp = datetime(2026, 3, 11, 19, 15, tzinfo=timezone(timedelta(hours=2)))
+    asset_timestamp = datetime(
+        2026,
+        3,
+        11,
+        7,
+        15,
+        tzinfo=timezone(timedelta(hours=-5)),
+    )
+
+    with Session(engine) as session:
+        source = Source(name="Calendar", type="calendar", config={})
+        session.add(source)
+        session.flush()
+        session.add(
+            Event(
+                source_id=source.id,
+                type="calendar",
+                timestamp_start=event_timestamp,
+                timestamp_end=None,
+                title="Meeting",
+                summary=None,
+                latitude=None,
+                longitude=None,
+                raw_payload={},
+                derived_payload={},
+            )
+        )
+        session.add(
+            Asset(
+                external_id="photo-1",
+                media_type="photo",
+                timestamp=asset_timestamp,
+                latitude=None,
+                longitude=None,
+                metadata_json={"camera": "phone"},
+            )
+        )
+        session.commit()
+
+    with Session(engine) as session:
+        stored_event = session.query(Event).one()
+        stored_asset = session.query(Asset).one()
+
+    assert stored_event.timestamp_start.tzinfo is UTC
+    assert stored_asset.timestamp.tzinfo is UTC
+    assert stored_event.timestamp_start == datetime(2026, 3, 11, 17, 15, tzinfo=UTC)
+    assert stored_asset.timestamp == datetime(2026, 3, 11, 12, 15, tzinfo=UTC)
