@@ -3,6 +3,7 @@
 from fastapi import APIRouter
 
 from pixelpast.api.routes.health import router as health_router
+from pixelpast.api.routes.timeline import router as timeline_router
 
 
 def create_api_router() -> APIRouter:
@@ -10,4 +11,5 @@ def create_api_router() -> APIRouter:
 
     router = APIRouter()
     router.include_router(health_router)
+    router.include_router(timeline_router)
     return router
