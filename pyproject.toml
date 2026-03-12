@@ -15,6 +15,7 @@ authors = [
 dependencies = [
   "alembic>=1.14",
   "fastapi>=0.115",
+  "Pillow>=10.0",
   "pydantic-settings>=2.6",
   "sqlalchemy>=2.0",
   "typer>=0.12",

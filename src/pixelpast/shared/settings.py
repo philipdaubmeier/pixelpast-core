@@ -27,6 +27,10 @@ class Settings(BaseSettings):
         default=f"sqlite:///{DEFAULT_SQLITE_PATH.as_posix()}",
         description="SQLAlchemy database URL.",
     )
+    photos_root: Path | None = Field(
+        default=None,
+        description="Root directory for the photo ingestion connector.",
+    )
 
 
 @lru_cache(maxsize=1)

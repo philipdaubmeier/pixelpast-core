@@ -1,13 +1,17 @@
 """CLI smoke tests."""
 
 import logging
+import shutil
 import tomllib
 from pathlib import Path
 from uuid import uuid4
 
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import Session
 from typer.testing import CliRunner
 
 from pixelpast.cli.main import app
+from pixelpast.persistence.models import Asset, ImportRun
 from pixelpast.shared.logging import KeyValueFormatter
 from pixelpast.shared.settings import get_settings
 
@@ -22,19 +26,36 @@ def test_cli_help_lists_available_commands() -> None:
     assert "derive" in result.stdout
 
 
-def test_cli_ingest_photos_runs_stub(monkeypatch) -> None:
+def test_cli_ingest_photos_persists_assets(monkeypatch) -> None:
     database_path = _build_test_database_path("cli-ingest")
+    photos_root = Path("var") / f"cli-photos-{uuid4().hex}"
+    photos_root.mkdir(parents=True, exist_ok=False)
+    (photos_root / "IMG_20240102_030405.jpg").write_bytes(b"not-a-real-image")
     monkeypatch.setenv("PIXELPAST_DATABASE_URL", f"sqlite:///{database_path.as_posix()}")
+    monkeypatch.setenv("PIXELPAST_PHOTOS_ROOT", str(photos_root))
     get_settings.cache_clear()
 
     try:
         result = runner.invoke(app, ["ingest", "photos"])
         assert result.exit_code == 0
         assert database_path.exists()
+
+        engine = create_engine(f"sqlite:///{database_path.as_posix()}")
+        try:
+            with Session(engine) as session:
+                assets = list(session.execute(select(Asset)).scalars())
+                import_runs = list(session.execute(select(ImportRun)).scalars())
+
+            assert len(assets) == 1
+            assert len(import_runs) == 1
+            assert import_runs[0].status == "completed"
+        finally:
+            engine.dispose()
     finally:
         get_settings.cache_clear()
         if database_path.exists():
             database_path.unlink()
+        shutil.rmtree(photos_root, ignore_errors=True)
 
 
 def test_cli_derive_daily_aggregate_runs_stub(
