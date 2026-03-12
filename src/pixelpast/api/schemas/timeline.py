@@ -8,6 +8,9 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, Field
 
 
+ColorValue = Literal["empty", "low", "medium", "high"]
+
+
 class HeatmapDay(BaseModel):
     """Serialized per-day heatmap payload."""
 
@@ -23,6 +26,60 @@ class HeatmapResponse(BaseModel):
     start: date
     end: date
     days: list[HeatmapDay]
+
+
+class ExplorationRange(BaseModel):
+    """Resolved inclusive date range for exploration bootstrap."""
+
+    start: date
+    end: date
+
+
+class ExplorationViewMode(BaseModel):
+    """Backend-defined exploration view mode metadata."""
+
+    id: str
+    label: str
+    description: str
+
+
+class ExplorationPerson(BaseModel):
+    """Person item used by the exploration shell."""
+
+    id: int
+    name: str
+    role: str | None
+
+
+class ExplorationTag(BaseModel):
+    """Tag item used by the exploration shell."""
+
+    path: str
+    label: str
+
+
+class ExplorationDay(BaseModel):
+    """Dense exploration day payload for the calendar grid."""
+
+    date: date
+    event_count: int
+    asset_count: int
+    activity_score: int
+    color_value: ColorValue
+    has_data: bool
+    person_ids: list[int]
+    tag_paths: list[str]
+    view_mode_color_values: dict[str, ColorValue]
+
+
+class ExplorationResponse(BaseModel):
+    """Bootstrap projection for the exploration shell."""
+
+    range: ExplorationRange
+    view_modes: list[ExplorationViewMode]
+    persons: list[ExplorationPerson]
+    tags: list[ExplorationTag]
+    days: list[ExplorationDay]
 
 
 class DayEventItem(BaseModel):

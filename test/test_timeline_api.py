@@ -10,9 +10,397 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 
 from pixelpast.api.app import create_app
-from pixelpast.persistence.models import Asset, DailyAggregate, Event, Source
+from pixelpast.persistence.models import (
+    Asset,
+    AssetPerson,
+    AssetTag,
+    DailyAggregate,
+    Event,
+    EventPerson,
+    EventTag,
+    Person,
+    Source,
+    Tag,
+)
 from pixelpast.shared.runtime import create_runtime_context, initialize_database
 from pixelpast.shared.settings import Settings
+
+
+def test_exploration_endpoint_returns_current_year_dense_grid_when_empty() -> None:
+    workspace_root = _create_workspace_dir(prefix="timeline-api-exploration-empty")
+    runtime = None
+    try:
+        runtime = _create_runtime(workspace_root=workspace_root)
+        app = create_app(settings=runtime.settings)
+
+        with TestClient(app) as client:
+            response = client.get("/exploration")
+
+        assert response.status_code == 200
+        payload = response.json()
+        current_year = date.today().year
+        day_count = (date(current_year + 1, 1, 1) - date(current_year, 1, 1)).days
+        assert payload["range"] == {
+            "start": f"{current_year}-01-01",
+            "end": f"{current_year}-12-31",
+        }
+        assert payload["view_modes"] == [
+            {
+                "id": "activity",
+                "label": "Activity",
+                "description": "Default heat intensity across all timeline sources.",
+            },
+            {
+                "id": "travel",
+                "label": "Travel",
+                "description": "Highlights movement-heavy and location-rich days.",
+            },
+            {
+                "id": "sports",
+                "label": "Sports",
+                "description": "Reserves the grid for workout and fitness projections.",
+            },
+            {
+                "id": "party_probability",
+                "label": "Social",
+                "description": "Placeholder derived view for future social-density signals.",
+            },
+        ]
+        assert payload["persons"] == []
+        assert payload["tags"] == []
+        assert len(payload["days"]) == day_count
+        assert payload["days"][0] == {
+            "date": f"{current_year}-01-01",
+            "event_count": 0,
+            "asset_count": 0,
+            "activity_score": 0,
+            "color_value": "empty",
+            "has_data": False,
+            "person_ids": [],
+            "tag_paths": [],
+            "view_mode_color_values": {
+                "activity": "empty",
+                "travel": "empty",
+                "sports": "empty",
+                "party_probability": "empty",
+            },
+        }
+        assert payload["days"][-1]["date"] == f"{current_year}-12-31"
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_exploration_endpoint_returns_dense_days_catalog_and_backend_colors() -> None:
+    workspace_root = _create_workspace_dir(prefix="timeline-api-exploration-range")
+    runtime = None
+    try:
+        runtime = _create_runtime(workspace_root=workspace_root)
+
+        with runtime.session_factory() as session:
+            source = Source(name="Calendar", type="calendar", config={})
+            anna = Person(
+                name="Anna",
+                aliases=None,
+                metadata_json={"role": "Family"},
+            )
+            milo = Person(
+                name="Milo",
+                aliases=None,
+                metadata_json={"role": "Travel buddy"},
+            )
+            travel_tag = Tag(
+                label="Europe",
+                path="travel/europe",
+                metadata_json=None,
+            )
+            people_tag = Tag(
+                label="Family",
+                path="people/family",
+                metadata_json=None,
+            )
+            activity_tag = Tag(
+                label="Outdoors",
+                path="activity/outdoors",
+                metadata_json=None,
+            )
+            session.add_all([source, anna, milo, travel_tag, people_tag, activity_tag])
+            session.flush()
+
+            day_two_event = Event(
+                source_id=source.id,
+                type="calendar",
+                timestamp_start=datetime(2024, 1, 2, 10, 0, tzinfo=UTC),
+                timestamp_end=None,
+                title="Planning",
+                summary=None,
+                latitude=None,
+                longitude=None,
+                raw_payload={},
+                derived_payload={},
+            )
+            day_two_asset = Asset(
+                external_id="asset-1",
+                media_type="photo",
+                timestamp=datetime(2024, 1, 2, 12, 0, tzinfo=UTC),
+                latitude=None,
+                longitude=None,
+                metadata_json={},
+            )
+            day_three_event = Event(
+                source_id=source.id,
+                type="calendar",
+                timestamp_start=datetime(2024, 1, 3, 8, 0, tzinfo=UTC),
+                timestamp_end=None,
+                title="Run",
+                summary=None,
+                latitude=None,
+                longitude=None,
+                raw_payload={},
+                derived_payload={},
+            )
+            session.add_all([day_two_event, day_two_asset, day_three_event])
+            session.flush()
+
+            session.add_all(
+                [
+                    EventPerson(event_id=day_two_event.id, person_id=anna.id),
+                    AssetPerson(asset_id=day_two_asset.id, person_id=milo.id),
+                    EventTag(event_id=day_two_event.id, tag_id=travel_tag.id),
+                    AssetTag(asset_id=day_two_asset.id, tag_id=people_tag.id),
+                    EventTag(event_id=day_three_event.id, tag_id=activity_tag.id),
+                    DailyAggregate(
+                        date=date(2024, 1, 2),
+                        total_events=1,
+                        media_count=1,
+                        activity_score=40,
+                        metadata_json={"score_version": "v1"},
+                    ),
+                ]
+            )
+            session.commit()
+
+        app = create_app(settings=runtime.settings)
+        with TestClient(app) as client:
+            response = client.get("/exploration?start=2024-01-01&end=2024-01-03")
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "range": {
+                "start": "2024-01-01",
+                "end": "2024-01-03",
+            },
+            "view_modes": [
+                {
+                    "id": "activity",
+                    "label": "Activity",
+                    "description": "Default heat intensity across all timeline sources.",
+                },
+                {
+                    "id": "travel",
+                    "label": "Travel",
+                    "description": "Highlights movement-heavy and location-rich days.",
+                },
+                {
+                    "id": "sports",
+                    "label": "Sports",
+                    "description": "Reserves the grid for workout and fitness projections.",
+                },
+                {
+                    "id": "party_probability",
+                    "label": "Social",
+                    "description": "Placeholder derived view for future social-density signals.",
+                },
+            ],
+            "persons": [
+                {
+                    "id": 1,
+                    "name": "Anna",
+                    "role": "Family",
+                },
+                {
+                    "id": 2,
+                    "name": "Milo",
+                    "role": "Travel buddy",
+                },
+            ],
+            "tags": [
+                {
+                    "path": "activity/outdoors",
+                    "label": "Outdoors",
+                },
+                {
+                    "path": "people/family",
+                    "label": "Family",
+                },
+                {
+                    "path": "travel/europe",
+                    "label": "Europe",
+                },
+            ],
+            "days": [
+                {
+                    "date": "2024-01-01",
+                    "event_count": 0,
+                    "asset_count": 0,
+                    "activity_score": 0,
+                    "color_value": "empty",
+                    "has_data": False,
+                    "person_ids": [],
+                    "tag_paths": [],
+                    "view_mode_color_values": {
+                        "activity": "empty",
+                        "travel": "empty",
+                        "sports": "empty",
+                        "party_probability": "empty",
+                    },
+                },
+                {
+                    "date": "2024-01-02",
+                    "event_count": 1,
+                    "asset_count": 1,
+                    "activity_score": 40,
+                    "color_value": "medium",
+                    "has_data": True,
+                    "person_ids": [1, 2],
+                    "tag_paths": ["people/family", "travel/europe"],
+                    "view_mode_color_values": {
+                        "activity": "medium",
+                        "travel": "high",
+                        "sports": "empty",
+                        "party_probability": "high",
+                    },
+                },
+                {
+                    "date": "2024-01-03",
+                    "event_count": 1,
+                    "asset_count": 0,
+                    "activity_score": 1,
+                    "color_value": "low",
+                    "has_data": True,
+                    "person_ids": [],
+                    "tag_paths": ["activity/outdoors"],
+                    "view_mode_color_values": {
+                        "activity": "low",
+                        "travel": "empty",
+                        "sports": "high",
+                        "party_probability": "empty",
+                    },
+                },
+            ],
+        }
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_exploration_endpoint_resolves_available_timeline_and_pads_years() -> None:
+    workspace_root = _create_workspace_dir(prefix="timeline-api-exploration-bounds")
+    runtime = None
+    try:
+        runtime = _create_runtime(workspace_root=workspace_root)
+
+        with runtime.session_factory() as session:
+            source = Source(name="Calendar", type="calendar", config={})
+            session.add(source)
+            session.flush()
+            session.add_all(
+                [
+                    Event(
+                        source_id=source.id,
+                        type="calendar",
+                        timestamp_start=datetime(2024, 5, 10, 9, 0, tzinfo=UTC),
+                        timestamp_end=None,
+                        title="Trip planning",
+                        summary=None,
+                        latitude=None,
+                        longitude=None,
+                        raw_payload={},
+                        derived_payload={},
+                    ),
+                    Asset(
+                        external_id="asset-1",
+                        media_type="photo",
+                        timestamp=datetime(2025, 2, 3, 18, 0, tzinfo=UTC),
+                        latitude=None,
+                        longitude=None,
+                        metadata_json={},
+                    ),
+                ]
+            )
+            session.commit()
+
+        app = create_app(settings=runtime.settings)
+        with TestClient(app) as client:
+            response = client.get("/exploration")
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["range"] == {
+            "start": "2024-01-01",
+            "end": "2025-12-31",
+        }
+        assert len(payload["days"]) == 731
+
+        day_by_date = {day["date"]: day for day in payload["days"]}
+        assert day_by_date["2024-05-10"] == {
+            "date": "2024-05-10",
+            "event_count": 1,
+            "asset_count": 0,
+            "activity_score": 1,
+            "color_value": "low",
+            "has_data": True,
+            "person_ids": [],
+            "tag_paths": [],
+            "view_mode_color_values": {
+                "activity": "low",
+                "travel": "empty",
+                "sports": "empty",
+                "party_probability": "empty",
+            },
+        }
+        assert day_by_date["2025-02-03"] == {
+            "date": "2025-02-03",
+            "event_count": 0,
+            "asset_count": 1,
+            "activity_score": 1,
+            "color_value": "low",
+            "has_data": True,
+            "person_ids": [],
+            "tag_paths": [],
+            "view_mode_color_values": {
+                "activity": "low",
+                "travel": "empty",
+                "sports": "empty",
+                "party_probability": "empty",
+            },
+        }
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_exploration_endpoint_rejects_partial_explicit_range() -> None:
+    workspace_root = _create_workspace_dir(prefix="timeline-api-exploration-partial")
+    runtime = None
+    try:
+        runtime = _create_runtime(workspace_root=workspace_root)
+        app = create_app(settings=runtime.settings)
+
+        with TestClient(app) as client:
+            response = client.get("/exploration?start=2024-01-01")
+
+        assert response.status_code == 400
+        assert response.json() == {
+            "detail": "start and end must both be provided together",
+        }
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
 
 
 def test_heatmap_endpoint_returns_empty_range() -> None:
