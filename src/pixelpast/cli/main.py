@@ -1,7 +1,8 @@
 """Typer-based operational CLI for PixelPast."""
 
-from collections.abc import Callable
 import logging
+from collections.abc import Callable
+from datetime import date
 from enum import IntEnum
 from typing import Annotated
 
@@ -50,13 +51,41 @@ def ingest_command(
 @app.command("derive")
 def derive_command(
     job: Annotated[str, typer.Argument(help="Derived job name.")],
+    start_date: Annotated[
+        str | None,
+        typer.Option(
+            "--start-date",
+            help="Inclusive start date for a range recomputation (YYYY-MM-DD).",
+        ),
+    ] = None,
+    end_date: Annotated[
+        str | None,
+        typer.Option(
+            "--end-date",
+            help="Inclusive end date for a range recomputation (YYYY-MM-DD).",
+        ),
+    ] = None,
 ) -> None:
     """Run a derived-data job entrypoint."""
+
+    parsed_start_date = _parse_cli_date_option(
+        option_name="start-date",
+        raw_value=start_date,
+    )
+    parsed_end_date = _parse_cli_date_option(
+        option_name="end-date",
+        raw_value=end_date,
+    )
 
     _execute_operation(
         command_name="derive",
         target=job,
-        runner=lambda runtime: run_derive_job(job=job, runtime=runtime),
+        runner=lambda runtime: run_derive_job(
+            job=job,
+            runtime=runtime,
+            start_date=parsed_start_date,
+            end_date=parsed_end_date,
+        ),
     )
 
 
@@ -79,7 +108,10 @@ def _execute_operation(
         configure_logging(debug=runtime.settings.debug)
         initialize_database(runtime)
 
-        logger.info("command started", extra={"command": command_name, "target": target})
+        logger.info(
+            "command started",
+            extra={"command": command_name, "target": target},
+        )
         try:
             runner(runtime)
         except ValueError as error:
@@ -114,3 +146,17 @@ def _execute_operation(
         raise typer.Exit(code=ExitCode.SUCCESS)
     finally:
         runtime.engine.dispose()
+
+
+def _parse_cli_date_option(*, option_name: str, raw_value: str | None) -> date | None:
+    """Parse an ISO date option into a Python date."""
+
+    if raw_value is None:
+        return None
+
+    try:
+        return date.fromisoformat(raw_value)
+    except ValueError as error:
+        raise ValueError(
+            f"Invalid --{option_name} value '{raw_value}'. Expected YYYY-MM-DD."
+        ) from error

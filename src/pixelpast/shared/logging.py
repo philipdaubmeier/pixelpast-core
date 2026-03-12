@@ -28,8 +28,9 @@ class KeyValueFormatter(logging.Formatter):
         for key, value in _iter_extra_fields(record.__dict__).items():
             parts.append(f"{key}={json.dumps(value, default=str, ensure_ascii=True)}")
         if record.exc_info:
+            exception_text = self.formatException(record.exc_info)
             parts.append(
-                f"exception={json.dumps(self.formatException(record.exc_info), ensure_ascii=True)}"
+                f"exception={json.dumps(exception_text, ensure_ascii=True)}"
             )
         return " ".join(parts)
 

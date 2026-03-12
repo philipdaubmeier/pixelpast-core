@@ -3,6 +3,7 @@
 import logging
 import shutil
 import tomllib
+from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
@@ -11,7 +12,8 @@ from sqlalchemy.orm import Session
 from typer.testing import CliRunner
 
 from pixelpast.cli.main import app
-from pixelpast.persistence.models import Asset, ImportRun
+from pixelpast.persistence.base import Base
+from pixelpast.persistence.models import Asset, DailyAggregate, Event, ImportRun, Source
 from pixelpast.shared.logging import KeyValueFormatter
 from pixelpast.shared.settings import get_settings
 
@@ -58,17 +60,94 @@ def test_cli_ingest_photos_persists_assets(monkeypatch) -> None:
         shutil.rmtree(photos_root, ignore_errors=True)
 
 
-def test_cli_derive_daily_aggregate_runs_stub(
-    monkeypatch,
-) -> None:
+def test_cli_derive_daily_aggregate_rebuilds_rows(monkeypatch) -> None:
     database_path = _build_test_database_path("cli-derive")
     monkeypatch.setenv("PIXELPAST_DATABASE_URL", f"sqlite:///{database_path.as_posix()}")
     get_settings.cache_clear()
 
     try:
+        engine = create_engine(f"sqlite:///{database_path.as_posix()}")
+        try:
+            Base.metadata.create_all(engine)
+            with Session(engine) as session:
+                source = Source(name="Calendar", type="calendar", config={})
+                session.add(source)
+                session.flush()
+                session.add_all(
+                    [
+                        Event(
+                            source_id=source.id,
+                            type="calendar",
+                            timestamp_start=datetime(2024, 1, 2, 8, 0, tzinfo=UTC),
+                            timestamp_end=None,
+                            title="Morning plan",
+                            summary=None,
+                            latitude=None,
+                            longitude=None,
+                            raw_payload={},
+                            derived_payload={},
+                        ),
+                        Event(
+                            source_id=source.id,
+                            type="calendar",
+                            timestamp_start=datetime(2024, 1, 2, 17, 0, tzinfo=UTC),
+                            timestamp_end=None,
+                            title="Evening plan",
+                            summary=None,
+                            latitude=None,
+                            longitude=None,
+                            raw_payload={},
+                            derived_payload={},
+                        ),
+                        Asset(
+                            external_id="photo-1",
+                            media_type="photo",
+                            timestamp=datetime(2024, 1, 2, 9, 30, tzinfo=UTC),
+                            latitude=None,
+                            longitude=None,
+                            metadata_json={},
+                        ),
+                        Asset(
+                            external_id="photo-2",
+                            media_type="photo",
+                            timestamp=datetime(2024, 1, 3, 12, 0, tzinfo=UTC),
+                            latitude=None,
+                            longitude=None,
+                            metadata_json={},
+                        ),
+                    ]
+                )
+                session.commit()
+        finally:
+            engine.dispose()
+
         result = runner.invoke(app, ["derive", "daily-aggregate"])
         assert result.exit_code == 0
         assert database_path.exists()
+
+        engine = create_engine(f"sqlite:///{database_path.as_posix()}")
+        try:
+            with Session(engine) as session:
+                aggregates = list(
+                    session.execute(
+                        select(DailyAggregate).order_by(DailyAggregate.date)
+                    ).scalars()
+                )
+        finally:
+            engine.dispose()
+
+        assert [
+            (
+                aggregate.date.isoformat(),
+                aggregate.total_events,
+                aggregate.media_count,
+                aggregate.activity_score,
+            )
+            for aggregate in aggregates
+        ] == [
+            ("2024-01-02", 2, 1, 3),
+            ("2024-01-03", 0, 1, 1),
+        ]
     finally:
         get_settings.cache_clear()
         if database_path.exists():

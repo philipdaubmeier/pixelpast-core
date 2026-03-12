@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from alembic import command
 from pixelpast.api.app import create_app
 from pixelpast.persistence.base import Base
-from pixelpast.persistence.models import Asset, Event, Source
+from pixelpast.persistence.models import Asset, DailyAggregate, Event, Source
 from pixelpast.persistence.session import session_scope
 from pixelpast.shared.settings import Settings
 
@@ -66,6 +66,7 @@ def test_alembic_upgrade_head_runs() -> None:
                 "asset",
                 "asset_person",
                 "asset_tag",
+                "daily_aggregate",
                 "event",
                 "event_asset",
                 "event_person",
@@ -97,6 +98,7 @@ def test_metadata_contains_canonical_tables() -> None:
         "asset",
         "asset_person",
         "asset_tag",
+        "daily_aggregate",
         "event",
         "event_asset",
         "event_person",
@@ -161,3 +163,25 @@ def test_utc_datetime_roundtrip_uses_aware_utc_values() -> None:
     assert stored_asset.timestamp.tzinfo is UTC
     assert stored_event.timestamp_start == datetime(2026, 3, 11, 17, 15, tzinfo=UTC)
     assert stored_asset.timestamp == datetime(2026, 3, 11, 12, 15, tzinfo=UTC)
+
+
+def test_daily_aggregate_date_roundtrip_uses_python_date() -> None:
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        session.add(
+            DailyAggregate(
+                date=datetime(2026, 3, 11, tzinfo=UTC).date(),
+                total_events=2,
+                media_count=1,
+                activity_score=3,
+                metadata_json={"score_version": "v1"},
+            )
+        )
+        session.commit()
+
+    with Session(engine) as session:
+        stored_aggregate = session.query(DailyAggregate).one()
+
+    assert stored_aggregate.date.isoformat() == "2026-03-11"

@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Any
 
-from sqlalchemy import JSON, Float, ForeignKey, Index, String, Text, func
+from sqlalchemy import JSON, Date, Float, ForeignKey, Index, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from pixelpast.persistence.base import Base
@@ -101,6 +101,23 @@ class Asset(Base):
         "metadata",
         JSON,
         nullable=True,
+    )
+
+
+class DailyAggregate(Base):
+    """Stores derived per-day activity summaries for heatmap-style exploration."""
+
+    __tablename__ = "daily_aggregate"
+
+    date: Mapped[date] = mapped_column(Date(), primary_key=True)
+    total_events: Mapped[int] = mapped_column(nullable=False, default=0)
+    media_count: Mapped[int] = mapped_column(nullable=False, default=0)
+    activity_score: Mapped[int] = mapped_column(nullable=False, default=0)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(
+        "metadata",
+        JSON,
+        nullable=False,
+        default=dict,
     )
 
 
