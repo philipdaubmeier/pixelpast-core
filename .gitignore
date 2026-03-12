@@ -25,3 +25,5 @@ env/
 .vscode/
 .env
 var/
+ui/node_modules/
+ui/dist/

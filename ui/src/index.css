@@ -1,0 +1,78 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  font-family: "Aptos", "Segoe UI", sans-serif;
+  background-color: #f4eadb;
+  color: #1c2430;
+  --pp-bg: #f4eadb;
+  --pp-surface: rgba(255, 252, 247, 0.78);
+  --pp-surface-strong: rgba(255, 249, 241, 0.92);
+  --pp-border: rgba(98, 80, 46, 0.18);
+  --pp-ink: #1c2430;
+  --pp-muted: #627081;
+  --pp-grid-muted: #e7dac6;
+  --pp-grid-activity: #ca9f58;
+  --pp-grid-travel: #6ea69b;
+  --pp-grid-sports: #748fb6;
+  --pp-grid-party: #cf8268;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(circle at top left, rgba(255, 255, 255, 0.65), transparent 32%),
+    linear-gradient(180deg, #f8f2e8 0%, #f1e4d1 100%);
+  color: var(--pp-ink);
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+@layer base {
+  * {
+    @apply border-transparent;
+  }
+}
+
+@layer components {
+  .panel-surface {
+    background-color: var(--pp-surface);
+    border-color: var(--pp-border);
+    @apply rounded-[28px] border shadow-[0_20px_80px_rgba(61,44,15,0.08)] backdrop-blur-sm;
+  }
+
+  .panel-surface-strong {
+    background-color: var(--pp-surface-strong);
+    border-color: var(--pp-border);
+    @apply rounded-[24px] border shadow-[0_12px_36px_rgba(61,44,15,0.08)];
+  }
+
+  .panel-title {
+    @apply text-sm font-semibold uppercase tracking-[0.24em];
+    color: var(--pp-muted);
+  }
+
+  .panel-copy {
+    color: var(--pp-muted);
+    @apply text-sm leading-6;
+  }
+
+  .subtle-grid {
+    background-image:
+      linear-gradient(to right, rgba(98, 80, 46, 0.06) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(98, 80, 46, 0.06) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+}

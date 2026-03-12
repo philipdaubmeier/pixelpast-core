@@ -79,6 +79,23 @@ ruff check .
 pytest
 ```
 
+## Frontend Workspace
+
+The React UI skeleton lives in `ui/` and mirrors the architecture described in
+the UI documentation.
+
+Use the workspace locally with:
+
+```text
+cd ui
+npm install
+npm run dev
+```
+
+The current frontend increment is intentionally mock-backed. It establishes the
+application shell, split layout, placeholder year stack, and contextual panels
+without real backend integration yet.
+
 ## 🤝 Contributing
 
 Contributions, ideas and new connectors are welcome.
