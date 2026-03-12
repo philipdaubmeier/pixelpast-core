@@ -1,11 +1,9 @@
-# PixelPast – UI Concept
+# PixelPast - UI Concept
 
 ## 1. Intuition
 
 PixelPast is not a dashboard.
-
 It is not a CRUD interface.
-
 It is a visual exploration instrument.
 
 The UI exists to make time explorable.
@@ -13,11 +11,9 @@ The UI exists to make time explorable.
 The calendar grid is not a component.  
 It is the product.
 
-Everything else in the interface exists to contextualize,
-filter, enrich, or reinterpret the grid.
+Everything else in the interface exists to contextualize, filter, enrich, or reinterpret the grid.
 
-If a UI decision weakens the clarity of chronological exploration,
-it is the wrong decision.
+If a UI decision weakens the clarity of chronological exploration, it is the wrong decision.
 
 ---
 
@@ -38,21 +34,23 @@ it is the wrong decision.
 
 The UI is divided into two primary panels.
 
-    ┌────────────────────────────────────────────────────────────┐
-    │ TOP BAR                                                    │
-    │ [ View Mode ] [ Filters ] [ Search ] [ Derived Views ]     │
-    ├────────────────────────────────────────────────────────────┤
-    │ LEFT PANEL                      RIGHT PANEL                |
-    │ ┌───────────────────────────┐   ┌──────────────────────┐   │
-    │ │                           │   │ Persons              │   │
-    │ │                           │   ├──────────────────────┤   |
-    │ │     YEAR GRID STACK       │   │ Tags                 │   |
-    │ │                           │   ├──────────────────────┤   │
-    │ │                           │   │ Map                  │   │
-    │ │                           │   └──────────────────────┘   │
-    │ │                           │                              │
-    │ └───────────────────────────┘                              │
-    └────────────────────────────────────────────────────────────┘
+```text
+┌────────────────────────────────────────────────────────────┐
+│ TOP BAR                                                    │
+│ [ View Mode ] [ Filters ] [ Search ] [ Derived Views ]     │
+├────────────────────────────────────────────────────────────┤
+│ LEFT PANEL                      RIGHT PANEL                |
+│ ┌───────────────────────────┐   ┌──────────────────────┐   │
+│ │                           │   │ Persons              │   │
+│ │                           │   ├──────────────────────┤   |
+│ │     YEAR GRID STACK       │   │ Tags                 │   |
+│ │                           │   ├──────────────────────┤   │
+│ │                           │   │ Map                  │   │
+│ │                           │   └──────────────────────┘   │
+│ │                           │                              │
+│ └───────────────────────────┘                              │
+└────────────────────────────────────────────────────────────┘
+```
 
 ### Left Panel – Timeline Grid
 

@@ -1,4 +1,4 @@
-# PixelPast – UI Architecture
+# PixelPast - UI Architecture
 
 ## 1. Purpose
 
@@ -17,11 +17,10 @@ All other UI elements exist to contextualize, filter, and reinterpret that surfa
 The UI architecture must support:
 
 - stable rendering of multi-year calendar grids
-- clear separation between projection data and domain data
-- responsive hover interactions
-- persistent filter state
-- derived view switching
-- incremental feature growth without full rewrites
+- explicit separation between backend domain data and frontend projection data
+- lightweight hover-driven context updates
+- persistent filter state and reproducible views
+- incremental feature growth without architectural rewrites
 
 The architecture should optimize for clarity, predictability, and composability.
 
@@ -36,166 +35,212 @@ Recommended stack:
 - Vite
 - Tailwind CSS
 - TanStack Query for server data fetching
-- Zustand or React Context for lightweight UI state
-- D3 only where needed for grid math or scales
-- Plain React rendering first; avoid premature visualization complexity
+- a small dedicated UI state layer such as Zustand or React Context
+- D3 only for calendar math or color scales when React and plain TypeScript are not enough
 
 No heavy charting framework should control the main grid.
 
 ---
 
-## 4. Core UI Layers
+## 4. Workspace and Module Boundaries
+
+The UI should live in a dedicated frontend workspace at the repository root.
+Recommended directory name: `ui/`.
+
+Within that workspace, organize code by responsibility:
+
+- `app/` for shell, layout, routing, and bootstrapping
+- `components/` for reusable presentational building blocks
+- `features/timeline/` for the grid and timeline-focused interaction logic
+- `features/context/` for persons, tags, and map panels
+- `api/` for HTTP clients and request wiring
+- `projections/` for UI-facing DTOs and transformation helpers
+- `state/` for shared UI state and URL synchronization
+- `mocks/` for static fixtures used before real API integration
+
+Avoid mixing transport DTOs, UI projection DTOs, and local component state into one generic folder.
+
+---
+
+## 5. Core UI Layers
 
 The UI should be organized into four conceptual layers:
 
 ### A. App Shell
+
 Responsible for layout, routing, top bar, and persistent panels.
 
 ### B. View Layer
+
 Responsible for rendering the grid and contextual panels.
 
 ### C. Projection Layer
+
 Responsible for transforming API responses into UI-ready structures such as:
+
 - year grid cells
+- day context payloads
 - timeline entries
-- person highlights
-- tag highlight states
+- person highlight state
+- tag highlight state
 - map point projections
 
 ### D. State Layer
-Responsible for UI state such as:
+
+Responsible for cross-component UI state such as:
+
 - hovered date
 - selected filters
 - active view mode
 - selected date range
 - panel state
 
-Domain models from the backend must not be used directly as rendering contracts.
-The UI should consume projection DTOs.
+Backend domain models must not be used directly as rendering contracts.
+The UI should consume explicit projection DTOs.
 
 ---
 
-## 5. Primary UI Modules
+## 6. Primary UI Modules
 
-Recommended component structure:
+Recommended first-pass component structure:
 
 - `AppShell`
 - `TopBar`
+- `MainSplitLayout`
+- `LeftGridPane`
+- `RightContextPane`
 - `YearGridStack`
 - `YearGrid`
 - `DayCell`
-- `RightPanel`
-  - `PersonsPanel`
-  - `TagsPanel`
-  - `MapPanel`
-- `TimelinePreview` (optional later)
+- `PersonsPanel`
+- `TagsPanel`
+- `MapPanel`
 - `ViewModeSelector`
 - `FilterBar`
 
+`TimelinePreview` or richer day storytelling can be added later.
+
 ---
 
-## 6. Data Contracts
+## 7. Data Contracts
 
 The UI should consume explicit projection endpoints instead of raw database entities.
 
-Initial API-facing projection types should include:
+Initial projection contracts should include:
 
-### HeatmapDayProjection
+### `HeatmapDayProjection`
+
 Represents one day cell in the calendar grid.
 
-Example fields:
+Suggested fields:
+
 - `date`
 - `year`
+- `week_index`
+- `weekday_index`
 - `activity_score`
 - `color_value`
 - `has_data`
 - `event_count`
 - `asset_count`
+- `person_ids`
+- `tag_paths`
 
-### DayContextProjection
-Represents contextual data for a hovered or selected day.
+### `DayContextProjection`
 
-Example fields:
+Represents contextual data for a hovered day.
+
+Suggested fields:
+
 - `date`
 - `persons`
 - `tags`
 - `map_points`
 - `summary_counts`
 
-### TimelineEntryProjection
-Represents a chronological row in future day detail views.
+### `TimelineEntryProjection`
 
-Example fields:
-- `kind` (`event` | `asset`)
-- `type` (`photo` | `video` | `calendar` | `music_play` | ...)
+Represents a chronological row in a future day detail view.
+
+Suggested fields:
+
+- `kind` (`event` or `asset`)
+- `type`
 - `timestamp`
 - `title`
 - `summary`
 - `coordinates`
 
-The UI must treat these as view contracts, not inferred structures.
+The frontend should treat these contracts as stable UI-facing shapes, not inferred backend internals.
 
 ---
 
-## 7. State Model
+## 8. State Model
 
-There are two categories of state:
+There are two categories of UI state:
 
 ### A. Ephemeral Interaction State
-Short-lived and not persisted in URL.
+
+Short-lived and not persisted in the URL.
 
 Examples:
+
 - `hoveredDate`
-- `hoveredYear`
 - `hoveredPanelItem`
 
-This state exists only for exploration and contextual highlighting.
+This state exists only for temporary exploration and contextual highlighting.
 
 ### B. Persistent Exploration State
-Stored in URL and/or global store.
+
+Stored in the URL and mirrored in shared UI state.
 
 Examples:
+
 - `viewMode`
 - `selectedPersons`
 - `selectedTags`
 - `selectedGeoFilter`
 - `selectedDateRange`
-- `selectedDerivedView`
 
-This state controls recoloring and filtering of the grid.
+This state defines the current exploration frame and drives recoloring.
 
 ---
 
-## 8. Interaction Model
+## 9. Interaction Model
 
 The architecture must support two distinct interaction modes:
 
 ### Hover
+
 Temporary contextual inspection.
 
 Effects:
-- highlight one day
-- update persons panel
-- update tags panel
-- update map points
 
-### Selection / Filter
+- highlight one day
+- update persons, tags, and map panels
+- never mutate persistent filter state
+
+### Selection and Filter
+
 Persistent exploration mode.
 
 Effects:
-- recolor matching days
-- restrict or reinterpret context panels
-- remain stable across navigation and refresh
 
-Hover must never mutate persistent filter state.
+- recolor matching days
+- update the URL
+- remain stable across refresh and navigation
+
+Hover adds temporary focus.
+Selection defines the durable interpretation of the grid.
 
 ---
 
-## 9. URL Strategy
+## 10. URL Strategy
 
 Persistent exploration state should be representable in the URL.
 
 Examples:
+
 - `viewMode=travel`
 - `persons=anna,tina`
 - `tags=place/italy,travel/summer`
@@ -203,50 +248,51 @@ Examples:
 - `to=2025-12-31`
 
 This allows:
+
 - shareable views
 - reproducibility
 - refresh-safe exploration
-- predictable back/forward navigation
+- predictable back and forward navigation
 
 Ephemeral hover state must not be encoded in the URL.
 
 ---
 
-## 10. Rendering Strategy
+## 11. Rendering Strategy
 
-The main grid should initially be rendered using standard React components.
+The main grid should initially be rendered with standard React components.
 
 Start with:
+
 - one component per year
 - one component per day cell
 
-Only optimize further if needed.
-
 Do not start with Canvas or WebGL.
-Do not introduce D3-driven DOM ownership for the whole UI.
+Do not hand DOM ownership of the whole grid to D3.
 
-Performance expectations for v1:
-- 10–30 years
-- approximately 365 cells per year
+Target for the first implementation:
+
+- 10 to 30 years
+- roughly 365 cells per year
 - dynamic recoloring
 - lightweight hover interactions
 
-This should be manageable with straightforward React rendering if the data model is clean and components are memoized where appropriate.
+Optimize only after profiling shows a real need.
 
 ---
 
-## 11. Layout Strategy
+## 12. Layout Strategy
 
 Desktop-first layout:
 
-- Left side: fixed-primary grid region
-- Right side: contextual side panels
-- Top bar: global controls
+- top bar across the full width
+- left side for the primary grid region
+- right side for contextual panels stacked vertically
 
 The grid must always remain visible.
 Context panels must never replace it.
 
-Recommended top-level layout structure:
+Recommended top-level layout:
 
 - `TopBar`
 - `MainSplitLayout`
@@ -255,44 +301,47 @@ Recommended top-level layout structure:
 
 ---
 
-## 12. Panel Responsibilities
+## 13. Panel Responsibilities
 
-### PersonsPanel
-- display persons relevant to hovered day or active filters
+### `PersonsPanel`
+
+- display persons relevant to the hovered day or active filters
 - allow selecting one or more persons
 - reflect active state visually
 
-### TagsPanel
-- display tags relevant to hovered day or active filters
+### `TagsPanel`
+
+- display tags relevant to the hovered day or active filters
 - allow selecting tag paths or subtrees
 - reflect active state visually
 
-### MapPanel
-- show points relevant to hovered day or active filters
+### `MapPanel`
+
+- show points relevant to the hovered day or active filters
 - remain visually quiet by default
 - act as contextual support, not dominant navigation
 
 ---
 
-## 13. Derived Views
+## 14. Derived Views
 
 Derived views are backend-defined color strategies over time.
 
-The UI should treat them as selectable view modes with stable identifiers.
-
 Examples:
+
 - `activity`
 - `travel`
 - `sports`
 - `party_probability`
 
 The frontend should not implement analytics logic.
-It should request the appropriate projection and render it.
-Available projections are also fetched from api once on startup.
+It should request the relevant projection and render it.
+
+The list of available view modes may be fetched from the API later, but the first UI increment can use a small mocked list.
 
 ---
 
-## 14. Styling Principles
+## 15. Styling Principles
 
 - Minimalist
 - Grid-first
@@ -307,7 +356,7 @@ Light mode by default, optionally dark mode later on.
 
 ---
 
-## 15. Evolution Strategy
+## 16. Evolution Strategy
 
 The UI should evolve in this order:
 
@@ -323,7 +372,7 @@ This ordering preserves architectural stability while enabling incremental deliv
 
 ---
 
-## 16. Non-Negotiable Rules
+## 17. Non-Negotiable Rules
 
 - The grid is always visible.
 - Time is the primary organizing principle.

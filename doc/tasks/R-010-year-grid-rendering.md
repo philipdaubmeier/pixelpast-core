@@ -1,9 +1,8 @@
-# R-007 – Year Grid Rendering (Static Projection)
+# R-010 - Year Grid Rendering
 
 ## Goal
 
-Render the primary multi-year GitHub-style calendar grid using static or mocked
-projection data.
+Render the primary multi-year GitHub-style calendar grid using static or mocked projection data.
 
 This task establishes the main product surface.
 
@@ -13,50 +12,52 @@ This task establishes the main product surface.
 
 Implement:
 
-- YearGridStack
-- YearGrid
-- DayCell
+- `YearGridStack`
+- `YearGrid`
+- `DayCell`
 
 Render:
 
 - multiple years stacked vertically
-- oldest year at top
-- latest year at bottom
-- rotated year label on the left
+- oldest year at the top
+- latest year at the bottom
+- a year label on the left
 - one cell per day
-- GitHub-style weekly column layout
+- weekly column layout
 
-Use mocked or local static data shaped like HeatmapDayProjection.
+Use mocked or local static data shaped like `HeatmapDayProjection`.
 
 Each day cell must support:
 
-- date
-- activity/color value
-- basic hover affordance
-- empty state vs active state styling
+- `date`
+- a color value or activity intensity
+- clear empty-state versus active-state styling
+- a basic hover affordance without cross-panel synchronization yet
 
-Default scroll behavior:
+Initial viewport behavior:
+
 - current year visible on initial load
 
 ---
 
 ## Out of Scope
 
-- No backend integration
-- No actual hover synchronization
-- No persistent filter state
-- No contextual panel updates
-- No derived view switching
+- no backend integration
+- no contextual panel updates
+- no persistent filter state
+- no URL synchronization
+- no derived view switching
 
 ---
 
 ## Acceptance Criteria
 
-- Grid renders multiple full years correctly
-- Calendar alignment is stable and visually readable
-- Empty and active cells are distinguishable
-- Year ordering is correct
-- Current year is visible by default
+- grid renders multiple full years correctly
+- calendar alignment is stable and visually readable
+- empty and active cells are clearly distinguishable
+- year ordering is correct
+- current year is visible on first load
+- the implementation uses reusable projection-shaped fixtures rather than ad hoc inline arrays
 
 ---
 
@@ -64,4 +65,4 @@ Default scroll behavior:
 
 This task is about rendering structure, not full behavior.
 Keep cell visuals minimal.
-Do not add icons or inline labels inside cells.
+Do not add icons or labels inside day cells.

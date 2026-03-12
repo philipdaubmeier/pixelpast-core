@@ -1,14 +1,13 @@
-# PixelPast – UI States
+# PixelPast - UI States
 
 ## 1. Purpose
 
 This document defines the UI state model for PixelPast.
 
 Its goal is to make interaction behavior explicit before implementation.
-It separates ephemeral exploration state from persistent exploration state
-and provides a stable mental model for future tasks.
+It separates ephemeral exploration state from persistent exploration state and provides a stable mental model for the first UI increment and later extensions.
 
-The UI state model must preserve the core design principle of PixelPast:
+The state model must preserve these core rules:
 
 - the calendar grid is the primary exploration surface
 - hover provides temporary context
@@ -30,7 +29,7 @@ Characteristics:
 - not stored in the URL
 - cleared automatically when interaction ends
 - must not change persistent filter logic
-- must be lightweight and predictable
+- should be cheap to update
 
 Examples:
 
@@ -39,16 +38,14 @@ Examples:
 - currently hovered tag chip
 - currently hovered map point
 
----
-
 ### B. Persistent Exploration State
 
 Longer-lived state used to shape the meaning and coloring of the grid.
 
 Characteristics:
 
-- stored in URL where reasonable
-- survives refresh/navigation
+- stored in the URL where reasonable
+- survives refresh and navigation
 - drives recoloring and filtering
 - must be explicit and composable
 
@@ -64,38 +61,40 @@ Examples:
 
 ## 3. Core State Model
 
-## 3.1 Ephemeral State
+### 3.1 Ephemeral State
 
-### `hoveredDate: string | null`
+#### `hoveredDate: string | null`
 
 The currently hovered day in ISO date format (`YYYY-MM-DD`).
 
 Responsibilities:
+
 - highlight the hovered day cell
-- drive contextual updates in persons/tags/map panels
+- drive contextual updates in persons, tags, and map panels
 - show temporary day-level context
 
 Rules:
+
 - must be `null` when no day cell is hovered
 - must not be encoded in the URL
 - must not affect persistent recoloring logic
 
----
-
-### `hoveredPanelItem: HoveredPanelItem | null`
+#### `hoveredPanelItem: HoveredPanelItem | null`
 
 Represents an optional hovered contextual item.
 
 Possible kinds:
+
 - `person`
 - `tag`
 - `map_point`
 
 Purpose:
+
 - temporary cross-panel highlighting
 - optional visual feedback for future interactions
 
-This is not required for v1 but should be anticipated in the state model.
+This is not required for the first increment but should fit naturally into the model.
 
 Example shape:
 
@@ -103,83 +102,79 @@ Example shape:
 type HoveredPanelItem =
   | { kind: "person"; id: string }
   | { kind: "tag"; path: string }
-  | { kind: "map_point"; id: string }
+  | { kind: "map_point"; id: string };
 ```
 
----
+### 3.2 Persistent State
 
-## 3.2 Persistent State
+#### `viewMode: string`
 
-### `viewMode: string`
-
-The currently active grid coloring mode.
+The active grid coloring mode.
 
 Examples:
+
 - `activity`
 - `travel`
 - `sports`
 - `party_probability`
 
 Responsibilities:
-- determine grid color strategy
-- influence contextual panel interpretation
-- define which projection endpoint or data contract is active
+
+- determine the grid color strategy
+- influence contextual interpretation
+- define which projection data is requested
 
 Rules:
+
 - must always have a value
 - should be represented in the URL
-- default is `activity`
+- defaults to `activity`
 
----
-
-### `selectedPersons: string[]`
+#### `selectedPersons: string[]`
 
 The currently selected person identifiers.
 
 Responsibilities:
+
 - persist a people-based filter
 - recolor matching days
 - visually mark active person selections
 
 Rules:
-- multi-select allowed
-- order should not matter semantically
+
+- multi-select is allowed
+- order is not semantically meaningful
 - should be represented in the URL
-- empty array means no person filter
+- an empty array means no person filter
 
----
-
-### `selectedTags: string[]`
+#### `selectedTags: string[]`
 
 The currently selected tag paths.
 
 Responsibilities:
+
 - persist tag-based filtering
 - recolor matching days
 - visually mark active tag selections
 
 Rules:
-- tag values are hierarchical paths
-- multi-select allowed
+
+- values are hierarchical paths
+- multi-select is allowed
 - should be represented in the URL
-- empty array means no tag filter
+- an empty array means no tag filter
 
 Examples:
+
 - `place/italy`
 - `travel/summer`
 - `people/family`
 
----
+#### `selectedGeoFilter: GeoFilter | null`
 
-### `selectedGeoFilter: GeoFilter | null`
+Optional geographic filter applied to events or assets with coordinates.
 
-Optional geographic filter applied to assets/events with coordinates.
-
-This is not required for the first UI slice but should be modeled now.
-
-Possible filter forms:
-- radius from point
-- bounding box
+This is out of scope for the first increment, but the model should leave space for it.
 
 Example shape:
 
@@ -200,18 +195,7 @@ type GeoFilter =
     };
 ```
 
-Responsibilities:
-- restrict or recolor matching days
-- influence map rendering
-- remain persistent until cleared
-
-Rules:
-- should be represented in the URL when active
-- must not be mutated by hover behavior
-
----
-
-### `selectedDateRange: DateRange | null`
+#### `selectedDateRange: DateRange | null`
 
 Optional date range restriction for exploration.
 
@@ -219,18 +203,20 @@ Example shape:
 
 ```ts
 type DateRange = {
-  from: string; // YYYY-MM-DD
-  to: string;   // YYYY-MM-DD
+  from: string;
+  to: string;
 };
 ```
 
 Responsibilities:
+
 - restrict visible or highlighted days
 - allow focused exploration across long histories
 
 Rules:
+
 - should be represented in the URL when active
-- should be independent from hoveredDate
+- should remain independent from `hoveredDate`
 
 ---
 
@@ -242,12 +228,16 @@ They should be derived from primary state and projection data.
 Examples:
 
 ### `activeDayContext`
+
 Derived from:
+
 - `hoveredDate`
 - loaded `DayContextProjection`
 
 ### `filteredHeatmapDays`
+
 Derived from:
+
 - `viewMode`
 - `selectedPersons`
 - `selectedTags`
@@ -256,15 +246,18 @@ Derived from:
 - loaded `HeatmapDayProjection[]`
 
 ### `activeFilterSummary`
+
 Derived from:
+
 - persistent exploration state
 
 Examples:
-- "2 persons selected"
-- "Tag filter: place/italy"
-- "View: travel"
 
-Derived state should never become a second source of truth.
+- `2 persons selected`
+- `Tag filter: place/italy`
+- `View: travel`
+
+Derived state must never become a second source of truth.
 
 ---
 
@@ -272,9 +265,8 @@ Derived state should never become a second source of truth.
 
 State should be owned at the lowest level that still preserves coherence.
 
-Recommended ownership:
+Recommended shared state ownership:
 
-### App-level or global store
 - `viewMode`
 - `selectedPersons`
 - `selectedTags`
@@ -284,13 +276,13 @@ Recommended ownership:
 
 These values affect multiple panels and the grid simultaneously.
 
-### Local component state
-- temporary panel UI affordances
-- expanded/collapsed sections
-- local input text
-- transient visual toggles that do not affect other modules
+Recommended local component state:
 
-Do not duplicate persistent state in multiple components.
+- expanded or collapsed sections
+- local input text
+- transient UI affordances that do not affect other modules
+
+Do not duplicate persistent state across multiple components.
 
 ---
 
@@ -323,7 +315,7 @@ The following state must not be URL-backed:
 
 ## 7. Interaction Rules
 
-## 7.1 Hover Rules
+### 7.1 Hover Rules
 
 Hover is ephemeral and contextual.
 
@@ -331,7 +323,7 @@ When a user hovers a day cell:
 
 - set `hoveredDate`
 - visually highlight the cell
-- update persons/tags/map panels with day context
+- update persons, tags, and map panels with day context
 - do not change persistent filters
 - do not change URL state
 
@@ -340,38 +332,37 @@ When hover ends:
 - clear `hoveredDate`
 - clear any hover-based contextual highlights
 
----
-
-## 7.2 Selection Rules
+### 7.2 Selection Rules
 
 Selection is persistent and analytical.
 
 When a user selects a person, tag, or view mode:
 
 - update persistent state
-- update URL
+- update the URL
 - recompute grid coloring
 - visually mark active selections
 - preserve state across refresh where possible
 
 Selections remain active until explicitly changed or cleared.
 
----
-
-## 7.3 Hover vs. Selection Precedence
+### 7.3 Hover vs. Selection Precedence
 
 Hover never overrides persistent selection.
-It only adds temporary contextual focus.
+It only adds temporary focus.
 
 Examples:
 
 - if a person filter is active and a day is hovered, the hovered day context is shown within the already filtered interpretation
-- if a tag filter is active, hover should not remove or replace that filter
+- if a tag filter is active, hover must not remove or replace that filter
 
 Persistent state defines the exploration frame.
 Hover defines the temporary inspection target.
 
-As for the design, persistent states can for example be displayed by coloring the pixel squares, while hover states would add an outline or an outer glow effect to the squares.
+One practical visual rule for v1:
+
+- persistent matches are shown through fill color
+- hover is shown through outline, ring, or glow
 
 ---
 
@@ -380,7 +371,9 @@ As for the design, persistent states can for example be displayed by coloring th
 The state model implies two broad categories of data fetching:
 
 ### A. Heatmap Projection Fetching
+
 Depends on persistent state such as:
+
 - `viewMode`
 - `selectedPersons`
 - `selectedTags`
@@ -390,18 +383,21 @@ Depends on persistent state such as:
 This data is suitable for caching and refetching based on query keys.
 
 ### B. Day Context Fetching
+
 Depends primarily on:
+
 - `hoveredDate`
-- active persistent filter context if needed
+- active persistent filter context when needed
 
 This data may be:
+
 - lazily fetched on hover
 - prefetched
 - derived from already available local data in early versions
 
-The UI architecture should keep these concerns separate.
-
 Depending on first learnings of using the UI live, it may be decided to never fetch any data on hover but to preload all data needed for hover highlighting whilst or directly after fetching persistent states.
+
+The first UI increment can stay fully mocked, but the data-fetching split should remain visible in the design.
 
 ---
 
@@ -444,7 +440,6 @@ type HoveredPanelItem =
 type PixelPastUiState = {
   hoveredDate: string | null;
   hoveredPanelItem: HoveredPanelItem | null;
-
   viewMode: ViewMode;
   selectedPersons: string[];
   selectedTags: string[];
@@ -455,16 +450,16 @@ type PixelPastUiState = {
 
 ---
 
-## 10. v1 Scope Guidance
+## 10. First Increment Scope
 
-For the first UI implementation, the minimum required state is:
+For the first UI implementation, the minimum required shared state is:
 
 - `hoveredDate`
 - `viewMode`
 - `selectedPersons`
 - `selectedTags`
 
-Optional but not required in the first iteration:
+Optional and intentionally deferred:
 
 - `selectedGeoFilter`
 - `selectedDateRange`
@@ -481,5 +476,5 @@ This keeps the first UI slice small while preserving future extensibility.
 - Persistent state should be URL-representable.
 - The grid reacts to persistent state.
 - Context panels react to both hover and persistent state.
-- No duplicated source of truth.
+- There must be no duplicated source of truth.
 - Derived state must remain derived.

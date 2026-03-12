@@ -1,4 +1,4 @@
-# R-009 – Persistent Filter State and Grid Recoloring
+# R-012 - Persistent Filter State and Grid Recoloring
 
 ## Goal
 
@@ -36,27 +36,28 @@ Examples:
 
 ## Out of Scope
 
-- No real backend filtering yet
-- No geo filter yet
-- No advanced boolean query builder
-- No server-driven URL parsing beyond minimal implementation
-- No day detail view
+- no real backend filtering yet
+- no geo filter yet
+- no advanced boolean query builder
+- no server-driven filter parsing beyond minimal URL sync
+- no day detail view
 
 ---
 
 ## Acceptance Criteria
 
-- Selecting a person persists and recolors the grid
-- Selecting a tag persists and recolors the grid
-- Changing view mode recolors the grid
-- URL reflects persistent state
-- Refresh preserves state when possible
-- Hover remains independent from selection
+- selecting a person persists and recolors the grid
+- selecting a tag persists and recolors the grid
+- changing view mode recolors the grid
+- the URL reflects persistent state
+- refreshing the page restores state from the URL when possible
+- hover remains independent from persistent selection
+- filter matching logic is implemented in a dedicated state or projection layer, not scattered across panel components
 
 ---
 
 ## Notes
 
 This task establishes the durable exploration model.
-Keep the state model explicit and simple.
+Keep the state model explicit and small.
 Do not overload the UI with advanced filtering controls yet.
