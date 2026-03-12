@@ -15,16 +15,24 @@ export function LeftGridPane({
   hoveredDate,
   onHover,
 }: LeftGridPaneProps) {
+  const years = Array.from(new Set(days.map((day) => day.year))).sort(
+    (leftYear, rightYear) => leftYear - rightYear,
+  );
+  const yearRangeLabel =
+    years.length > 1
+      ? `${years[0]} to ${years[years.length - 1]}`
+      : years[0]?.toString() ?? "Timeline";
+
   return (
     <section className="panel-surface min-h-[42rem] overflow-hidden p-5">
       <div className="mb-5 flex items-center justify-between">
         <div>
           <p className="panel-title">Timeline Grid</p>
           <h2 className="text-xl font-semibold text-slate-950">
-            Year stack placeholder
+            {yearRangeLabel}
           </h2>
         </div>
-        <p className="panel-copy">Oldest year first, current year last.</p>
+        <p className="panel-copy">Oldest year first, current year auto-focused.</p>
       </div>
       <div className="h-[calc(100vh-17rem)] min-h-[32rem] overflow-y-auto pr-2">
         <YearGridStack

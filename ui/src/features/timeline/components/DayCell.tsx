@@ -49,15 +49,24 @@ export function DayCell({ day, viewMode, isHovered, onHover }: DayCellProps) {
       type="button"
       onMouseEnter={() => onHover(day.date)}
       onMouseLeave={() => onHover(null)}
+      onFocus={() => onHover(day.date)}
+      onBlur={() => onHover(null)}
       className={[
-        "h-3.5 w-3.5 rounded-[4px] border border-white/40 transition",
+        "h-3.5 w-3.5 rounded-[4px] border transition duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900/55 focus-visible:ring-offset-1",
+        day.hasData
+          ? "border-white/50 shadow-[0_1px_0_rgba(255,255,255,0.45)]"
+          : "border-[color:rgba(98,80,46,0.14)]",
         isHovered
           ? "scale-110 ring-2 ring-slate-900/55 ring-offset-1"
-          : "hover:scale-105",
+          : "hover:scale-105 hover:border-slate-800/20",
       ].join(" ")}
-      style={tone}
+      style={{
+        ...tone,
+        gridColumnStart: day.weekIndex + 1,
+        gridRowStart: day.weekdayIndex + 1,
+      }}
       aria-label={day.date}
-      title={`${day.date} · ${day.eventCount} events · ${day.assetCount} assets`}
+      title={`${day.date} - ${day.eventCount} events - ${day.assetCount} assets`}
     />
   );
 }

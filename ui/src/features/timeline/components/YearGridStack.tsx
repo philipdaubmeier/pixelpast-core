@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import type { HeatmapDayProjection } from "../../../projections/timeline";
 import type { ViewMode } from "../../../state/ui-state";
 import { YearGrid } from "./YearGrid";
@@ -15,6 +16,8 @@ export function YearGridStack({
   hoveredDate,
   onHover,
 }: YearGridStackProps) {
+  const yearRefs = useRef<Record<number, HTMLElement | null>>({});
+  const hasInitializedViewport = useRef(false);
   const groupedYears = days.reduce<Map<number, HeatmapDayProjection[]>>(
     (accumulator, day) => {
       const entry = accumulator.get(day.year);
@@ -30,17 +33,38 @@ export function YearGridStack({
     new Map(),
   );
 
-  const orderedYears = Array.from(groupedYears.entries()).sort(
-    ([leftYear], [rightYear]) => leftYear - rightYear,
+  const orderedYears = Array.from(groupedYears.keys()).sort(
+    (leftYear, rightYear) => leftYear - rightYear,
   );
+  const orderedYearsKey = orderedYears.join(",");
+
+  useEffect(() => {
+    if (hasInitializedViewport.current || orderedYears.length === 0) {
+      return;
+    }
+
+    const currentYear = new Date().getFullYear();
+    const initialYear = orderedYears.includes(currentYear)
+      ? currentYear
+      : orderedYears[orderedYears.length - 1];
+    const target = yearRefs.current[initialYear];
+
+    if (target !== undefined && target !== null) {
+      target.scrollIntoView({ block: "start", behavior: "auto" });
+      hasInitializedViewport.current = true;
+    }
+  }, [orderedYears, orderedYearsKey]);
 
   return (
     <div className="space-y-7">
-      {orderedYears.map(([year, yearDays]) => (
+      {orderedYears.map((year) => (
         <YearGrid
           key={year}
+          ref={(node) => {
+            yearRefs.current[year] = node;
+          }}
           year={year}
-          days={yearDays}
+          days={groupedYears.get(year) ?? []}
           viewMode={viewMode}
           hoveredDate={hoveredDate}
           onHover={onHover}
