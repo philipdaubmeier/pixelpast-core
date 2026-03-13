@@ -5,11 +5,12 @@ import { TopBar } from "./layout/TopBar";
 import { MapPanel } from "../features/context/components/MapPanel";
 import { PersonsPanel } from "../features/context/components/PersonsPanel";
 import { TagsPanel } from "../features/context/components/TagsPanel";
-import { mockDayContexts, mockPersons, mockTags } from "../mocks/timeline";
 import { buildExplorationProjection } from "../projections/exploration";
 import type {
   DayContextProjection,
   HeatmapDayProjection,
+  PersonProjection,
+  TagProjection,
   ViewModeOption,
 } from "../projections/timeline";
 import { useUiState } from "../state/UiStateContext";
@@ -17,12 +18,18 @@ import { useUiState } from "../state/UiStateContext";
 type AppShellProps = {
   heatmapDays: HeatmapDayProjection[];
   viewModes: ViewModeOption[];
+  persons: PersonProjection[];
+  tags: TagProjection[];
+  dayContextsByDate: Record<string, DayContextProjection>;
   activeDayContext: DayContextProjection | null;
 };
 
 export function AppShell({
   heatmapDays,
   viewModes,
+  persons,
+  tags,
+  dayContextsByDate,
   activeDayContext,
 }: AppShellProps) {
   const {
@@ -36,10 +43,10 @@ export function AppShell({
 
   const exploration = buildExplorationProjection({
     heatmapDays,
-    dayContextsByDate: mockDayContexts,
+    dayContextsByDate,
     activeDayContext,
-    allPersons: mockPersons,
-    allTags: mockTags,
+    allPersons: persons,
+    allTags: tags,
     state,
   });
   const activeViewMode =

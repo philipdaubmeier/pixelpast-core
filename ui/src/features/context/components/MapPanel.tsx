@@ -32,7 +32,7 @@ export function MapPanel({
         {mapPoints.length === 0 ? (
           <div className="flex h-40 items-center justify-center text-sm text-slate-500">
             {hasPersistentFilters
-              ? "No mocked coordinates matched the current persistent filters."
+              ? "No coordinates matched the current persistent filters."
               : "Hover a day to project its coordinates here."}
           </div>
         ) : (

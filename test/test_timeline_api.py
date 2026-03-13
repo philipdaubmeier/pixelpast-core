@@ -63,7 +63,9 @@ def test_exploration_endpoint_returns_current_year_dense_grid_when_empty() -> No
             {
                 "id": "party_probability",
                 "label": "Social",
-                "description": "Placeholder derived view for future social-density signals.",
+                "description": (
+                    "Placeholder derived view for future social-density signals."
+                ),
             },
         ]
         assert payload["persons"] == []
@@ -86,7 +88,8 @@ def test_exploration_endpoint_returns_current_year_dense_grid_when_empty() -> No
         shutil.rmtree(workspace_root, ignore_errors=True)
 
 
-def test_exploration_endpoint_returns_dense_days_catalog_without_taxonomy_logic() -> None:
+def test_exploration_endpoint_returns_dense_days_catalog_without_taxonomy_logic(
+) -> None:
     workspace_root = _create_workspace_dir(prefix="timeline-api-exploration-range")
     runtime = None
     try:
@@ -189,7 +192,9 @@ def test_exploration_endpoint_returns_dense_days_catalog_without_taxonomy_logic(
                 {
                     "id": "activity",
                     "label": "Activity",
-                    "description": "Default heat intensity across all timeline sources.",
+                    "description": (
+                        "Default heat intensity across all timeline sources."
+                    ),
                 },
                 {
                     "id": "travel",
@@ -199,12 +204,16 @@ def test_exploration_endpoint_returns_dense_days_catalog_without_taxonomy_logic(
                 {
                     "id": "sports",
                     "label": "Sports",
-                    "description": "Reserves the grid for workout and fitness projections.",
+                    "description": (
+                        "Reserves the grid for workout and fitness projections."
+                    ),
                 },
                 {
                     "id": "party_probability",
                     "label": "Social",
-                    "description": "Placeholder derived view for future social-density signals.",
+                    "description": (
+                        "Placeholder derived view for future social-density signals."
+                    ),
                 },
             ],
             "persons": [
@@ -367,6 +376,61 @@ def test_exploration_endpoint_rejects_partial_explicit_range() -> None:
         shutil.rmtree(workspace_root, ignore_errors=True)
 
 
+def test_demo_exploration_endpoint_returns_deterministic_multi_year_payload() -> None:
+    workspace_root = _create_workspace_dir(prefix="timeline-api-demo-exploration")
+    try:
+        settings = _create_demo_settings(workspace_root=workspace_root)
+        app_one = create_app(settings=settings)
+        app_two = create_app(settings=settings)
+
+        with TestClient(app_one) as client_one:
+            first_response = client_one.get("/exploration")
+            second_response = client_one.get("/exploration")
+
+        with TestClient(app_two) as client_two:
+            third_response = client_two.get("/exploration")
+
+        assert first_response.status_code == 200
+        assert second_response.status_code == 200
+        assert third_response.status_code == 200
+        assert first_response.json() == second_response.json() == third_response.json()
+
+        payload = first_response.json()
+        assert payload["range"] == {
+            "start": "2021-01-01",
+            "end": "2026-12-31",
+        }
+        assert len(payload["days"]) == 2191
+        assert len({day["date"][:4] for day in payload["days"]}) == 6
+        assert payload["persons"] == [
+            {"id": 1, "name": "Anna", "role": "Family"},
+            {"id": 5, "name": "Emma", "role": "Friend"},
+            {"id": 3, "name": "Luca", "role": "Work"},
+            {"id": 2, "name": "Milo", "role": "Travel buddy"},
+            {"id": 4, "name": "Nora", "role": "Coach"},
+        ]
+        assert payload["tags"] == [
+            {"path": "activity/outdoors", "label": "Outdoors"},
+            {"path": "activity/sports/running", "label": "Running"},
+            {"path": "people/family", "label": "Family"},
+            {"path": "social/house-party", "label": "House Party"},
+            {"path": "travel/europe", "label": "Europe"},
+            {"path": "travel/weekender", "label": "Weekend Escape"},
+            {"path": "work/project-atlas", "label": "Project Atlas"},
+        ]
+        assert any(
+            any(tag_path.startswith("travel/") for tag_path in day["tag_paths"])
+            for day in payload["days"]
+        )
+        assert any(
+            any(tag_path.startswith("activity/") for tag_path in day["tag_paths"])
+            for day in payload["days"]
+        )
+        assert any(len(day["person_ids"]) >= 2 for day in payload["days"])
+    finally:
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
 def test_day_context_endpoint_returns_dense_empty_range() -> None:
     workspace_root = _create_workspace_dir(prefix="timeline-api-day-context-empty")
     runtime = None
@@ -422,6 +486,47 @@ def test_day_context_endpoint_returns_dense_empty_range() -> None:
     finally:
         if runtime is not None:
             runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_demo_day_context_endpoint_returns_dense_range_with_real_coordinates() -> None:
+    workspace_root = _create_workspace_dir(prefix="timeline-api-demo-day-context")
+    try:
+        settings = _create_demo_settings(workspace_root=workspace_root)
+        app = create_app(settings=settings)
+
+        with TestClient(app) as client:
+            first_response = client.get(
+                "/days/context?start=2024-01-01&end=2024-01-31"
+            )
+            second_response = client.get(
+                "/days/context?start=2024-01-01&end=2024-01-31"
+            )
+
+        assert first_response.status_code == 200
+        assert second_response.status_code == 200
+        assert first_response.json() == second_response.json()
+
+        payload = first_response.json()
+        assert payload["range"] == {
+            "start": "2024-01-01",
+            "end": "2024-01-31",
+        }
+        assert len(payload["days"]) == 31
+        assert payload["days"][0]["date"] == "2024-01-01"
+        assert payload["days"][-1]["date"] == "2024-01-31"
+        assert any(day["persons"] for day in payload["days"])
+        assert any(day["tags"] for day in payload["days"])
+        assert any(day["map_points"] for day in payload["days"])
+
+        first_mapped_day = next(
+            day for day in payload["days"] if day["map_points"]
+        )
+        first_map_point = first_mapped_day["map_points"][0]
+        assert sorted(first_map_point) == ["id", "label", "latitude", "longitude"]
+        assert -90 <= first_map_point["latitude"] <= 90
+        assert -180 <= first_map_point["longitude"] <= 180
+    finally:
         shutil.rmtree(workspace_root, ignore_errors=True)
 
 
@@ -707,7 +812,9 @@ def test_day_context_endpoint_rejects_ranges_beyond_configured_limit() -> None:
     runtime = None
     try:
         runtime = _create_runtime(workspace_root=workspace_root)
-        limited_settings = runtime.settings.model_copy(update={"day_context_max_days": 2})
+        limited_settings = runtime.settings.model_copy(
+            update={"day_context_max_days": 2}
+        )
         app = create_app(settings=limited_settings)
 
         with TestClient(app) as client:
@@ -1050,6 +1157,14 @@ def _create_runtime(*, workspace_root: Path):
     runtime = create_runtime_context(settings=settings)
     initialize_database(runtime)
     return runtime
+
+
+def _create_demo_settings(*, workspace_root: Path) -> Settings:
+    database_path = workspace_root / "missing" / "pixelpast.db"
+    return Settings(
+        database_url=f"sqlite:///{database_path.as_posix()}",
+        timeline_projection_provider="demo",
+    )
 
 
 def _create_workspace_dir(*, prefix: str) -> Path:

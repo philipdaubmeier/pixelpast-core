@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+from collections.abc import Generator
 from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from sqlalchemy.orm import Session, sessionmaker
 
 from pixelpast.api.dependencies import get_app_settings, get_db_session
+from pixelpast.api.providers import (
+    DatabaseTimelineProjectionProvider,
+    DemoTimelineProjectionProvider,
+    TimelineProjectionProvider,
+)
 from pixelpast.api.schemas import (
     DayContextResponse,
     DayDetailResponse,
@@ -33,15 +39,35 @@ def get_timeline_query_service(
     return TimelineQueryService(
         daily_aggregate_repository=DailyAggregateReadRepository(session),
         day_timeline_repository=DayTimelineRepository(session),
-        exploration_repository=ExplorationReadRepository(session),
     )
+
+
+def get_timeline_projection_provider(
+    request: Request,
+    settings: Settings = Depends(get_app_settings),
+) -> Generator[TimelineProjectionProvider, None, None]:
+    """Build the projection provider selected for exploration endpoints."""
+
+    if settings.timeline_projection_provider == "demo":
+        yield DemoTimelineProjectionProvider()
+        return
+
+    session_factory: sessionmaker[Session] = request.app.state.session_factory
+    session = session_factory()
+    try:
+        yield DatabaseTimelineProjectionProvider(
+            daily_aggregate_repository=DailyAggregateReadRepository(session),
+            exploration_repository=ExplorationReadRepository(session),
+        )
+    finally:
+        session.close()
 
 
 @router.get("/exploration", response_model=ExplorationResponse)
 def get_exploration(
     start: date | None = Query(default=None),
     end: date | None = Query(default=None),
-    service: TimelineQueryService = Depends(get_timeline_query_service),
+    provider: TimelineProjectionProvider = Depends(get_timeline_projection_provider),
 ) -> ExplorationResponse:
     """Return a dense exploration bootstrap projection for the UI shell."""
 
@@ -56,7 +82,7 @@ def get_exploration(
             detail="start must be less than or equal to end",
         )
 
-    return service.get_exploration(start=start, end=end, today=date.today())
+    return provider.get_exploration(start=start, end=end, today=date.today())
 
 
 @router.get("/heatmap", response_model=HeatmapResponse)
@@ -81,7 +107,7 @@ def get_day_context(
     start: date = Query(...),
     end: date = Query(...),
     settings: Settings = Depends(get_app_settings),
-    service: TimelineQueryService = Depends(get_timeline_query_service),
+    provider: TimelineProjectionProvider = Depends(get_timeline_projection_provider),
 ) -> DayContextResponse:
     """Return dense hover-context data for an inclusive UTC date range."""
 
@@ -101,7 +127,7 @@ def get_day_context(
             ),
         )
 
-    return service.get_day_context(start=start, end=end)
+    return provider.get_day_context(start=start, end=end)
 
 
 @router.get("/days/{day}", response_model=DayDetailResponse)

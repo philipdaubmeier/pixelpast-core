@@ -17,7 +17,7 @@ export type HeatmapDayProjection = {
 export type PersonProjection = {
   id: string;
   name: string;
-  role: string;
+  role: string | null;
 };
 
 export type TagProjection = {

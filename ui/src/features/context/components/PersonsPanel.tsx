@@ -62,7 +62,7 @@ export function PersonsPanel({
       ) : (
         <div className="flex h-full min-h-32 items-center justify-center rounded-[22px] border border-dashed border-[color:var(--pp-border)] bg-white/35 px-4 text-center text-sm text-slate-500">
           {hoveredDate
-            ? "No mocked person context is attached to this day."
+            ? "No person context is attached to this day."
             : "Hover a day to inspect its people. Selected person filters will stay active independently."}
         </div>
       )}

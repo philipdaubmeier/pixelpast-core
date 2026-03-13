@@ -2,6 +2,7 @@
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -26,6 +27,12 @@ class Settings(BaseSettings):
     database_url: str = Field(
         default=f"sqlite:///{DEFAULT_SQLITE_PATH.as_posix()}",
         description="SQLAlchemy database URL.",
+    )
+    timeline_projection_provider: Literal["database", "demo"] = Field(
+        default="database",
+        description=(
+            "Projection provider for exploration-oriented API endpoints."
+        ),
     )
     photos_root: Path | None = Field(
         default=None,

@@ -61,7 +61,7 @@ export function TagsPanel({
       ) : (
         <div className="flex h-full min-h-32 items-center justify-center rounded-[22px] border border-dashed border-[color:var(--pp-border)] bg-white/35 px-4 text-center text-sm text-slate-500">
           {hoveredDate
-            ? "No mocked tag context is attached to this day."
+            ? "No tag context is attached to this day."
             : "Hover a day to inspect its tags. Persistent tag filters remain independent from hover."}
         </div>
       )}
