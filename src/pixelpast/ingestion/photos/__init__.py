@@ -6,6 +6,7 @@ from pixelpast.ingestion.photos.connector import (
     PhotoDiscoveryError,
     PhotoDiscoveryResult,
     PhotoExifMetadata,
+    PhotoPersonCandidate,
 )
 from pixelpast.ingestion.photos.service import (
     PhotoIngestionResult,
@@ -20,4 +21,5 @@ __all__ = [
     "PhotoExifMetadata",
     "PhotoIngestionResult",
     "PhotoIngestionService",
+    "PhotoPersonCandidate",
 ]

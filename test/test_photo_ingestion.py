@@ -19,122 +19,251 @@ from pixelpast.ingestion.photos import (
     PhotoDiscoveryResult,
     PhotoExifMetadata,
     PhotoIngestionService,
+    PhotoPersonCandidate,
 )
-from pixelpast.persistence.models import Asset, ImportRun, Source
+from pixelpast.persistence.models import (
+    Asset,
+    AssetPerson,
+    AssetTag,
+    ImportRun,
+    Person,
+    Source,
+    Tag,
+)
 from pixelpast.persistence.repositories.canonical import AssetRepository
 from pixelpast.shared.runtime import create_runtime_context, initialize_database
 from pixelpast.shared.settings import Settings
 
 
-def test_photo_ingestion_prefers_exif_timestamp_and_coordinates(monkeypatch) -> None:
-    workspace_root = _create_workspace_dir(prefix="photo-exif")
+def test_photo_fixture_ingestion_persists_rich_metadata_and_relationships() -> None:
+    workspace_root = _create_workspace_dir(prefix="photo-fixtures")
     runtime = None
     try:
-        photos_root = workspace_root / "photos"
-        photo_path = photos_root / "trip" / "photo.jpg"
-        photo_path.parent.mkdir(parents=True)
-        photo_path.write_bytes(b"not-a-real-image")
-        os.utime(photo_path, (1_700_000_000, 1_700_000_000))
-
-        expected_timestamp = datetime(2022, 5, 4, 3, 2, 1, tzinfo=UTC)
-        monkeypatch.setattr(
-            "pixelpast.ingestion.photos.connector.extract_photo_exif_metadata",
-            lambda path: PhotoExifMetadata(
-                timestamp=expected_timestamp,
-                latitude=48.137154,
-                longitude=11.576124,
-            ),
-        )
-
+        photos_root = _copy_photo_fixtures(workspace_root=workspace_root)
         runtime = _create_runtime(
             workspace_root=workspace_root,
             photos_root=photos_root,
         )
+
         result = PhotoIngestionService().ingest(runtime=runtime)
-        assert result.processed_asset_count == 1
+
+        assert result.processed_asset_count == 3
         assert result.error_count == 0
         assert result.status == "completed"
 
         with runtime.session_factory() as session:
-            asset = session.execute(select(Asset)).scalar_one()
+            assets = list(
+                session.execute(select(Asset).order_by(Asset.external_id)).scalars()
+            )
+            people = list(
+                session.execute(select(Person).order_by(Person.name)).scalars()
+            )
+            tags = list(session.execute(select(Tag).order_by(Tag.path)).scalars())
+            asset_tags = list(session.execute(select(AssetTag)).scalars())
+            asset_people = list(session.execute(select(AssetPerson)).scalars())
 
-        assert asset.timestamp == expected_timestamp
-        assert asset.latitude == 48.137154
-        assert asset.longitude == 11.576124
-        assert asset.external_id == photo_path.resolve().as_posix()
-        assert asset.metadata_json == {}
+        assets_by_name = {Path(asset.external_id).name: asset for asset in assets}
+        people_by_name = {person.name: person for person in people}
+        tags_by_path = {tag.path: tag for tag in tags}
+        asset_tag_paths_by_name = _collect_asset_tag_paths(
+            assets=assets,
+            tags=tags,
+            asset_tags=asset_tags,
+        )
+        asset_person_names_by_name = _collect_asset_person_names(
+            assets=assets,
+            people=people,
+            asset_people=asset_people,
+        )
+
+        expected_timestamp = datetime(2020, 1, 1, 2, 3, 40, tzinfo=UTC)
+        assert set(assets_by_name) == {
+            "monalisa-1.jpg",
+            "monalisa-2.jpg",
+            "monalisa-3.jpg",
+        }
+        assert assets_by_name["monalisa-1.jpg"].summary == "Title 1"
+        assert assets_by_name["monalisa-2.jpg"].summary == "Title 2"
+        assert assets_by_name["monalisa-3.jpg"].summary == "Title 3 äöüßÄÖÜ"
+        assert all(asset.timestamp == expected_timestamp for asset in assets)
+        assert assets_by_name["monalisa-1.jpg"].latitude == pytest.approx(
+            48.8618924166667
+        )
+        assert assets_by_name["monalisa-1.jpg"].longitude == pytest.approx(
+            2.33588663333333
+        )
+        assert assets_by_name["monalisa-2.jpg"].latitude == pytest.approx(
+            48.8603977388889
+        )
+        assert assets_by_name["monalisa-2.jpg"].longitude == pytest.approx(
+            2.33458610833333
+        )
+        assert assets_by_name["monalisa-3.jpg"].latitude == pytest.approx(
+            48.8603837361111
+        )
+        assert assets_by_name["monalisa-3.jpg"].longitude == pytest.approx(
+            2.33856171111111
+        )
+
+        leonardo = people_by_name["Leonardo da Vinci"]
+        assert leonardo.path is None
+        assert {asset.creator_person_id for asset in assets} == {leonardo.id}
+
+        assert people_by_name["John Doe"].path == "who|Persons|John Doe"
+        assert people_by_name["Mona Lisa"].path == "who|Persons|Mona Lisa"
+        assert len(people) == 3
+
+        expected_tag_paths = {
+            "events",
+            "events|vacation",
+            "events|vacation|Italy",
+            "events|vacation|Italy|San Marino",
+            "events|vacation|München",
+            "events|wedding",
+            "who",
+            "who|Persons",
+            "who|Persons|John Doe",
+            "who|Persons|Mona Lisa",
+        }
+        assert set(tags_by_path) == expected_tag_paths
+        assert tags_by_path["events|vacation|München"].label == "München"
+        assert tags_by_path["events|vacation|Italy|San Marino"].label == "San Marino"
+        assert tags_by_path["who|Persons|Mona Lisa"].label == "Mona Lisa"
+
+        assert asset_tag_paths_by_name["monalisa-1.jpg"] == {
+            "events",
+            "events|vacation",
+            "events|vacation|München",
+        }
+        assert asset_tag_paths_by_name["monalisa-2.jpg"] == {
+            "events",
+            "events|vacation",
+            "events|vacation|Italy",
+            "events|vacation|Italy|San Marino",
+        }
+        assert asset_tag_paths_by_name["monalisa-3.jpg"] == {
+            "events",
+            "events|vacation",
+            "events|vacation|München",
+            "events|wedding",
+        }
+
+        assert asset_person_names_by_name["monalisa-1.jpg"] == {"Mona Lisa"}
+        assert asset_person_names_by_name["monalisa-2.jpg"] == {"John Doe", "Mona Lisa"}
+        assert asset_person_names_by_name["monalisa-3.jpg"] == {"John Doe", "Mona Lisa"}
+        assert len(asset_people) == 5
+
+        metadata_json = assets_by_name["monalisa-3.jpg"].metadata_json
+        assert metadata_json is not None
+        assert metadata_json["resolution"]["title"] == "XMP:Title"
+        assert metadata_json["resolution"]["creator"] == "XMP:Creator"
+        assert metadata_json["resolution"]["timestamp"] == "EXIF:DateTimeOriginal"
+        assert metadata_json["linked_tag_paths"] == [
+            "events|vacation|München",
+            "events",
+            "events|vacation",
+            "events|wedding",
+        ]
+        assert metadata_json["persons"] == [
+            {"name": "John Doe", "path": "who|Persons|John Doe"},
+            {"name": "Mona Lisa", "path": "who|Persons|Mona Lisa"},
+        ]
     finally:
         if runtime is not None:
             runtime.engine.dispose()
         shutil.rmtree(workspace_root, ignore_errors=True)
 
 
-def test_photo_ingestion_is_idempotent_and_records_import_runs(
-) -> None:
+def test_photo_ingestion_with_fixtures_is_idempotent() -> None:
     workspace_root = _create_workspace_dir(prefix="photo-idempotent")
     runtime = None
     try:
-        photos_root = workspace_root / "photos"
-        photos_root.mkdir()
-
-        timestamped_photo = photos_root / "album" / "IMG_20240102_030405.jpg"
-        timestamped_photo.parent.mkdir()
-        timestamped_photo.write_bytes(b"not-a-real-image")
-
-        fallback_photo = photos_root / "album" / "scan.png"
-        fallback_photo.write_bytes(b"not-a-real-image")
-        os.utime(fallback_photo, (1_710_000_000, 1_710_000_000))
-
+        photos_root = _copy_photo_fixtures(workspace_root=workspace_root)
         runtime = _create_runtime(
             workspace_root=workspace_root,
             photos_root=photos_root,
         )
+
         first_result = PhotoIngestionService().ingest(runtime=runtime)
         second_result = PhotoIngestionService().ingest(runtime=runtime)
 
-        assert first_result.processed_asset_count == 2
-        assert second_result.processed_asset_count == 2
+        assert first_result.processed_asset_count == 3
+        assert second_result.processed_asset_count == 3
         assert first_result.status == "completed"
         assert second_result.status == "completed"
 
         with runtime.session_factory() as session:
-            assets = session.execute(
-                select(Asset).order_by(Asset.external_id)
-            ).scalars()
-            assets = list(assets)
-            import_runs = session.execute(
-                select(ImportRun).order_by(ImportRun.id)
-            ).scalars()
-            import_runs = list(import_runs)
-            sources = session.execute(select(Source)).scalars()
-            sources = list(sources)
+            assets = list(session.execute(select(Asset)).scalars())
+            import_runs = list(
+                session.execute(select(ImportRun).order_by(ImportRun.id)).scalars()
+            )
+            people = list(session.execute(select(Person)).scalars())
+            tags = list(session.execute(select(Tag)).scalars())
+            asset_tags = list(session.execute(select(AssetTag)).scalars())
+            asset_people = list(session.execute(select(AssetPerson)).scalars())
+            sources = list(session.execute(select(Source)).scalars())
 
-        assert len(assets) == 2
+        assert len(assets) == 3
         assert len(import_runs) == 2
-        assert len(sources) == 1
         assert [run.status for run in import_runs] == ["completed", "completed"]
-        assert all(run.mode == "full" for run in import_runs)
+        assert len(people) == 3
+        assert len(tags) == 10
+        assert len(asset_tags) == 11
+        assert len(asset_people) == 5
+        assert len(sources) == 1
         assert sources[0].config == {"root_path": photos_root.resolve().as_posix()}
-
-        assets_by_name = {Path(asset.external_id).name: asset for asset in assets}
-        assert assets_by_name["IMG_20240102_030405.jpg"].timestamp == datetime(
-            2024,
-            1,
-            2,
-            3,
-            4,
-            5,
-            tzinfo=UTC,
-        )
-        assert assets_by_name["IMG_20240102_030405.jpg"].metadata_json == {}
-        assert assets_by_name["scan.png"].timestamp == datetime.fromtimestamp(
-            1_710_000_000,
-            tz=UTC,
-        )
-        assert assets_by_name["scan.png"].metadata_json == {}
     finally:
         if runtime is not None:
             runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_photo_connector_applies_deterministic_metadata_precedence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = _create_workspace_dir(prefix="photo-precedence")
+    try:
+        photos_root = workspace_root / "photos"
+        photos_root.mkdir()
+        photo_path = photos_root / "IMG_20240102_030405.jpg"
+        photo_path.write_bytes(b"not-a-real-image")
+
+        monkeypatch.setattr(
+            "pixelpast.ingestion.photos.connector.extract_photo_tool_metadata",
+            lambda path: {
+                "XMP-dc:Title": "XMP Title",
+                "IPTC:ObjectName": "IPTC Title",
+                "XMP-dc:Creator": "XMP Creator",
+                "IPTC:By-line": "IPTC Creator",
+                "IFD0:Artist": "EXIF Artist",
+                "ExifIFD:DateTimeOriginal": "2020:01:01 02:03:40",
+            },
+        )
+        monkeypatch.setattr(
+            "pixelpast.ingestion.photos.connector.extract_photo_exif_metadata",
+            lambda path: PhotoExifMetadata(
+                timestamp=datetime(2024, 1, 2, 3, 4, 5, tzinfo=UTC),
+                latitude=None,
+                longitude=None,
+            ),
+        )
+
+        candidate = PhotoConnector().build_asset_candidate(
+            root=photos_root,
+            path=photo_path,
+        )
+
+        assert candidate.summary == "XMP Title"
+        assert candidate.creator_name == "XMP Creator"
+        assert candidate.timestamp == datetime(2020, 1, 1, 2, 3, 40, tzinfo=UTC)
+        assert candidate.metadata_json is not None
+        assert candidate.metadata_json["resolution"]["title"] == "XMP-dc:Title"
+        assert candidate.metadata_json["resolution"]["creator"] == "XMP-dc:Creator"
+        assert (
+            candidate.metadata_json["resolution"]["timestamp"]
+            == "ExifIFD:DateTimeOriginal"
+        )
+    finally:
         shutil.rmtree(workspace_root, ignore_errors=True)
 
 
@@ -168,8 +297,60 @@ def test_photo_ingestion_handles_empty_directories() -> None:
         shutil.rmtree(workspace_root, ignore_errors=True)
 
 
-def test_photo_connector_partial_failure_is_reported_and_persisted(
+def test_photo_ingestion_fails_fast_when_exiftool_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    workspace_root = _create_workspace_dir(prefix="photo-missing-exiftool")
+    runtime = None
+    try:
+        photos_root = workspace_root / "photos"
+        photos_root.mkdir()
+        (photos_root / "image.jpg").write_bytes(b"photo")
+
+        runtime = _create_runtime(
+            workspace_root=workspace_root,
+            photos_root=photos_root,
+        )
+
+        class _MissingExifToolHelper:
+            def __init__(self, **kwargs) -> None:
+                del kwargs
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb) -> None:
+                del exc_type, exc, tb
+
+            def get_metadata(self, files, params=None):
+                del files, params
+                raise FileNotFoundError("exiftool")
+
+        monkeypatch.setattr(
+            "pixelpast.ingestion.photos.connector.ExifToolHelper",
+            _MissingExifToolHelper,
+        )
+
+        with pytest.raises(
+            RuntimeError,
+            match="Photo ingestion requires exiftool to be installed and callable.",
+        ):
+            PhotoIngestionService().ingest(runtime=runtime)
+
+        with runtime.session_factory() as session:
+            assets = list(session.execute(select(Asset)).scalars())
+            import_runs = list(session.execute(select(ImportRun)).scalars())
+
+        assert assets == []
+        assert len(import_runs) == 1
+        assert import_runs[0].status == "failed"
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_photo_connector_partial_failure_is_reported_and_persisted() -> None:
     workspace_root = _create_workspace_dir(prefix="photo-partial")
     runtime = None
     try:
@@ -201,7 +382,7 @@ def test_photo_connector_partial_failure_is_reported_and_persisted(
 
 
 def test_photo_ingestion_marks_run_failed_and_rolls_back_assets(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     workspace_root = _create_workspace_dir(prefix="photo-failed-run")
     runtime = None
@@ -215,7 +396,6 @@ def test_photo_ingestion_marks_run_failed_and_rolls_back_assets(
         )
 
         call_count = 0
-
         original_asset_upsert = AssetRepository.upsert
 
         def fail_on_second_upsert(self, **kwargs):
@@ -265,6 +445,7 @@ def test_photo_connector_builds_filename_and_mtime_fallbacks() -> None:
         filename_candidate = connector.build_asset_candidate(
             root=photos_root,
             path=filename_photo,
+            metadata={},
         )
 
         mtime_photo = photos_root / "plain.heic"
@@ -273,15 +454,24 @@ def test_photo_connector_builds_filename_and_mtime_fallbacks() -> None:
         mtime_candidate = connector.build_asset_candidate(
             root=photos_root,
             path=mtime_photo,
+            metadata={},
         )
 
         assert filename_candidate.timestamp == datetime(2023, 3, 4, 5, 6, 7, tzinfo=UTC)
-        assert filename_candidate.metadata_json == {}
+        assert filename_candidate.summary is None
+        assert filename_candidate.creator_name is None
+        assert filename_candidate.tag_paths == ()
+        assert filename_candidate.asset_tag_paths == ()
+        assert filename_candidate.persons == ()
+        assert filename_candidate.metadata_json is not None
+        assert filename_candidate.metadata_json["resolution"]["timestamp"] == "filename"
+
         assert mtime_candidate.timestamp == datetime.fromtimestamp(
             1_720_000_000,
             tz=UTC,
         )
-        assert mtime_candidate.metadata_json == {}
+        assert mtime_candidate.metadata_json is not None
+        assert mtime_candidate.metadata_json["resolution"]["timestamp"] == "mtime"
     finally:
         shutil.rmtree(workspace_root, ignore_errors=True)
 
@@ -393,8 +583,13 @@ class _PartialFailureConnector(PhotoConnector):
             external_id=(root / "ok.jpg").resolve().as_posix(),
             media_type="photo",
             timestamp=datetime(2024, 1, 1, 0, 0, tzinfo=UTC),
+            summary=None,
             latitude=None,
             longitude=None,
+            creator_name=None,
+            tag_paths=(),
+            asset_tag_paths=(),
+            persons=(),
             metadata_json={},
         )
         return PhotoDiscoveryResult(
@@ -418,16 +613,26 @@ class _FatalFailureConnector(PhotoConnector):
                     external_id=(root / "one.jpg").resolve().as_posix(),
                     media_type="photo",
                     timestamp=datetime(2024, 1, 1, 0, 0, tzinfo=UTC),
+                    summary=None,
                     latitude=None,
                     longitude=None,
+                    creator_name=None,
+                    tag_paths=(),
+                    asset_tag_paths=(),
+                    persons=(PhotoPersonCandidate(name="Person A", path=None),),
                     metadata_json={},
                 ),
                 PhotoAssetCandidate(
                     external_id=(root / "two.jpg").resolve().as_posix(),
                     media_type="photo",
                     timestamp=datetime(2024, 1, 1, 1, 0, tzinfo=UTC),
+                    summary=None,
                     latitude=None,
                     longitude=None,
+                    creator_name=None,
+                    tag_paths=(),
+                    asset_tag_paths=(),
+                    persons=(),
                     metadata_json={},
                 ),
             ],
@@ -450,3 +655,44 @@ def _create_workspace_dir(*, prefix: str) -> Path:
     workspace_root = Path("var") / f"{prefix}-{uuid4().hex}"
     workspace_root.mkdir(parents=True, exist_ok=False)
     return workspace_root
+
+
+def _copy_photo_fixtures(*, workspace_root: Path) -> Path:
+    photos_root = workspace_root / "photos"
+    photos_root.mkdir()
+    for fixture_path in sorted((Path("test") / "assets").glob("monalisa-*.jpg")):
+        shutil.copy2(fixture_path, photos_root / fixture_path.name)
+    return photos_root
+
+
+def _collect_asset_tag_paths(
+    *,
+    assets: list[Asset],
+    tags: list[Tag],
+    asset_tags: list[AssetTag],
+) -> dict[str, set[str]]:
+    tag_by_id = {tag.id: tag for tag in tags}
+    asset_name_by_id = {asset.id: Path(asset.external_id).name for asset in assets}
+    collected: dict[str, set[str]] = {name: set() for name in asset_name_by_id.values()}
+    for asset_tag in asset_tags:
+        asset_name = asset_name_by_id[asset_tag.asset_id]
+        tag = tag_by_id[asset_tag.tag_id]
+        if tag.path is not None:
+            collected[asset_name].add(tag.path)
+    return collected
+
+
+def _collect_asset_person_names(
+    *,
+    assets: list[Asset],
+    people: list[Person],
+    asset_people: list[AssetPerson],
+) -> dict[str, set[str]]:
+    person_by_id = {person.id: person for person in people}
+    asset_name_by_id = {asset.id: Path(asset.external_id).name for asset in assets}
+    collected: dict[str, set[str]] = {name: set() for name in asset_name_by_id.values()}
+    for asset_person in asset_people:
+        asset_name = asset_name_by_id[asset_person.asset_id]
+        person = person_by_id[asset_person.person_id]
+        collected[asset_name].add(person.name)
+    return collected

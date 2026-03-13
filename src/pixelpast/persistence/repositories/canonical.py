@@ -2,13 +2,22 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from pixelpast.persistence.models import Asset, ImportRun, Source
+from pixelpast.persistence.models import (
+    Asset,
+    AssetPerson,
+    AssetTag,
+    ImportRun,
+    Person,
+    Source,
+    Tag,
+)
 
 
 def utc_now() -> datetime:
@@ -139,8 +148,10 @@ class AssetRepository:
         external_id: str,
         media_type: str,
         timestamp: datetime,
+        summary: str | None,
         latitude: float | None,
         longitude: float | None,
+        creator_person_id: int | None,
         metadata_json: dict[str, Any] | None,
     ) -> Asset:
         """Insert or update an asset by external identifier."""
@@ -151,8 +162,10 @@ class AssetRepository:
                 external_id=external_id,
                 media_type=media_type,
                 timestamp=timestamp,
+                summary=summary,
                 latitude=latitude,
                 longitude=longitude,
+                creator_person_id=creator_person_id,
                 metadata_json=(
                     dict(metadata_json) if metadata_json is not None else None
                 ),
@@ -163,10 +176,137 @@ class AssetRepository:
 
         asset.media_type = media_type
         asset.timestamp = timestamp
+        asset.summary = summary
         asset.latitude = latitude
         asset.longitude = longitude
+        asset.creator_person_id = creator_person_id
         asset.metadata_json = (
             dict(metadata_json) if metadata_json is not None else None
         )
         self._session.flush()
         return asset
+
+    def replace_tag_links(self, *, asset_id: int, tag_ids: Iterable[int]) -> None:
+        """Replace all asset-tag links with the provided deterministic set."""
+
+        self._session.execute(delete(AssetTag).where(AssetTag.asset_id == asset_id))
+        unique_tag_ids = sorted(set(tag_ids))
+        self._session.add_all(
+            [AssetTag(asset_id=asset_id, tag_id=tag_id) for tag_id in unique_tag_ids]
+        )
+        self._session.flush()
+
+    def replace_person_links(
+        self,
+        *,
+        asset_id: int,
+        person_ids: Iterable[int],
+    ) -> None:
+        """Replace all asset-person links with the provided deterministic set."""
+
+        self._session.execute(
+            delete(AssetPerson).where(AssetPerson.asset_id == asset_id)
+        )
+        unique_person_ids = sorted(set(person_ids))
+        self._session.add_all(
+            [
+                AssetPerson(asset_id=asset_id, person_id=person_id)
+                for person_id in unique_person_ids
+            ]
+        )
+        self._session.flush()
+
+
+class TagRepository:
+    """Repository for canonical tag creation and lookup."""
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def get_by_path(self, *, path: str) -> Tag | None:
+        """Return a tag by its normalized canonical path."""
+
+        statement = select(Tag).where(Tag.path == path)
+        return self._session.execute(statement).scalar_one_or_none()
+
+    def get_or_create(
+        self,
+        *,
+        path: str,
+        metadata_json: dict[str, Any] | None = None,
+    ) -> Tag:
+        """Return an existing tag or create one from a canonical path."""
+
+        tag = self.get_by_path(path=path)
+        label = path.rsplit("|", 1)[-1]
+        if tag is None:
+            tag = Tag(
+                label=label,
+                path=path,
+                metadata_json=(
+                    dict(metadata_json) if metadata_json is not None else None
+                ),
+            )
+            self._session.add(tag)
+            self._session.flush()
+            return tag
+
+        tag.label = label
+        if metadata_json is not None:
+            tag.metadata_json = dict(metadata_json)
+        self._session.flush()
+        return tag
+
+
+class PersonRepository:
+    """Repository for canonical person creation and lookup."""
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def get_by_path(self, *, path: str) -> Person | None:
+        """Return a person by canonical path when available."""
+
+        statement = select(Person).where(Person.path == path)
+        return self._session.execute(statement).scalar_one_or_none()
+
+    def get_by_name(self, *, name: str) -> Person | None:
+        """Return the first person matching a canonical display name."""
+
+        statement = select(Person).where(Person.name == name).order_by(Person.id)
+        return self._session.execute(statement).scalars().first()
+
+    def get_or_create(
+        self,
+        *,
+        name: str,
+        path: str | None = None,
+        metadata_json: dict[str, Any] | None = None,
+    ) -> Person:
+        """Return a canonical person, preferring path-based identity when present."""
+
+        person = None
+        if path is not None:
+            person = self.get_by_path(path=path)
+        if person is None:
+            person = self.get_by_name(name=name)
+
+        if person is None:
+            person = Person(
+                name=name,
+                path=path,
+                metadata_json=(
+                    dict(metadata_json) if metadata_json is not None else None
+                ),
+            )
+            self._session.add(person)
+            self._session.flush()
+            return person
+
+        person.name = name
+        if person.path is None and path is not None:
+            person.path = path
+        if metadata_json is not None:
+            person.metadata_json = dict(metadata_json)
+        self._session.flush()
+        return person

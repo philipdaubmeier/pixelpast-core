@@ -9,7 +9,9 @@ from pixelpast.ingestion.photos.connector import PhotoConnector
 from pixelpast.persistence.repositories import (
     AssetRepository,
     ImportRunRepository,
+    PersonRepository,
     SourceRepository,
+    TagRepository,
 )
 from pixelpast.shared.runtime import RuntimeContext
 
@@ -46,6 +48,8 @@ class PhotoIngestionService:
         source_repository = SourceRepository(session)
         import_run_repository = ImportRunRepository(session)
         asset_repository = AssetRepository(session)
+        tag_repository = TagRepository(session)
+        person_repository = PersonRepository(session)
 
         try:
             source = source_repository.get_or_create(
@@ -69,13 +73,54 @@ class PhotoIngestionService:
                     )
 
                 for asset in discovery.assets:
+                    creator_person_id = None
+                    if asset.creator_name is not None:
+                        creator_person = person_repository.get_or_create(
+                            name=asset.creator_name
+                        )
+                        creator_person_id = creator_person.id
+
                     asset_repository.upsert(
                         external_id=asset.external_id,
                         media_type=asset.media_type,
                         timestamp=asset.timestamp,
+                        summary=asset.summary,
                         latitude=asset.latitude,
                         longitude=asset.longitude,
+                        creator_person_id=creator_person_id,
                         metadata_json=asset.metadata_json,
+                    )
+                    persisted_asset = asset_repository.get_by_external_id(
+                        external_id=asset.external_id
+                    )
+                    if persisted_asset is None:
+                        raise RuntimeError(
+                            f"Asset {asset.external_id} is missing after upsert."
+                        )
+
+                    persisted_tags = {
+                        path: tag_repository.get_or_create(path=path)
+                        for path in asset.tag_paths
+                    }
+                    asset_repository.replace_tag_links(
+                        asset_id=persisted_asset.id,
+                        tag_ids=[
+                            persisted_tags[path].id
+                            for path in asset.asset_tag_paths
+                            if path in persisted_tags
+                        ],
+                    )
+
+                    persisted_people = [
+                        person_repository.get_or_create(
+                            name=person.name,
+                            path=person.path,
+                        )
+                        for person in asset.persons
+                    ]
+                    asset_repository.replace_person_links(
+                        asset_id=persisted_asset.id,
+                        person_ids=[person.id for person in persisted_people],
                     )
 
                 status = "partial_failure" if discovery.errors else "completed"

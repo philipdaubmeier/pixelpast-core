@@ -111,8 +111,13 @@ class Asset(Base):
     external_id: Mapped[str] = mapped_column(String(512), nullable=False)
     media_type: Mapped[str] = mapped_column(String(100), nullable=False)
     timestamp: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
+    summary: Mapped[str | None] = mapped_column(Text(), nullable=True)
     latitude: Mapped[float | None] = mapped_column(Float(), nullable=True)
     longitude: Mapped[float | None] = mapped_column(Float(), nullable=True)
+    creator_person_id: Mapped[int | None] = mapped_column(
+        ForeignKey("person.id"),
+        nullable=True,
+    )
     metadata_json: Mapped[dict[str, Any] | None] = mapped_column(
         "metadata",
         JSON,
@@ -157,6 +162,9 @@ class Tag(Base):
     """Semantic annotation for events and assets."""
 
     __tablename__ = "tag"
+    __table_args__ = (
+        UniqueConstraint("path", name="uq_tag_path"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     label: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -202,9 +210,13 @@ class Person(Base):
     """Represents a known or inferred person."""
 
     __tablename__ = "person"
+    __table_args__ = (
+        UniqueConstraint("path", name="uq_person_path"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
+    path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     aliases: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     metadata_json: Mapped[dict[str, Any] | None] = mapped_column(
         "metadata",
