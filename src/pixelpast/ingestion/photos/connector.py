@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import sys
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -223,38 +224,43 @@ class PhotoConnector:
         metadata_by_path: dict[str, dict[str, Any]] = {}
 
         try:
-            with ExifToolHelper(
+            helper = ExifToolHelper(
+                auto_start=False,
                 check_tag_names=False,
                 encoding="utf-8",
-            ) as helper:
-                first_path = resolved_paths[0]
-                first_metadata = helper.get_metadata(
-                    [first_path.as_posix()],
+            )
+            helper.run()
+            first_path = resolved_paths[0]
+            first_metadata = helper.get_metadata(
+                [first_path.as_posix()],
+                params=list(_EXIFTOOL_METADATA_PARAMS),
+            )
+            metadata_by_path.update(
+                _index_metadata_results(
+                    metadata=first_metadata,
+                    expected_paths=[first_path],
+                )
+            )
+
+            remaining_paths = resolved_paths[1:]
+            for batch_paths in _chunked(remaining_paths, _EXIFTOOL_BATCH_SIZE):
+                batch_metadata = helper.get_metadata(
+                    [path.as_posix() for path in batch_paths],
                     params=list(_EXIFTOOL_METADATA_PARAMS),
                 )
                 metadata_by_path.update(
                     _index_metadata_results(
-                        metadata=first_metadata,
-                        expected_paths=[first_path],
+                        metadata=batch_metadata,
+                        expected_paths=batch_paths,
                     )
                 )
-
-                remaining_paths = resolved_paths[1:]
-                for batch_paths in _chunked(remaining_paths, _EXIFTOOL_BATCH_SIZE):
-                    batch_metadata = helper.get_metadata(
-                        [path.as_posix() for path in batch_paths],
-                        params=list(_EXIFTOOL_METADATA_PARAMS),
-                    )
-                    metadata_by_path.update(
-                        _index_metadata_results(
-                            metadata=batch_metadata,
-                            expected_paths=batch_paths,
-                        )
-                    )
         except (ExifToolException, FileNotFoundError, OSError) as error:
             raise RuntimeError(
                 "Photo ingestion requires exiftool to be installed and callable."
             ) from error
+        finally:
+            if "helper" in locals():
+                _close_exiftool_helper(helper)
 
         return metadata_by_path
 
@@ -620,6 +626,27 @@ def _chunked(paths: Iterable[Path], chunk_size: int) -> Iterator[list[Path]]:
             batch = []
     if batch:
         yield batch
+
+
+def _close_exiftool_helper(helper: ExifToolHelper) -> None:
+    """Stop the helper without risking Windows hangs during graceful shutdown."""
+
+    if not getattr(helper, "running", False):
+        return
+
+    process = getattr(helper, "_process", None)
+    if process is None:
+        if hasattr(helper, "_flag_running_false"):
+            helper._flag_running_false()
+        return
+
+    if sys.platform.startswith("win"):
+        process.kill()
+        process.wait(timeout=5)
+        helper._flag_running_false()
+        return
+
+    helper.terminate(timeout=5)
 
 
 def _parse_filename_timestamp(stem: str) -> datetime | None:

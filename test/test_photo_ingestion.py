@@ -315,12 +315,16 @@ def test_photo_ingestion_fails_fast_when_exiftool_is_missing(
         class _MissingExifToolHelper:
             def __init__(self, **kwargs) -> None:
                 del kwargs
+                self.running = False
 
             def __enter__(self):
                 return self
 
             def __exit__(self, exc_type, exc, tb) -> None:
                 del exc_type, exc, tb
+
+            def run(self) -> None:
+                self.running = True
 
             def get_metadata(self, files, params=None):
                 del files, params

@@ -397,3 +397,7 @@ def _parse_cli_date_option(*, option_name: str, raw_value: str | None) -> date |
         raise ValueError(
             f"Invalid --{option_name} value '{raw_value}'. Expected YYYY-MM-DD."
         ) from error
+
+
+if __name__ == "__main__":
+    main()

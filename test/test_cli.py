@@ -2,7 +2,9 @@
 
 import importlib
 import logging
+import os
 import shutil
+import subprocess
 import sys
 import tomllib
 from datetime import UTC, datetime
@@ -13,7 +15,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 from typer.testing import CliRunner
 
-from pixelpast.cli.main import UI_WORKSPACE, app, _build_dev_process_specs
+from pixelpast.cli.main import UI_WORKSPACE, _build_dev_process_specs, app
 from pixelpast.persistence.base import Base
 from pixelpast.persistence.models import Asset, DailyAggregate, Event, ImportRun, Source
 from pixelpast.shared.logging import KeyValueFormatter
@@ -95,6 +97,55 @@ def test_cli_ingest_photos_persists_assets(monkeypatch) -> None:
         if database_path.exists():
             database_path.unlink()
         shutil.rmtree(photos_root, ignore_errors=True)
+
+
+def test_cli_ingest_photos_subprocess_completes_with_fixture_assets() -> None:
+    database_path = _build_test_database_path("cli-ingest-fixtures")
+    photos_root = Path("test") / "assets"
+    environment = os.environ.copy()
+    environment["PIXELPAST_DATABASE_URL"] = (
+        f"sqlite:///{database_path.resolve().as_posix()}"
+    )
+    environment["PIXELPAST_PHOTOS_ROOT"] = str(photos_root.resolve())
+
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "pixelpast.cli.main", "ingest", "photos"],
+            cwd=Path.cwd(),
+            env=environment,
+            capture_output=True,
+            text=True,
+            timeout=20,
+            check=False,
+        )
+
+        assert result.returncode == 0, result.stderr
+        assert database_path.exists()
+
+        engine = create_engine(f"sqlite:///{database_path.as_posix()}")
+        try:
+            with Session(engine) as session:
+                assets = list(
+                    session.execute(select(Asset).order_by(Asset.external_id)).scalars()
+                )
+                import_runs = list(
+                    session.execute(select(ImportRun).order_by(ImportRun.id)).scalars()
+                )
+        finally:
+            engine.dispose()
+
+        assert len(assets) == 3
+        assert [Path(asset.external_id).name for asset in assets] == [
+            "monalisa-1.jpg",
+            "monalisa-2.jpg",
+            "monalisa-3.jpg",
+        ]
+        assert assets[2].summary == "Title 3 äöüßÄÖÜ"
+        assert len(import_runs) == 1
+        assert import_runs[0].status == "completed"
+    finally:
+        if database_path.exists():
+            database_path.unlink()
 
 
 def test_cli_derive_daily_aggregate_rebuilds_rows(monkeypatch) -> None:
