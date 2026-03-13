@@ -41,7 +41,7 @@ class Settings(BaseSettings):
     day_context_max_days: int = Field(
         default=366,
         ge=1,
-        description="Maximum inclusive day count allowed for /days/context requests.",
+        description="Maximum inclusive day count allowed for /api/days/context requests.",
     )
     api_cors_allowed_origins: tuple[str, ...] = Field(
         default=("http://localhost:5173", "http://127.0.0.1:5173"),

@@ -9,7 +9,7 @@ from pixelpast.api.routes.timeline import router as timeline_router
 def create_api_router() -> APIRouter:
     """Create the application router with all endpoint modules registered."""
 
-    router = APIRouter()
+    router = APIRouter(prefix="/api")
     router.include_router(health_router)
     router.include_router(timeline_router)
     return router

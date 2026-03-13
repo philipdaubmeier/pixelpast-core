@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from pixelpast.api.router import create_api_router
-from pixelpast.shared.runtime import create_runtime_context
+from pixelpast.shared.runtime import create_runtime_context, initialize_database
 from pixelpast.shared.settings import Settings, get_settings
 
 
@@ -12,6 +12,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     """Build the FastAPI application and shared runtime dependencies."""
 
     runtime = create_runtime_context(settings=settings or get_settings())
+    initialize_database(runtime)
 
     app = FastAPI(
         title=runtime.settings.app_name,

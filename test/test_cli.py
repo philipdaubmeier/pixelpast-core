@@ -1,7 +1,9 @@
 """CLI smoke tests."""
 
+import importlib
 import logging
 import shutil
+import sys
 import tomllib
 from datetime import UTC, datetime
 from pathlib import Path
@@ -11,21 +13,56 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 from typer.testing import CliRunner
 
-from pixelpast.cli.main import app
+from pixelpast.cli.main import UI_WORKSPACE, app, _build_dev_process_specs
 from pixelpast.persistence.base import Base
 from pixelpast.persistence.models import Asset, DailyAggregate, Event, ImportRun, Source
 from pixelpast.shared.logging import KeyValueFormatter
 from pixelpast.shared.settings import get_settings
 
 runner = CliRunner()
+cli_main_module = importlib.import_module("pixelpast.cli.main")
 
 
 def test_cli_help_lists_available_commands() -> None:
     result = runner.invoke(app, ["--help"])
 
     assert result.exit_code == 0
+    assert "dev" in result.stdout
     assert "ingest" in result.stdout
     assert "derive" in result.stdout
+
+
+def test_build_dev_process_specs_returns_api_and_ui_commands(monkeypatch) -> None:
+    monkeypatch.setattr(cli_main_module, "_resolve_npm_executable", lambda: "npm")
+
+    api_process, ui_process = _build_dev_process_specs(
+        demo=True,
+        api_host="127.0.0.1",
+        api_port=8000,
+        ui_host="127.0.0.1",
+        ui_port=5173,
+    )
+
+    assert api_process.name == "api"
+    assert api_process.cwd == Path.cwd()
+    assert api_process.command[:3] == (sys.executable, "-m", "uvicorn")
+    assert api_process.command[-4:] == ("--host", "127.0.0.1", "--port", "8000")
+    assert api_process.env is not None
+    assert api_process.env["PIXELPAST_TIMELINE_PROJECTION_PROVIDER"] == "demo"
+
+    assert ui_process.name == "ui"
+    assert ui_process.cwd == UI_WORKSPACE
+    assert ui_process.env is not None
+    assert ui_process.command == (
+        "npm",
+        "run",
+        "dev",
+        "--",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "5173",
+    )
 
 
 def test_cli_ingest_photos_persists_assets(monkeypatch) -> None:

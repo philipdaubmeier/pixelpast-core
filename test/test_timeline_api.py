@@ -34,7 +34,7 @@ def test_exploration_endpoint_returns_current_year_dense_grid_when_empty() -> No
         app = create_app(settings=runtime.settings)
 
         with TestClient(app) as client:
-            response = client.get("/exploration")
+            response = client.get("/api/exploration")
 
         assert response.status_code == 200
         payload = response.json()
@@ -180,7 +180,7 @@ def test_exploration_endpoint_returns_dense_days_catalog_without_taxonomy_logic(
 
         app = create_app(settings=runtime.settings)
         with TestClient(app) as client:
-            response = client.get("/exploration?start=2024-01-01&end=2024-01-03")
+            response = client.get("/api/exploration?start=2024-01-01&end=2024-01-03")
 
         assert response.status_code == 200
         assert response.json() == {
@@ -319,7 +319,7 @@ def test_exploration_endpoint_resolves_available_timeline_and_pads_years() -> No
 
         app = create_app(settings=runtime.settings)
         with TestClient(app) as client:
-            response = client.get("/exploration")
+            response = client.get("/api/exploration")
 
         assert response.status_code == 200
         payload = response.json()
@@ -364,7 +364,7 @@ def test_exploration_endpoint_rejects_partial_explicit_range() -> None:
         app = create_app(settings=runtime.settings)
 
         with TestClient(app) as client:
-            response = client.get("/exploration?start=2024-01-01")
+            response = client.get("/api/exploration?start=2024-01-01")
 
         assert response.status_code == 400
         assert response.json() == {
@@ -384,11 +384,11 @@ def test_demo_exploration_endpoint_returns_deterministic_multi_year_payload() ->
         app_two = create_app(settings=settings)
 
         with TestClient(app_one) as client_one:
-            first_response = client_one.get("/exploration")
-            second_response = client_one.get("/exploration")
+            first_response = client_one.get("/api/exploration")
+            second_response = client_one.get("/api/exploration")
 
         with TestClient(app_two) as client_two:
-            third_response = client_two.get("/exploration")
+            third_response = client_two.get("/api/exploration")
 
         assert first_response.status_code == 200
         assert second_response.status_code == 200
@@ -439,7 +439,7 @@ def test_day_context_endpoint_returns_dense_empty_range() -> None:
         app = create_app(settings=runtime.settings)
 
         with TestClient(app) as client:
-            response = client.get("/days/context?start=2024-01-01&end=2024-01-03")
+            response = client.get("/api/days/context?start=2024-01-01&end=2024-01-03")
 
         assert response.status_code == 200
         assert response.json() == {
@@ -497,10 +497,10 @@ def test_demo_day_context_endpoint_returns_dense_range_with_real_coordinates() -
 
         with TestClient(app) as client:
             first_response = client.get(
-                "/days/context?start=2024-01-01&end=2024-01-31"
+                "/api/days/context?start=2024-01-01&end=2024-01-31"
             )
             second_response = client.get(
-                "/days/context?start=2024-01-01&end=2024-01-31"
+                "/api/days/context?start=2024-01-01&end=2024-01-31"
             )
 
         assert first_response.status_code == 200
@@ -539,7 +539,7 @@ def test_exploration_endpoint_allows_local_ui_origin_via_cors() -> None:
 
         with TestClient(app) as client:
             response = client.options(
-                "/exploration",
+                "/api/exploration",
                 headers={
                     "Origin": "http://localhost:5173",
                     "Access-Control-Request-Method": "GET",
@@ -685,7 +685,7 @@ def test_day_context_endpoint_returns_dense_mixed_context_range() -> None:
 
         app = create_app(settings=runtime.settings)
         with TestClient(app) as client:
-            response = client.get("/days/context?start=2024-01-01&end=2024-01-04")
+            response = client.get("/api/days/context?start=2024-01-01&end=2024-01-04")
 
         assert response.status_code == 200
         assert response.json() == {
@@ -822,7 +822,7 @@ def test_day_context_endpoint_rejects_invalid_range() -> None:
         app = create_app(settings=runtime.settings)
 
         with TestClient(app) as client:
-            response = client.get("/days/context?start=2024-01-04&end=2024-01-01")
+            response = client.get("/api/days/context?start=2024-01-04&end=2024-01-01")
 
         assert response.status_code == 400
         assert response.json() == {
@@ -845,7 +845,7 @@ def test_day_context_endpoint_rejects_ranges_beyond_configured_limit() -> None:
         app = create_app(settings=limited_settings)
 
         with TestClient(app) as client:
-            response = client.get("/days/context?start=2024-01-01&end=2024-01-03")
+            response = client.get("/api/days/context?start=2024-01-01&end=2024-01-03")
 
         assert response.status_code == 400
         assert response.json() == {
@@ -865,7 +865,7 @@ def test_heatmap_endpoint_returns_empty_range() -> None:
         app = create_app(settings=runtime.settings)
 
         with TestClient(app) as client:
-            response = client.get("/heatmap?start=2024-01-01&end=2024-01-03")
+            response = client.get("/api/heatmap?start=2024-01-01&end=2024-01-03")
 
         assert response.status_code == 200
         assert response.json() == {
@@ -915,7 +915,7 @@ def test_heatmap_endpoint_returns_daily_aggregates_in_range_order() -> None:
 
         app = create_app(settings=runtime.settings)
         with TestClient(app) as client:
-            response = client.get("/heatmap?start=2024-01-02&end=2024-01-04")
+            response = client.get("/api/heatmap?start=2024-01-02&end=2024-01-04")
 
         assert response.status_code == 200
         assert response.json() == {
@@ -950,7 +950,7 @@ def test_heatmap_endpoint_rejects_invalid_range() -> None:
         app = create_app(settings=runtime.settings)
 
         with TestClient(app) as client:
-            response = client.get("/heatmap?start=2024-01-03&end=2024-01-01")
+            response = client.get("/api/heatmap?start=2024-01-03&end=2024-01-01")
 
         assert response.status_code == 400
         assert response.json() == {
@@ -978,7 +978,7 @@ def test_day_detail_endpoint_returns_events_only() -> None:
 
         app = create_app(settings=runtime.settings)
         with TestClient(app) as client:
-            response = client.get("/days/2024-01-02")
+            response = client.get("/api/days/2024-01-02")
 
         assert response.status_code == 200
         assert response.json() == {
@@ -1016,7 +1016,7 @@ def test_day_detail_endpoint_returns_empty_items_for_empty_day() -> None:
         app = create_app(settings=runtime.settings)
 
         with TestClient(app) as client:
-            response = client.get("/days/2024-01-02")
+            response = client.get("/api/days/2024-01-02")
 
         assert response.status_code == 200
         assert response.json() == {
@@ -1045,7 +1045,7 @@ def test_day_detail_endpoint_returns_assets_only() -> None:
 
         app = create_app(settings=runtime.settings)
         with TestClient(app) as client:
-            response = client.get("/days/2024-01-02")
+            response = client.get("/api/days/2024-01-02")
 
         assert response.status_code == 200
         assert response.json() == {
@@ -1092,7 +1092,7 @@ def test_day_detail_endpoint_returns_mixed_items_in_timestamp_order() -> None:
 
         app = create_app(settings=runtime.settings)
         with TestClient(app) as client:
-            response = client.get("/days/2024-01-02")
+            response = client.get("/api/days/2024-01-02")
 
         assert response.status_code == 200
         assert response.json() == {
@@ -1198,3 +1198,4 @@ def _create_workspace_dir(*, prefix: str) -> Path:
     workspace_root = Path("var") / f"{prefix}-{uuid4().hex}"
     workspace_root.mkdir(parents=True, exist_ok=False)
     return workspace_root
+

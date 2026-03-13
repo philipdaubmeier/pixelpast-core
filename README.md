@@ -84,19 +84,28 @@ pytest
 The React UI skeleton lives in `ui/` and mirrors the architecture described in
 the UI documentation.
 
-Use the workspace locally with:
+Use the full stack locally with:
 
 ```text
-cd ui
-npm install
-set VITE_PIXELPAST_API_BASE_URL=http://127.0.0.1:8000
-npm run dev
+pip install -e .[dev]
+npm install --prefix ui
+pixelpast dev
 ```
 
-Run the FastAPI app in parallel and keep local CORS enabled for the default Vite
-origins (`http://localhost:5173` and `http://127.0.0.1:5173`).
-The live UI now boots from the Python exploration endpoints instead of a
-frontend runtime mock.
+For the deterministic demo timeline instead of database-backed projections:
+
+```text
+pixelpast dev --demo
+```
+
+This starts:
+
+- the FastAPI backend on `http://127.0.0.1:8000`
+- the Vite UI on `http://127.0.0.1:5173`
+
+In normal development the UI talks to `/api/...` on the Vite origin, and Vite
+proxies those requests to the Python backend. Optional direct API overrides can
+still be configured via `VITE_PIXELPAST_API_BASE_URL`.
 
 ## 🤝 Contributing
 

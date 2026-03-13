@@ -55,26 +55,26 @@ export type ApiDayContextResponse = {
   }>;
 };
 
-function resolveApiBaseUrl(): string {
-  const configuredBaseUrl = (
-    import.meta.env.VITE_PIXELPAST_API_BASE_URL ?? ""
-  ).replace(/\/$/, "");
+function normalizeConfiguredApiBaseUrl(value: string): string {
+  const trimmedValue = value.replace(/\/$/, "");
 
-  if (configuredBaseUrl !== "") {
-    return configuredBaseUrl;
+  if (trimmedValue === "") {
+    return "";
   }
 
-  if (import.meta.env.DEV && typeof window !== "undefined") {
-    return `${window.location.protocol}//${window.location.hostname}:8000`;
-  }
-
-  return "";
+  return trimmedValue.endsWith("/api") ? trimmedValue : `${trimmedValue}/api`;
 }
 
-const apiBaseUrl = resolveApiBaseUrl();
+const apiBaseUrl = normalizeConfiguredApiBaseUrl(
+  import.meta.env.VITE_PIXELPAST_API_BASE_URL ?? "",
+);
 
 function buildApiUrl(path: string): string {
-  return `${apiBaseUrl}${path}`;
+  if (apiBaseUrl !== "") {
+    return `${apiBaseUrl}${path}`;
+  }
+
+  return `/api${path}`;
 }
 
 async function requestJson<T>(path: string): Promise<T> {

@@ -22,7 +22,7 @@ def test_fastapi_app_exposes_health_endpoint() -> None:
     app = create_app(settings=settings)
 
     with TestClient(app) as client:
-        response = client.get("/health")
+        response = client.get("/api/health")
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
