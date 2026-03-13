@@ -36,7 +36,7 @@ export const YearGrid = forwardRef<HTMLElement, YearGridProps>(function YearGrid
           {year}
         </span>
       </div>
-      <div className="rounded-[22px] border border-white/70 bg-white/55 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
+      <div className="bg-transparent p-0">
         <div
           className="grid grid-rows-7 justify-start gap-1"
           style={{ gridTemplateColumns: `repeat(${weekCount}, max-content)` }}

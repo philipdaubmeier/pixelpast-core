@@ -32,9 +32,6 @@ export function LeftGridPane({
 
   return (
     <section className="panel-surface flex h-full min-h-0 flex-col overflow-hidden p-3 lg:p-3.5">
-      <div className="mb-3 flex items-center justify-between gap-4">
-        <h2 className="text-lg font-semibold text-slate-950">{yearRangeLabel}</h2>
-      </div>
       <div
         ref={setScrollContainer}
         className="thin-scrollbar min-h-0 flex-1 overflow-y-auto pr-2"
