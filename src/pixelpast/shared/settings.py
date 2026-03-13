@@ -4,7 +4,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, field_validator
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -43,22 +43,6 @@ class Settings(BaseSettings):
         ge=1,
         description="Maximum inclusive day count allowed for /api/days/context requests.",
     )
-    api_cors_allowed_origins: tuple[str, ...] = Field(
-        default=("http://localhost:5173", "http://127.0.0.1:5173"),
-        description="Allowed CORS origins for local UI development.",
-    )
-
-    @field_validator("api_cors_allowed_origins", mode="before")
-    @classmethod
-    def _normalize_api_cors_allowed_origins(
-        cls,
-        value: str | list[str] | tuple[str, ...],
-    ) -> tuple[str, ...]:
-        if isinstance(value, str):
-            return tuple(
-                origin.strip() for origin in value.split(",") if origin.strip()
-            )
-        return tuple(value)
 
 
 @lru_cache(maxsize=1)

@@ -530,33 +530,6 @@ def test_demo_day_context_endpoint_returns_dense_range_with_real_coordinates() -
         shutil.rmtree(workspace_root, ignore_errors=True)
 
 
-def test_exploration_endpoint_allows_local_ui_origin_via_cors() -> None:
-    workspace_root = _create_workspace_dir(prefix="timeline-api-cors")
-    runtime = None
-    try:
-        runtime = _create_runtime(workspace_root=workspace_root)
-        app = create_app(settings=runtime.settings)
-
-        with TestClient(app) as client:
-            response = client.options(
-                "/api/exploration",
-                headers={
-                    "Origin": "http://localhost:5173",
-                    "Access-Control-Request-Method": "GET",
-                },
-            )
-
-        assert response.status_code == 200
-        assert (
-            response.headers["access-control-allow-origin"]
-            == "http://localhost:5173"
-        )
-    finally:
-        if runtime is not None:
-            runtime.engine.dispose()
-        shutil.rmtree(workspace_root, ignore_errors=True)
-
-
 def test_day_context_endpoint_returns_dense_mixed_context_range() -> None:
     workspace_root = _create_workspace_dir(prefix="timeline-api-day-context-mixed")
     runtime = None
