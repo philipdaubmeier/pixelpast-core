@@ -16,6 +16,7 @@ from typing import Annotated
 import typer
 
 from pixelpast.analytics.entrypoints import run_derive_job
+from pixelpast.ingestion.progress import IngestionProgressSnapshot
 from pixelpast.ingestion.entrypoints import run_ingest_source
 from pixelpast.shared.logging import configure_logging
 from pixelpast.shared.runtime import (
@@ -63,6 +64,116 @@ class DevProcessExitedError(RuntimeError):
         super().__init__(f"{process_name} exited with code {exit_code}")
         self.process_name = process_name
         self.exit_code = exit_code
+
+
+class IngestionCliProgressReporter:
+    """Render phase-aware ingest progress as robust terminal lines."""
+
+    def __init__(self) -> None:
+        self._last_discovered_file_count = -1
+        self._last_analyzed_total = -1
+        self._last_items_persisted = -1
+
+    def __call__(self, snapshot: IngestionProgressSnapshot) -> None:
+        """Print meaningful progress and terminal summary lines."""
+
+        if snapshot.event == "phase_started":
+            typer.echo(
+                f"[{snapshot.source}] phase={snapshot.phase} status=started"
+                f"{_format_total_suffix(snapshot.phase_total)}"
+            )
+            return
+
+        if snapshot.event == "phase_completed":
+            typer.echo(
+                f"[{snapshot.source}] phase={snapshot.phase} status=completed"
+                f" completed={snapshot.phase_completed}"
+                f"{_format_total_suffix(snapshot.phase_total)}"
+            )
+            return
+
+        if snapshot.event == "metadata_batch_submitted":
+            typer.echo(
+                f"[{snapshot.source}] phase=metadata extraction"
+                f" batch_submitted={snapshot.current_batch_index}/{snapshot.current_batch_total}"
+                f" batch_size={snapshot.current_batch_size}"
+            )
+            return
+
+        if snapshot.event == "metadata_batch_completed":
+            typer.echo(
+                f"[{snapshot.source}] phase=metadata extraction"
+                f" batch_completed={snapshot.current_batch_index}/{snapshot.current_batch_total}"
+                f" batch_size={snapshot.current_batch_size}"
+            )
+            return
+
+        if snapshot.event == "run_finished":
+            typer.echo(
+                f"[{snapshot.source}] summary"
+                f" status={snapshot.status}"
+                f" import_run_id={snapshot.import_run_id}"
+                f" discovered={snapshot.discovered_file_count}"
+                f" analyzed={snapshot.analyzed_file_count}"
+                f" analysis_failed={snapshot.analysis_failed_file_count}"
+                f" inserted={snapshot.inserted_item_count}"
+                f" updated={snapshot.updated_item_count}"
+                f" unchanged={snapshot.unchanged_item_count}"
+                f" skipped={snapshot.skipped_item_count}"
+                f" missing_from_source={snapshot.missing_from_source_count}"
+            )
+            return
+
+        if snapshot.event == "run_failed":
+            typer.echo(
+                f"[{snapshot.source}] summary"
+                f" status={snapshot.status}"
+                f" import_run_id={snapshot.import_run_id}"
+                f" phase={snapshot.phase}"
+                f" discovered={snapshot.discovered_file_count}"
+                f" analyzed={snapshot.analyzed_file_count}"
+                f" analysis_failed={snapshot.analysis_failed_file_count}"
+                f" persisted={snapshot.items_persisted}"
+            )
+            return
+
+        if snapshot.phase == "filesystem discovery":
+            if snapshot.discovered_file_count != self._last_discovered_file_count:
+                self._last_discovered_file_count = snapshot.discovered_file_count
+                typer.echo(
+                    f"[{snapshot.source}] phase=filesystem discovery"
+                    f" discovered={snapshot.discovered_file_count}"
+                )
+            return
+
+        if snapshot.phase == "metadata extraction":
+            analyzed_total = (
+                snapshot.analyzed_file_count + snapshot.analysis_failed_file_count
+            )
+            if analyzed_total != self._last_analyzed_total:
+                self._last_analyzed_total = analyzed_total
+                typer.echo(
+                    f"[{snapshot.source}] phase=metadata extraction"
+                    f" completed={analyzed_total}/{snapshot.phase_total or 0}"
+                    f" analyzed={snapshot.analyzed_file_count}"
+                    f" analysis_failed={snapshot.analysis_failed_file_count}"
+                    f" batches={snapshot.metadata_batches_completed}/{snapshot.metadata_batches_submitted}"
+                )
+            return
+
+        if snapshot.phase == "canonical persistence":
+            if snapshot.items_persisted != self._last_items_persisted:
+                self._last_items_persisted = snapshot.items_persisted
+                typer.echo(
+                    f"[{snapshot.source}] phase=canonical persistence"
+                    f" completed={snapshot.phase_completed}/{snapshot.phase_total or 0}"
+                    f" persisted={snapshot.items_persisted}"
+                    f" inserted={snapshot.inserted_item_count}"
+                    f" updated={snapshot.updated_item_count}"
+                    f" unchanged={snapshot.unchanged_item_count}"
+                    f" skipped={snapshot.skipped_item_count}"
+                    f" missing_from_source={snapshot.missing_from_source_count}"
+                )
 
 
 app = typer.Typer(
@@ -151,10 +262,15 @@ def ingest_command(
 ) -> None:
     """Run an ingestion source entrypoint."""
 
+    progress_reporter = IngestionCliProgressReporter()
     _execute_operation(
         command_name="ingest",
         target=source,
-        runner=lambda runtime: run_ingest_source(source=source, runtime=runtime),
+        runner=lambda runtime: run_ingest_source(
+            source=source,
+            runtime=runtime,
+            progress_callback=progress_reporter,
+        ),
     )
 
 
@@ -336,7 +452,7 @@ def _execute_operation(
     *,
     command_name: str,
     target: str,
-    runner: Callable[[RuntimeContext], None],
+    runner: Callable[[RuntimeContext], object | None],
 ) -> None:
     """Initialize shared runtime dependencies and execute a CLI operation."""
 
@@ -397,6 +513,14 @@ def _parse_cli_date_option(*, option_name: str, raw_value: str | None) -> date |
         raise ValueError(
             f"Invalid --{option_name} value '{raw_value}'. Expected YYYY-MM-DD."
         ) from error
+
+
+def _format_total_suffix(total: int | None) -> str:
+    """Return a human-readable optional total suffix for CLI progress lines."""
+
+    if total is None:
+        return ""
+    return f" total={total}"
 
 
 if __name__ == "__main__":

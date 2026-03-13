@@ -6,9 +6,11 @@ from pixelpast.ingestion.photos.connector import (
     PhotoDiscoveryError,
     PhotoDiscoveryResult,
     PhotoExifMetadata,
+    PhotoMetadataBatchProgress,
     PhotoPersonCandidate,
 )
 from pixelpast.ingestion.photos.service import (
+    PhotoIngestionProgressSnapshot,
     PhotoIngestionResult,
     PhotoIngestionService,
 )
@@ -19,7 +21,9 @@ __all__ = [
     "PhotoDiscoveryError",
     "PhotoDiscoveryResult",
     "PhotoExifMetadata",
+    "PhotoIngestionProgressSnapshot",
     "PhotoIngestionResult",
     "PhotoIngestionService",
+    "PhotoMetadataBatchProgress",
     "PhotoPersonCandidate",
 ]

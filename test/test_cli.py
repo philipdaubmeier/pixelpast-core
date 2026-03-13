@@ -16,9 +16,9 @@ from sqlalchemy.orm import Session
 from typer.testing import CliRunner
 
 from pixelpast.cli.main import UI_WORKSPACE, _build_dev_process_specs, app
-from pixelpast.persistence.base import Base
 from pixelpast.persistence.models import Asset, DailyAggregate, Event, ImportRun, Source
 from pixelpast.shared.logging import KeyValueFormatter
+from pixelpast.shared.runtime import create_runtime_context, initialize_database
 from pixelpast.shared.settings import get_settings
 
 runner = CliRunner()
@@ -80,6 +80,10 @@ def test_cli_ingest_photos_persists_assets(monkeypatch) -> None:
         result = runner.invoke(app, ["ingest", "photos"])
         assert result.exit_code == 0
         assert database_path.exists()
+        assert "phase=filesystem discovery" in result.stdout
+        assert "phase=metadata extraction" in result.stdout
+        assert "phase=canonical persistence" in result.stdout
+        assert "[photos] summary status=completed" in result.stdout
 
         engine = create_engine(f"sqlite:///{database_path.as_posix()}")
         try:
@@ -90,6 +94,11 @@ def test_cli_ingest_photos_persists_assets(monkeypatch) -> None:
             assert len(assets) == 1
             assert len(import_runs) == 1
             assert import_runs[0].status == "completed"
+            assert import_runs[0].phase == "finalization"
+            assert import_runs[0].last_heartbeat_at is not None
+            assert import_runs[0].progress_json is not None
+            assert import_runs[0].progress_json["discovered_file_count"] == 1
+            assert import_runs[0].progress_json["inserted_item_count"] == 1
         finally:
             engine.dispose()
     finally:
@@ -121,6 +130,11 @@ def test_cli_ingest_photos_subprocess_completes_with_fixture_assets() -> None:
 
         assert result.returncode == 0, result.stderr
         assert database_path.exists()
+        assert "phase=filesystem discovery" in result.stdout
+        assert "phase=metadata extraction" in result.stdout
+        assert "batch_submitted=1/2" in result.stdout
+        assert "phase=canonical persistence" in result.stdout
+        assert "summary status=completed" in result.stdout
 
         engine = create_engine(f"sqlite:///{database_path.as_posix()}")
         try:
@@ -143,6 +157,15 @@ def test_cli_ingest_photos_subprocess_completes_with_fixture_assets() -> None:
         assert assets[2].summary == "Title 3 äöüßÄÖÜ"
         assert len(import_runs) == 1
         assert import_runs[0].status == "completed"
+        assert import_runs[0].phase == "finalization"
+        assert import_runs[0].last_heartbeat_at is not None
+        assert import_runs[0].progress_json is not None
+        assert import_runs[0].progress_json["discovered_file_count"] == 3
+        assert import_runs[0].progress_json["analyzed_file_count"] == 3
+        assert import_runs[0].progress_json["metadata_batches_submitted"] == 2
+        assert import_runs[0].progress_json["metadata_batches_completed"] == 2
+        assert import_runs[0].progress_json["inserted_item_count"] == 3
+        assert import_runs[0].progress_json["missing_from_source_count"] == 0
     finally:
         if database_path.exists():
             database_path.unlink()
@@ -154,10 +177,12 @@ def test_cli_derive_daily_aggregate_rebuilds_rows(monkeypatch) -> None:
     get_settings.cache_clear()
 
     try:
-        engine = create_engine(f"sqlite:///{database_path.as_posix()}")
+        runtime = create_runtime_context(
+            settings=get_settings(),
+        )
         try:
-            Base.metadata.create_all(engine)
-            with Session(engine) as session:
+            initialize_database(runtime)
+            with runtime.session_factory() as session:
                 source = Source(name="Calendar", type="calendar", config={})
                 session.add(source)
                 session.flush()
@@ -207,7 +232,7 @@ def test_cli_derive_daily_aggregate_rebuilds_rows(monkeypatch) -> None:
                 )
                 session.commit()
         finally:
-            engine.dispose()
+            runtime.engine.dispose()
 
         result = runner.invoke(app, ["derive", "daily-aggregate"])
         assert result.exit_code == 0

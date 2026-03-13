@@ -59,6 +59,16 @@ class ImportRun(Base):
     finished_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
     status: Mapped[str] = mapped_column(String(50), nullable=False)
     mode: Mapped[str] = mapped_column(String(50), nullable=False)
+    phase: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    last_heartbeat_at: Mapped[datetime | None] = mapped_column(
+        UTCDateTime(),
+        nullable=True,
+    )
+    progress_json: Mapped[dict[str, Any] | None] = mapped_column(
+        "progress",
+        JSON,
+        nullable=True,
+    )
 
 
 class Event(Base):

@@ -21,6 +21,3 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.session_factory = runtime.session_factory
     app.include_router(create_api_router())
     return app
-
-
-app = create_app()

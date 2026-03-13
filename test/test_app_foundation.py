@@ -14,6 +14,7 @@ from pixelpast.api.app import create_app
 from pixelpast.persistence.base import Base
 from pixelpast.persistence.models import Asset, DailyAggregate, Event, Source
 from pixelpast.persistence.session import session_scope
+from pixelpast.shared.runtime import create_runtime_context, initialize_database
 from pixelpast.shared.settings import Settings
 
 
@@ -96,6 +97,10 @@ def test_alembic_upgrade_head_runs() -> None:
             } == {
                 "uq_source_type_name",
             }
+            import_run_columns = {
+                column["name"] for column in inspector.get_columns("import_run")
+            }
+            assert {"phase", "last_heartbeat_at", "progress"} <= import_run_columns
         finally:
             engine.dispose()
     finally:
@@ -195,3 +200,33 @@ def test_daily_aggregate_date_roundtrip_uses_python_date() -> None:
         stored_aggregate = session.query(DailyAggregate).one()
 
     assert stored_aggregate.date.isoformat() == "2026-03-11"
+
+
+def test_initialize_database_runs_alembic_for_file_database() -> None:
+    database_dir = Path("var")
+    database_dir.mkdir(exist_ok=True)
+    database_path = database_dir / f"test-runtime-init-{uuid4().hex}.db"
+
+    try:
+        runtime = create_runtime_context(
+            settings=Settings(database_url=f"sqlite:///{database_path.as_posix()}")
+        )
+        try:
+            initialize_database(runtime)
+        finally:
+            runtime.engine.dispose()
+
+        upgraded_engine = create_engine(f"sqlite:///{database_path.as_posix()}")
+        try:
+            inspector = inspect(upgraded_engine)
+            import_run_columns = {
+                column["name"] for column in inspector.get_columns("import_run")
+            }
+            assert "alembic_version" in inspector.get_table_names()
+        finally:
+            upgraded_engine.dispose()
+
+        assert {"phase", "last_heartbeat_at", "progress"} <= import_run_columns
+    finally:
+        if database_path.exists():
+            database_path.unlink()

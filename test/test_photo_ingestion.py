@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import os
+import subprocess
 import shutil
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
 
@@ -16,7 +17,6 @@ from pixelpast.ingestion.photos import (
     PhotoAssetCandidate,
     PhotoConnector,
     PhotoDiscoveryError,
-    PhotoDiscoveryResult,
     PhotoExifMetadata,
     PhotoIngestionService,
     PhotoPersonCandidate,
@@ -50,6 +50,17 @@ def test_photo_fixture_ingestion_persists_rich_metadata_and_relationships() -> N
         assert result.processed_asset_count == 3
         assert result.error_count == 0
         assert result.status == "completed"
+        assert result.discovered_file_count == 3
+        assert result.analyzed_file_count == 3
+        assert result.analysis_failed_file_count == 0
+        assert result.assets_persisted == 3
+        assert result.inserted_asset_count == 3
+        assert result.updated_asset_count == 0
+        assert result.unchanged_asset_count == 0
+        assert result.skipped_asset_count == 0
+        assert result.missing_from_source_count == 0
+        assert result.metadata_batches_submitted == 2
+        assert result.metadata_batches_completed == 2
 
         with runtime.session_factory() as session:
             assets = list(
@@ -155,9 +166,9 @@ def test_photo_fixture_ingestion_persists_rich_metadata_and_relationships() -> N
 
         metadata_json = assets_by_name["monalisa-3.jpg"].metadata_json
         assert metadata_json is not None
-        assert metadata_json["resolution"]["title"] == "XMP:Title"
-        assert metadata_json["resolution"]["creator"] == "XMP:Creator"
-        assert metadata_json["resolution"]["timestamp"] == "EXIF:DateTimeOriginal"
+        assert metadata_json["resolution"]["title"] == "XMP-dc:Title"
+        assert metadata_json["resolution"]["creator"] == "XMP-dc:Creator"
+        assert metadata_json["resolution"]["timestamp"] == "ExifIFD:DateTimeOriginal"
         assert metadata_json["linked_tag_paths"] == [
             "events|vacation|München",
             "events",
@@ -191,6 +202,13 @@ def test_photo_ingestion_with_fixtures_is_idempotent() -> None:
         assert second_result.processed_asset_count == 3
         assert first_result.status == "completed"
         assert second_result.status == "completed"
+        assert first_result.inserted_asset_count == 3
+        assert first_result.updated_asset_count == 0
+        assert first_result.unchanged_asset_count == 0
+        assert second_result.inserted_asset_count == 0
+        assert second_result.updated_asset_count == 0
+        assert second_result.unchanged_asset_count == 3
+        assert second_result.missing_from_source_count == 0
 
         with runtime.session_factory() as session:
             assets = list(session.execute(select(Asset)).scalars())
@@ -283,6 +301,15 @@ def test_photo_ingestion_handles_empty_directories() -> None:
         assert result.processed_asset_count == 0
         assert result.error_count == 0
         assert result.status == "completed"
+        assert result.discovered_file_count == 0
+        assert result.analyzed_file_count == 0
+        assert result.analysis_failed_file_count == 0
+        assert result.assets_persisted == 0
+        assert result.inserted_asset_count == 0
+        assert result.updated_asset_count == 0
+        assert result.unchanged_asset_count == 0
+        assert result.skipped_asset_count == 0
+        assert result.missing_from_source_count == 0
 
         with runtime.session_factory() as session:
             assets = list(session.execute(select(Asset)).scalars())
@@ -312,27 +339,9 @@ def test_photo_ingestion_fails_fast_when_exiftool_is_missing(
             photos_root=photos_root,
         )
 
-        class _MissingExifToolHelper:
-            def __init__(self, **kwargs) -> None:
-                del kwargs
-                self.running = False
-
-            def __enter__(self):
-                return self
-
-            def __exit__(self, exc_type, exc, tb) -> None:
-                del exc_type, exc, tb
-
-            def run(self) -> None:
-                self.running = True
-
-            def get_metadata(self, files, params=None):
-                del files, params
-                raise FileNotFoundError("exiftool")
-
         monkeypatch.setattr(
-            "pixelpast.ingestion.photos.connector.ExifToolHelper",
-            _MissingExifToolHelper,
+            "pixelpast.ingestion.photos.connector.shutil.which",
+            lambda executable: None,
         )
 
         with pytest.raises(
@@ -348,9 +357,55 @@ def test_photo_ingestion_fails_fast_when_exiftool_is_missing(
         assert assets == []
         assert len(import_runs) == 1
         assert import_runs[0].status == "failed"
+        assert import_runs[0].phase == "metadata extraction"
+        assert import_runs[0].last_heartbeat_at is not None
     finally:
         if runtime is not None:
             runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_photo_connector_splits_timed_out_metadata_batches_until_single_files(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = _create_workspace_dir(prefix="photo-batch-timeout")
+    try:
+        photos_root = workspace_root / "photos"
+        photos_root.mkdir()
+        paths = []
+        for name in ("a.jpg", "b.jpg", "c.jpg", "d.jpg"):
+            path = photos_root / name
+            path.write_bytes(b"photo")
+            paths.append(path.resolve())
+
+        calls: list[tuple[str, ...]] = []
+
+        def fake_run_exiftool_json(*, paths: list[Path]) -> list[dict[str, str]]:
+            calls.append(tuple(path.name for path in paths))
+            if any(path.name in {"b.jpg", "c.jpg"} for path in paths):
+                raise subprocess.TimeoutExpired(cmd="exiftool", timeout=120)
+            return [{"SourceFile": path.as_posix(), "XMP:Title": path.stem} for path in paths]
+
+        monkeypatch.setattr(
+            "pixelpast.ingestion.photos.connector._run_exiftool_json",
+            fake_run_exiftool_json,
+        )
+
+        metadata_by_path = PhotoConnector().extract_metadata_by_path(paths=paths)
+
+        assert calls == [
+            ("a.jpg",),
+            ("b.jpg", "c.jpg", "d.jpg"),
+            ("b.jpg",),
+            ("c.jpg", "d.jpg"),
+            ("c.jpg",),
+            ("d.jpg",),
+        ]
+        assert metadata_by_path[paths[0].as_posix()]["XMP:Title"] == "a"
+        assert metadata_by_path[paths[1].as_posix()] == {"SourceFile": paths[1].as_posix()}
+        assert metadata_by_path[paths[2].as_posix()] == {"SourceFile": paths[2].as_posix()}
+        assert metadata_by_path[paths[3].as_posix()]["XMP:Title"] == "d"
+    finally:
         shutil.rmtree(workspace_root, ignore_errors=True)
 
 
@@ -372,6 +427,14 @@ def test_photo_connector_partial_failure_is_reported_and_persisted() -> None:
         assert result.processed_asset_count == 1
         assert result.error_count == 1
         assert result.status == "partial_failure"
+        assert result.discovered_file_count == 2
+        assert result.analyzed_file_count == 1
+        assert result.analysis_failed_file_count == 1
+        assert result.assets_persisted == 1
+        assert result.inserted_asset_count == 1
+        assert result.updated_asset_count == 0
+        assert result.unchanged_asset_count == 0
+        assert result.skipped_asset_count == 0
 
         with runtime.session_factory() as session:
             assets = list(session.execute(select(Asset)).scalars())
@@ -379,6 +442,10 @@ def test_photo_connector_partial_failure_is_reported_and_persisted() -> None:
 
         assert len(assets) == 1
         assert import_run.status == "partial_failure"
+        assert import_run.phase == "finalization"
+        assert import_run.progress_json is not None
+        assert import_run.progress_json["analysis_failed_file_count"] == 1
+        assert import_run.progress_json["inserted_item_count"] == 1
     finally:
         if runtime is not None:
             runtime.engine.dispose()
@@ -430,6 +497,141 @@ def test_photo_ingestion_marks_run_failed_and_rolls_back_assets(
         assert len(import_runs) == 1
         assert import_runs[0].status == "failed"
         assert import_runs[0].finished_at is not None
+        assert import_runs[0].phase == "canonical persistence"
+        assert import_runs[0].last_heartbeat_at is not None
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_photo_ingestion_marks_existing_assets_updated_when_canonical_state_changes() -> None:
+    workspace_root = _create_workspace_dir(prefix="photo-updated")
+    runtime = None
+    try:
+        photos_root = workspace_root / "photos"
+        photos_root.mkdir()
+        photo_path = photos_root / "image.jpg"
+        photo_path.write_bytes(b"photo")
+
+        runtime = _create_runtime(
+            workspace_root=workspace_root,
+            photos_root=photos_root,
+        )
+        first_result = PhotoIngestionService(
+            connector=_SingleAssetConnector(summary="Version 1")
+        ).ingest(runtime=runtime)
+        second_result = PhotoIngestionService(
+            connector=_SingleAssetConnector(summary="Version 2")
+        ).ingest(runtime=runtime)
+
+        assert first_result.inserted_asset_count == 1
+        assert second_result.inserted_asset_count == 0
+        assert second_result.updated_asset_count == 1
+        assert second_result.unchanged_asset_count == 0
+
+        with runtime.session_factory() as session:
+            asset = session.execute(select(Asset)).scalar_one()
+
+        assert asset.summary == "Version 2"
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_photo_ingestion_surfaces_missing_from_source_without_deleting_assets() -> None:
+    workspace_root = _create_workspace_dir(prefix="photo-missing-from-source")
+    runtime = None
+    try:
+        photos_root = workspace_root / "photos"
+        photos_root.mkdir()
+        first_path = photos_root / "first.jpg"
+        second_path = photos_root / "second.jpg"
+        first_path.write_bytes(b"photo")
+        second_path.write_bytes(b"photo")
+
+        runtime = _create_runtime(
+            workspace_root=workspace_root,
+            photos_root=photos_root,
+        )
+        connector = _DirectoryBackedConnector()
+        first_result = PhotoIngestionService(connector=connector).ingest(runtime=runtime)
+        second_path.unlink()
+
+        second_result = PhotoIngestionService(connector=connector).ingest(runtime=runtime)
+
+        assert first_result.missing_from_source_count == 0
+        assert second_result.missing_from_source_count == 1
+        assert second_result.inserted_asset_count == 0
+        assert second_result.updated_asset_count == 0
+        assert second_result.unchanged_asset_count == 1
+
+        with runtime.session_factory() as session:
+            assets = list(
+                session.execute(select(Asset).order_by(Asset.external_id)).scalars()
+            )
+
+        assert len(assets) == 2
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_photo_ingestion_persists_heartbeat_updates_during_a_long_running_run() -> None:
+    workspace_root = _create_workspace_dir(prefix="photo-heartbeat")
+    runtime = None
+    try:
+        photos_root = workspace_root / "photos"
+        photos_root.mkdir()
+        for index in range(3):
+            (photos_root / f"image-{index}.jpg").write_bytes(b"photo")
+
+        runtime = _create_runtime(
+            workspace_root=workspace_root,
+            photos_root=photos_root,
+        )
+        clock = _FakeClock()
+        observed_heartbeats: list[tuple[str, int, datetime | None]] = []
+
+        def capture_progress(snapshot) -> None:
+            if not snapshot.heartbeat_written or snapshot.phase != "filesystem discovery":
+                return
+            if snapshot.discovered_file_count < 2:
+                return
+            with runtime.session_factory() as session:
+                import_run = session.execute(select(ImportRun)).scalar_one()
+            observed_heartbeats.append(
+                (
+                    import_run.phase or "",
+                    import_run.progress_json["discovered_file_count"],
+                    import_run.last_heartbeat_at,
+                )
+            )
+
+        result = PhotoIngestionService(
+            connector=_HeartbeatConnector(clock=clock),
+            heartbeat_interval_seconds=10.0,
+            now_factory=clock.now,
+            monotonic_factory=clock.monotonic,
+        ).ingest(
+            runtime=runtime,
+            progress_callback=capture_progress,
+        )
+
+        assert result.status == "completed"
+        assert observed_heartbeats
+        assert observed_heartbeats[-1][0] == "filesystem discovery"
+        assert observed_heartbeats[-1][1] >= 2
+        assert observed_heartbeats[-1][2] == clock.now()
+
+        with runtime.session_factory() as session:
+            import_run = session.execute(select(ImportRun)).scalar_one()
+
+        assert import_run.status == "completed"
+        assert import_run.last_heartbeat_at == clock.now()
+        assert import_run.progress_json["discovered_file_count"] == 3
     finally:
         if runtime is not None:
             runtime.engine.dispose()
@@ -582,9 +784,34 @@ def test_sources_can_share_type_when_name_differs() -> None:
 class _PartialFailureConnector(PhotoConnector):
     """Test connector that simulates one successful asset and one failure."""
 
-    def discover(self, root: Path) -> PhotoDiscoveryResult:
-        candidate = PhotoAssetCandidate(
-            external_id=(root / "ok.jpg").resolve().as_posix(),
+    def discover_paths(
+        self,
+        root: Path,
+        *,
+        on_path_discovered=None,
+    ) -> list[Path]:
+        paths = [root / "ok.jpg", root / "broken.jpg"]
+        if on_path_discovered is not None:
+            for index, path in enumerate(paths, start=1):
+                on_path_discovered(path, index)
+        return paths
+
+    def extract_metadata_by_path(self, *, paths: list[Path], on_batch_progress=None):
+        del paths, on_batch_progress
+        return {}
+
+    def build_asset_candidate(
+        self,
+        *,
+        root: Path,
+        path: Path,
+        metadata=None,
+    ) -> PhotoAssetCandidate:
+        del root, metadata
+        if path.name == "broken.jpg":
+            raise RuntimeError("decode error")
+        return PhotoAssetCandidate(
+            external_id=path.resolve().as_posix(),
             media_type="photo",
             timestamp=datetime(2024, 1, 1, 0, 0, tzinfo=UTC),
             summary=None,
@@ -596,52 +823,190 @@ class _PartialFailureConnector(PhotoConnector):
             persons=(),
             metadata_json={},
         )
-        return PhotoDiscoveryResult(
-            assets=[candidate],
-            errors=[
-                PhotoDiscoveryError(
-                    path=root / "broken.jpg",
-                    message="decode error",
-                )
-            ],
-        )
 
 
 class _FatalFailureConnector(PhotoConnector):
     """Test connector that triggers a failure during asset persistence."""
 
-    def discover(self, root: Path) -> PhotoDiscoveryResult:
-        return PhotoDiscoveryResult(
-            assets=[
-                PhotoAssetCandidate(
-                    external_id=(root / "one.jpg").resolve().as_posix(),
-                    media_type="photo",
-                    timestamp=datetime(2024, 1, 1, 0, 0, tzinfo=UTC),
-                    summary=None,
-                    latitude=None,
-                    longitude=None,
-                    creator_name=None,
-                    tag_paths=(),
-                    asset_tag_paths=(),
-                    persons=(PhotoPersonCandidate(name="Person A", path=None),),
-                    metadata_json={},
-                ),
-                PhotoAssetCandidate(
-                    external_id=(root / "two.jpg").resolve().as_posix(),
-                    media_type="photo",
-                    timestamp=datetime(2024, 1, 1, 1, 0, tzinfo=UTC),
-                    summary=None,
-                    latitude=None,
-                    longitude=None,
-                    creator_name=None,
-                    tag_paths=(),
-                    asset_tag_paths=(),
-                    persons=(),
-                    metadata_json={},
-                ),
-            ],
-            errors=[],
+    def discover_paths(
+        self,
+        root: Path,
+        *,
+        on_path_discovered=None,
+    ) -> list[Path]:
+        paths = [root / "one.jpg", root / "two.jpg"]
+        if on_path_discovered is not None:
+            for index, path in enumerate(paths, start=1):
+                on_path_discovered(path, index)
+        return paths
+
+    def extract_metadata_by_path(self, *, paths: list[Path], on_batch_progress=None):
+        del paths, on_batch_progress
+        return {}
+
+    def build_asset_candidate(
+        self,
+        *,
+        root: Path,
+        path: Path,
+        metadata=None,
+    ) -> PhotoAssetCandidate:
+        del root, metadata
+        persons = (
+            (PhotoPersonCandidate(name="Person A", path=None),)
+            if path.name == "one.jpg"
+            else ()
         )
+        return PhotoAssetCandidate(
+            external_id=path.resolve().as_posix(),
+            media_type="photo",
+            timestamp=datetime(2024, 1, 1, 0 if path.name == "one.jpg" else 1, 0, tzinfo=UTC),
+            summary=None,
+            latitude=None,
+            longitude=None,
+            creator_name=None,
+            tag_paths=(),
+            asset_tag_paths=(),
+            persons=persons,
+            metadata_json={},
+        )
+
+
+class _SingleAssetConnector(PhotoConnector):
+    """Test connector that emits a single deterministic asset."""
+
+    def __init__(self, *, summary: str) -> None:
+        self._summary = summary
+
+    def discover_paths(
+        self,
+        root: Path,
+        *,
+        on_path_discovered=None,
+    ) -> list[Path]:
+        path = root / "image.jpg"
+        if on_path_discovered is not None:
+            on_path_discovered(path, 1)
+        return [path]
+
+    def extract_metadata_by_path(self, *, paths: list[Path], on_batch_progress=None):
+        del paths, on_batch_progress
+        return {}
+
+    def build_asset_candidate(
+        self,
+        *,
+        root: Path,
+        path: Path,
+        metadata=None,
+    ) -> PhotoAssetCandidate:
+        del root, metadata
+        return PhotoAssetCandidate(
+            external_id=path.resolve().as_posix(),
+            media_type="photo",
+            timestamp=datetime(2024, 1, 1, 0, 0, tzinfo=UTC),
+            summary=self._summary,
+            latitude=None,
+            longitude=None,
+            creator_name=None,
+            tag_paths=(),
+            asset_tag_paths=(),
+            persons=(),
+            metadata_json={"summary": self._summary},
+        )
+
+
+class _DirectoryBackedConnector(PhotoConnector):
+    """Test connector that turns real directory entries into deterministic assets."""
+
+    def extract_metadata_by_path(self, *, paths: list[Path], on_batch_progress=None):
+        del on_batch_progress
+        return {path.resolve().as_posix(): {} for path in paths}
+
+    def build_asset_candidate(
+        self,
+        *,
+        root: Path,
+        path: Path,
+        metadata=None,
+    ) -> PhotoAssetCandidate:
+        del root, metadata
+        return PhotoAssetCandidate(
+            external_id=path.resolve().as_posix(),
+            media_type="photo",
+            timestamp=datetime(2024, 1, 1, 0, 0, tzinfo=UTC),
+            summary=path.stem,
+            latitude=None,
+            longitude=None,
+            creator_name=None,
+            tag_paths=(),
+            asset_tag_paths=(),
+            persons=(),
+            metadata_json={"name": path.name},
+        )
+
+
+class _HeartbeatConnector(PhotoConnector):
+    """Test connector that advances a fake clock during discovery."""
+
+    def __init__(self, *, clock: "_FakeClock") -> None:
+        self._clock = clock
+
+    def discover_paths(
+        self,
+        root: Path,
+        *,
+        on_path_discovered=None,
+    ) -> list[Path]:
+        paths = [root / "image-0.jpg", root / "image-1.jpg", root / "image-2.jpg"]
+        for index, path in enumerate(paths, start=1):
+            if index > 1:
+                self._clock.advance(seconds=11)
+            if on_path_discovered is not None:
+                on_path_discovered(path, index)
+        return paths
+
+    def extract_metadata_by_path(self, *, paths: list[Path], on_batch_progress=None):
+        del on_batch_progress
+        return {path.resolve().as_posix(): {} for path in paths}
+
+    def build_asset_candidate(
+        self,
+        *,
+        root: Path,
+        path: Path,
+        metadata=None,
+    ) -> PhotoAssetCandidate:
+        del root, metadata
+        return PhotoAssetCandidate(
+            external_id=path.resolve().as_posix(),
+            media_type="photo",
+            timestamp=datetime(2024, 1, 1, 0, 0, tzinfo=UTC),
+            summary=path.name,
+            latitude=None,
+            longitude=None,
+            creator_name=None,
+            tag_paths=(),
+            asset_tag_paths=(),
+            persons=(),
+            metadata_json={"path": path.name},
+        )
+
+
+class _FakeClock:
+    """Simple fake monotonic and wall clock for heartbeat tests."""
+
+    def __init__(self) -> None:
+        self._seconds = 0.0
+
+    def advance(self, *, seconds: float) -> None:
+        self._seconds += seconds
+
+    def now(self) -> datetime:
+        return datetime(2026, 1, 1, tzinfo=UTC) + timedelta(seconds=self._seconds)
+
+    def monotonic(self) -> float:
+        return self._seconds
 
 
 def _create_runtime(*, workspace_root: Path, photos_root: Path):

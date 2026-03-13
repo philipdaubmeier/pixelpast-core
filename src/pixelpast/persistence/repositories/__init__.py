@@ -2,6 +2,7 @@
 
 from pixelpast.persistence.repositories.canonical import (
     AssetRepository,
+    AssetUpsertResult,
     ImportRunRepository,
     PersonRepository,
     SourceRepository,
@@ -27,6 +28,7 @@ from pixelpast.persistence.repositories.timeline_read import (
 
 __all__ = [
     "AssetRepository",
+    "AssetUpsertResult",
     "CanonicalTimelineRepository",
     "DayActivityItemSnapshot",
     "DayMapPointSnapshot",
