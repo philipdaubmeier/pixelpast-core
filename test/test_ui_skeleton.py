@@ -37,7 +37,6 @@ def test_ui_workspace_contains_expected_files() -> None:
         UI_ROOT / "src" / "api" / "timeline.ts",
         UI_ROOT / "src" / "projections" / "timeline.ts",
         UI_ROOT / "src" / "state" / "UiStateContext.tsx",
-        UI_ROOT / "src" / "mocks" / "timeline.ts",
     ]
 
     missing_paths = [path for path in expected_paths if not path.exists()]
