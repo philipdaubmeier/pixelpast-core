@@ -18,13 +18,14 @@ The demo provider should serve the same public response contracts as the
 database-backed implementation for:
 
 - `GET /exploration`
-- `GET /days/{date}/context`
+- `GET /days/context?start=<date>&end=<date>`
 
 The demo output should remain meaningfully explorable and cover:
 
 - multiple full years
 - non-trivial persons and tags
 - map points with real coordinates
+- dense per-day hover context across bounded ranges
 - all four current view modes
 
 The provider should be:
@@ -54,6 +55,8 @@ Once this exists:
 - the Python API can serve high-quality demo exploration data without a Node
   mock server
 - demo responses use the exact same schemas as real responses
+- the demo provider supports bounded range hover-context preload responses, not
+  only single-day lookups
 - demo output is deterministic across runs
 - the current UI can remain meaningfully explorable against demo data
 - TypeScript runtime mocks are no longer required as a live application data
@@ -67,3 +70,7 @@ Once this exists:
 This task exists to remove duplicate runtime mock ownership.
 If frontend tests later need fixtures, keep them narrow and test-only rather
 than using them as the live application data source.
+
+The demo provider must follow the same range-based hover preload contract as
+the real API so the UI can exercise caching and visible-window prefetch
+behavior consistently in both modes.
