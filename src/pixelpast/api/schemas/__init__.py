@@ -1,6 +1,10 @@
 """Explicit request and response schemas for the REST API."""
 
 from pixelpast.api.schemas.timeline import (
+    DayContextDay,
+    DayContextMapPoint,
+    DayContextResponse,
+    DayContextSummaryCounts,
     ExplorationDay,
     ExplorationPerson,
     ExplorationRange,
@@ -16,6 +20,10 @@ from pixelpast.api.schemas.timeline import (
 
 __all__ = [
     "DayAssetItem",
+    "DayContextDay",
+    "DayContextMapPoint",
+    "DayContextResponse",
+    "DayContextSummaryCounts",
     "DayDetailResponse",
     "DayEventItem",
     "ExplorationDay",

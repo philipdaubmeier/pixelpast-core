@@ -31,6 +31,11 @@ class Settings(BaseSettings):
         default=None,
         description="Root directory for the photo ingestion connector.",
     )
+    day_context_max_days: int = Field(
+        default=366,
+        ge=1,
+        description="Maximum inclusive day count allowed for /days/context requests.",
+    )
 
 
 @lru_cache(maxsize=1)

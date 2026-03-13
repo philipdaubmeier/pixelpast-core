@@ -367,6 +367,362 @@ def test_exploration_endpoint_rejects_partial_explicit_range() -> None:
         shutil.rmtree(workspace_root, ignore_errors=True)
 
 
+def test_day_context_endpoint_returns_dense_empty_range() -> None:
+    workspace_root = _create_workspace_dir(prefix="timeline-api-day-context-empty")
+    runtime = None
+    try:
+        runtime = _create_runtime(workspace_root=workspace_root)
+        app = create_app(settings=runtime.settings)
+
+        with TestClient(app) as client:
+            response = client.get("/days/context?start=2024-01-01&end=2024-01-03")
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "range": {
+                "start": "2024-01-01",
+                "end": "2024-01-03",
+            },
+            "days": [
+                {
+                    "date": "2024-01-01",
+                    "persons": [],
+                    "tags": [],
+                    "map_points": [],
+                    "summary_counts": {
+                        "events": 0,
+                        "assets": 0,
+                        "places": 0,
+                    },
+                },
+                {
+                    "date": "2024-01-02",
+                    "persons": [],
+                    "tags": [],
+                    "map_points": [],
+                    "summary_counts": {
+                        "events": 0,
+                        "assets": 0,
+                        "places": 0,
+                    },
+                },
+                {
+                    "date": "2024-01-03",
+                    "persons": [],
+                    "tags": [],
+                    "map_points": [],
+                    "summary_counts": {
+                        "events": 0,
+                        "assets": 0,
+                        "places": 0,
+                    },
+                },
+            ],
+        }
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_day_context_endpoint_returns_dense_mixed_context_range() -> None:
+    workspace_root = _create_workspace_dir(prefix="timeline-api-day-context-mixed")
+    runtime = None
+    try:
+        runtime = _create_runtime(workspace_root=workspace_root)
+
+        with runtime.session_factory() as session:
+            source = Source(name="Calendar", type="calendar", config={})
+            anna = Person(
+                name="Anna",
+                aliases=None,
+                metadata_json={"role": "Family"},
+            )
+            ben = Person(
+                name="Ben",
+                aliases=None,
+                metadata_json={"role": "Friend"},
+            )
+            milo = Person(
+                name="Milo",
+                aliases=None,
+                metadata_json=None,
+            )
+            project_tag = Tag(
+                label="Project Apollo",
+                path="projects/apollo",
+                metadata_json=None,
+            )
+            travel_tag = Tag(
+                label="Travel",
+                path="travel",
+                metadata_json=None,
+            )
+            family_tag = Tag(
+                label="Family",
+                path="people/family",
+                metadata_json=None,
+            )
+            session.add_all(
+                [
+                    source,
+                    anna,
+                    ben,
+                    milo,
+                    project_tag,
+                    travel_tag,
+                    family_tag,
+                ]
+            )
+            session.flush()
+
+            mixed_event = Event(
+                source_id=source.id,
+                type="calendar",
+                timestamp_start=datetime(2024, 1, 2, 9, 0, tzinfo=UTC),
+                timestamp_end=None,
+                title="City walk",
+                summary=None,
+                latitude=52.52,
+                longitude=13.405,
+                raw_payload={},
+                derived_payload={},
+            )
+            mixed_asset = Asset(
+                external_id="asset-museum",
+                media_type="photo",
+                timestamp=datetime(2024, 1, 2, 10, 30, tzinfo=UTC),
+                latitude=48.8566,
+                longitude=2.3522,
+                metadata_json={"label": "Museum"},
+            )
+            mixed_asset_unlabeled = Asset(
+                external_id="asset-unlabeled",
+                media_type="photo",
+                timestamp=datetime(2024, 1, 2, 11, 0, tzinfo=UTC),
+                latitude=41.9028,
+                longitude=12.4964,
+                metadata_json={},
+            )
+            event_only_day = Event(
+                source_id=source.id,
+                type="music_play",
+                timestamp_start=datetime(2024, 1, 3, 8, 0, tzinfo=UTC),
+                timestamp_end=None,
+                title="Morning playlist",
+                summary=None,
+                latitude=None,
+                longitude=None,
+                raw_payload={},
+                derived_payload={},
+            )
+            asset_only_day = Asset(
+                external_id="asset-day-four",
+                media_type="video",
+                timestamp=datetime(2024, 1, 4, 15, 45, tzinfo=UTC),
+                latitude=40.7128,
+                longitude=-74.006,
+                metadata_json={},
+            )
+            session.add_all(
+                [
+                    mixed_event,
+                    mixed_asset,
+                    mixed_asset_unlabeled,
+                    event_only_day,
+                    asset_only_day,
+                ]
+            )
+            session.flush()
+
+            session.add_all(
+                [
+                    EventPerson(event_id=mixed_event.id, person_id=anna.id),
+                    AssetPerson(asset_id=mixed_asset.id, person_id=ben.id),
+                    AssetPerson(asset_id=mixed_asset_unlabeled.id, person_id=anna.id),
+                    EventPerson(event_id=event_only_day.id, person_id=anna.id),
+                    AssetPerson(asset_id=asset_only_day.id, person_id=milo.id),
+                    EventTag(event_id=mixed_event.id, tag_id=project_tag.id),
+                    AssetTag(asset_id=mixed_asset.id, tag_id=travel_tag.id),
+                    AssetTag(asset_id=mixed_asset_unlabeled.id, tag_id=project_tag.id),
+                    EventTag(event_id=event_only_day.id, tag_id=travel_tag.id),
+                    AssetTag(asset_id=asset_only_day.id, tag_id=family_tag.id),
+                ]
+            )
+            session.commit()
+
+        app = create_app(settings=runtime.settings)
+        with TestClient(app) as client:
+            response = client.get("/days/context?start=2024-01-01&end=2024-01-04")
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "range": {
+                "start": "2024-01-01",
+                "end": "2024-01-04",
+            },
+            "days": [
+                {
+                    "date": "2024-01-01",
+                    "persons": [],
+                    "tags": [],
+                    "map_points": [],
+                    "summary_counts": {
+                        "events": 0,
+                        "assets": 0,
+                        "places": 0,
+                    },
+                },
+                {
+                    "date": "2024-01-02",
+                    "persons": [
+                        {
+                            "id": 1,
+                            "name": "Anna",
+                            "role": "Family",
+                        },
+                        {
+                            "id": 2,
+                            "name": "Ben",
+                            "role": "Friend",
+                        },
+                    ],
+                    "tags": [
+                        {
+                            "path": "projects/apollo",
+                            "label": "Project Apollo",
+                        },
+                        {
+                            "path": "travel",
+                            "label": "Travel",
+                        },
+                    ],
+                    "map_points": [
+                        {
+                            "id": "event:1",
+                            "label": "City walk",
+                            "latitude": 52.52,
+                            "longitude": 13.405,
+                        },
+                        {
+                            "id": "asset:1",
+                            "label": "Museum",
+                            "latitude": 48.8566,
+                            "longitude": 2.3522,
+                        },
+                        {
+                            "id": "asset:2",
+                            "label": "asset-unlabeled",
+                            "latitude": 41.9028,
+                            "longitude": 12.4964,
+                        },
+                    ],
+                    "summary_counts": {
+                        "events": 1,
+                        "assets": 2,
+                        "places": 3,
+                    },
+                },
+                {
+                    "date": "2024-01-03",
+                    "persons": [
+                        {
+                            "id": 1,
+                            "name": "Anna",
+                            "role": "Family",
+                        },
+                    ],
+                    "tags": [
+                        {
+                            "path": "travel",
+                            "label": "Travel",
+                        },
+                    ],
+                    "map_points": [],
+                    "summary_counts": {
+                        "events": 1,
+                        "assets": 0,
+                        "places": 0,
+                    },
+                },
+                {
+                    "date": "2024-01-04",
+                    "persons": [
+                        {
+                            "id": 3,
+                            "name": "Milo",
+                            "role": None,
+                        },
+                    ],
+                    "tags": [
+                        {
+                            "path": "people/family",
+                            "label": "Family",
+                        },
+                    ],
+                    "map_points": [
+                        {
+                            "id": "asset:3",
+                            "label": "asset-day-four",
+                            "latitude": 40.7128,
+                            "longitude": -74.006,
+                        },
+                    ],
+                    "summary_counts": {
+                        "events": 0,
+                        "assets": 1,
+                        "places": 1,
+                    },
+                },
+            ],
+        }
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_day_context_endpoint_rejects_invalid_range() -> None:
+    workspace_root = _create_workspace_dir(prefix="timeline-api-day-context-invalid")
+    runtime = None
+    try:
+        runtime = _create_runtime(workspace_root=workspace_root)
+        app = create_app(settings=runtime.settings)
+
+        with TestClient(app) as client:
+            response = client.get("/days/context?start=2024-01-04&end=2024-01-01")
+
+        assert response.status_code == 400
+        assert response.json() == {
+            "detail": "start must be less than or equal to end",
+        }
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_day_context_endpoint_rejects_ranges_beyond_configured_limit() -> None:
+    workspace_root = _create_workspace_dir(prefix="timeline-api-day-context-limit")
+    runtime = None
+    try:
+        runtime = _create_runtime(workspace_root=workspace_root)
+        limited_settings = runtime.settings.model_copy(update={"day_context_max_days": 2})
+        app = create_app(settings=limited_settings)
+
+        with TestClient(app) as client:
+            response = client.get("/days/context?start=2024-01-01&end=2024-01-03")
+
+        assert response.status_code == 400
+        assert response.json() == {
+            "detail": "requested range exceeds maximum day context window of 2 days",
+        }
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
 def test_heatmap_endpoint_returns_empty_range() -> None:
     workspace_root = _create_workspace_dir(prefix="timeline-api-heatmap-empty")
     runtime = None

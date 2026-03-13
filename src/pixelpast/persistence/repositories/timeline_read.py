@@ -68,6 +68,21 @@ class DayTagLinkSnapshot:
 
 
 @dataclass(slots=True, frozen=True)
+class DayMapPointSnapshot:
+    """Serializable map point placement for one UTC day."""
+
+    day: date
+    item_type: str
+    item_id: int
+    timestamp: datetime
+    label: str | None
+    fallback_type: str
+    fallback_identifier: str | None
+    latitude: float
+    longitude: float
+
+
+@dataclass(slots=True, frozen=True)
 class DayTimelineItemSnapshot:
     """Serializable read-model payload for a day-detail item."""
 
@@ -229,6 +244,33 @@ class ExplorationReadRepository:
             key=lambda snapshot: (snapshot.day, snapshot.tag_path, snapshot.tag_label),
         )
 
+    def list_map_points(
+        self,
+        *,
+        start_date: date,
+        end_date: date,
+    ) -> list[DayMapPointSnapshot]:
+        """Return coordinate-bearing canonical items in range."""
+
+        return sorted(
+            [
+                *self._list_event_map_points(
+                    start_date=start_date,
+                    end_date=end_date,
+                ),
+                *self._list_asset_map_points(
+                    start_date=start_date,
+                    end_date=end_date,
+                ),
+            ],
+            key=lambda snapshot: (
+                snapshot.day,
+                snapshot.timestamp,
+                snapshot.item_type,
+                snapshot.item_id,
+            ),
+        )
+
     def _list_candidate_bounds_from_aggregates(self) -> list[tuple[date, date]]:
         """Return aggregate date bounds when daily aggregates exist."""
 
@@ -381,6 +423,99 @@ class ExplorationReadRepository:
             for timestamp, tag_path, tag_label in rows
         ]
 
+    def _list_event_map_points(
+        self,
+        *,
+        start_date: date,
+        end_date: date,
+    ) -> list[DayMapPointSnapshot]:
+        """Return coordinate-bearing canonical events in range."""
+
+        statement = _apply_datetime_range(
+            select(
+                Event.id,
+                Event.timestamp_start,
+                Event.title,
+                Event.type,
+                Event.latitude,
+                Event.longitude,
+            )
+            .where(
+                Event.latitude.is_not(None),
+                Event.longitude.is_not(None),
+            )
+            .order_by(Event.timestamp_start, Event.id),
+            column=Event.timestamp_start,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        rows = self._session.execute(statement)
+        return [
+            DayMapPointSnapshot(
+                day=timestamp.date(),
+                item_type="event",
+                item_id=event_id,
+                timestamp=timestamp,
+                label=title,
+                fallback_type=event_type,
+                fallback_identifier=None,
+                latitude=latitude,
+                longitude=longitude,
+            )
+            for event_id, timestamp, title, event_type, latitude, longitude in rows
+        ]
+
+    def _list_asset_map_points(
+        self,
+        *,
+        start_date: date,
+        end_date: date,
+    ) -> list[DayMapPointSnapshot]:
+        """Return coordinate-bearing canonical assets in range."""
+
+        statement = _apply_datetime_range(
+            select(
+                Asset.id,
+                Asset.timestamp,
+                Asset.media_type,
+                Asset.external_id,
+                Asset.metadata_json,
+                Asset.latitude,
+                Asset.longitude,
+            )
+            .where(
+                Asset.latitude.is_not(None),
+                Asset.longitude.is_not(None),
+            )
+            .order_by(Asset.timestamp, Asset.id),
+            column=Asset.timestamp,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        rows = self._session.execute(statement)
+        return [
+            DayMapPointSnapshot(
+                day=timestamp.date(),
+                item_type="asset",
+                item_id=asset_id,
+                timestamp=timestamp,
+                label=_extract_asset_label(metadata_json),
+                fallback_type=media_type,
+                fallback_identifier=external_id,
+                latitude=latitude,
+                longitude=longitude,
+            )
+            for (
+                asset_id,
+                timestamp,
+                media_type,
+                external_id,
+                metadata_json,
+                latitude,
+                longitude,
+            ) in rows
+        ]
+
 
 class DayTimelineRepository:
     """Read canonical events and assets for a unified day view."""
@@ -476,3 +611,17 @@ def _extract_person_role(metadata_json: object) -> str | None:
 
     role = metadata_json.get("role")
     return role if isinstance(role, str) and role else None
+
+
+def _extract_asset_label(metadata_json: object) -> str | None:
+    """Extract the first useful display label from asset metadata."""
+
+    if not isinstance(metadata_json, dict):
+        return None
+
+    for key in ("label", "title", "filename", "original_filename"):
+        value = metadata_json.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+
+    return None

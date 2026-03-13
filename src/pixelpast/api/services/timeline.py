@@ -8,6 +8,10 @@ from typing import Final
 
 from pixelpast.api.schemas import (
     DayAssetItem,
+    DayContextDay,
+    DayContextMapPoint,
+    DayContextResponse,
+    DayContextSummaryCounts,
     DayDetailResponse,
     DayEventItem,
     ExplorationDay,
@@ -21,6 +25,7 @@ from pixelpast.api.schemas import (
 )
 from pixelpast.persistence.repositories import (
     DayActivityItemSnapshot,
+    DayMapPointSnapshot,
     DayPersonLinkSnapshot,
     DayTagLinkSnapshot,
     DailyAggregateReadRepository,
@@ -95,6 +100,54 @@ class TimelineQueryService:
         return DayDetailResponse(
             date=day,
             items=[self._map_day_item(snapshot) for snapshot in snapshots],
+        )
+
+    def get_day_context(self, *, start: date, end: date) -> DayContextResponse:
+        """Return a dense hover-context projection for an inclusive date range."""
+
+        event_days = self._exploration_repository.list_event_days(
+            start_date=start,
+            end_date=end,
+        )
+        asset_days = self._exploration_repository.list_asset_days(
+            start_date=start,
+            end_date=end,
+        )
+        person_links = self._exploration_repository.list_person_links(
+            start_date=start,
+            end_date=end,
+        )
+        tag_links = self._exploration_repository.list_tag_links(
+            start_date=start,
+            end_date=end,
+        )
+        map_points = self._exploration_repository.list_map_points(
+            start_date=start,
+            end_date=end,
+        )
+
+        event_counts = self._count_items_by_day(event_days)
+        asset_counts = self._count_items_by_day(asset_days)
+        persons_by_day = self._build_day_context_persons(person_links)
+        tags_by_day = self._build_day_context_tags(tag_links)
+        map_points_by_day = self._build_day_context_map_points(map_points)
+
+        return DayContextResponse(
+            range=ExplorationRange(start=start, end=end),
+            days=[
+                DayContextDay(
+                    date=current_day,
+                    persons=persons_by_day.get(current_day, []),
+                    tags=tags_by_day.get(current_day, []),
+                    map_points=map_points_by_day.get(current_day, []),
+                    summary_counts=DayContextSummaryCounts(
+                        events=event_counts.get(current_day, 0),
+                        assets=asset_counts.get(current_day, 0),
+                        places=len(map_points_by_day.get(current_day, [])),
+                    ),
+                )
+                for current_day in _iter_inclusive_dates(start, end)
+            ],
         )
 
     def get_exploration(
@@ -276,6 +329,74 @@ class TimelineQueryService:
             tags,
         )
 
+    def _build_day_context_persons(
+        self,
+        links: list[DayPersonLinkSnapshot],
+    ) -> dict[date, list[ExplorationPerson]]:
+        """Build sorted per-day person payloads for hover context."""
+
+        persons_by_day: dict[date, dict[int, ExplorationPerson]] = defaultdict(dict)
+
+        for link in links:
+            persons_by_day[link.day].setdefault(
+                link.person_id,
+                ExplorationPerson(
+                    id=link.person_id,
+                    name=link.person_name,
+                    role=link.person_role,
+                ),
+            )
+
+        return {
+            day: sorted(
+                persons.values(),
+                key=lambda person: (person.name.casefold(), person.id),
+            )
+            for day, persons in persons_by_day.items()
+        }
+
+    def _build_day_context_tags(
+        self,
+        links: list[DayTagLinkSnapshot],
+    ) -> dict[date, list[ExplorationTag]]:
+        """Build sorted per-day tag payloads for hover context."""
+
+        tags_by_day: dict[date, dict[str, ExplorationTag]] = defaultdict(dict)
+
+        for link in links:
+            tags_by_day[link.day].setdefault(
+                link.tag_path,
+                ExplorationTag(path=link.tag_path, label=link.tag_label),
+            )
+
+        return {
+            day: sorted(
+                tags.values(),
+                key=lambda tag: (tag.path, tag.label.casefold()),
+            )
+            for day, tags in tags_by_day.items()
+        }
+
+    def _build_day_context_map_points(
+        self,
+        snapshots: list[DayMapPointSnapshot],
+    ) -> dict[date, list[DayContextMapPoint]]:
+        """Build sorted per-day map points for hover context."""
+
+        points_by_day: dict[date, list[DayContextMapPoint]] = defaultdict(list)
+
+        for snapshot in snapshots:
+            points_by_day[snapshot.day].append(
+                DayContextMapPoint(
+                    id=f"{snapshot.item_type}:{snapshot.item_id}",
+                    label=_resolve_map_point_label(snapshot),
+                    latitude=snapshot.latitude,
+                    longitude=snapshot.longitude,
+                )
+            )
+
+        return dict(points_by_day)
+
     def _build_exploration_day(
         self,
         *,
@@ -338,3 +459,28 @@ def _get_activity_color_value(activity_score: int) -> str:
     if activity_score < 70:
         return "medium"
     return "high"
+
+
+def _resolve_map_point_label(snapshot: DayMapPointSnapshot) -> str:
+    """Return a stable display label for a coordinate-bearing canonical item."""
+
+    if snapshot.label is not None:
+        normalized = snapshot.label.strip()
+        if normalized:
+            return normalized
+
+    if snapshot.fallback_identifier is not None:
+        normalized_identifier = snapshot.fallback_identifier.strip()
+        if normalized_identifier:
+            return normalized_identifier
+
+    return f"{_humanize_label(snapshot.fallback_type)} #{snapshot.item_id}"
+
+
+def _humanize_label(value: str) -> str:
+    """Convert a canonical type token into a lightweight display label."""
+
+    parts = [part for part in value.replace("-", "_").split("_") if part]
+    if not parts:
+        return "Item"
+    return " ".join(part.capitalize() for part in parts)

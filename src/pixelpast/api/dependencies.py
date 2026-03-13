@@ -5,6 +5,8 @@ from collections.abc import Generator
 from fastapi import Request
 from sqlalchemy.orm import Session, sessionmaker
 
+from pixelpast.shared.settings import Settings
+
 
 def create_db_session_dependency(
     session_factory: sessionmaker[Session],
@@ -23,3 +25,9 @@ def get_db_session(request: Request) -> Generator[Session, None, None]:
 
     session_factory: sessionmaker[Session] = request.app.state.session_factory
     yield from create_db_session_dependency(session_factory)
+
+
+def get_app_settings(request: Request) -> Settings:
+    """Return the runtime settings attached to the FastAPI application."""
+
+    return request.app.state.settings
