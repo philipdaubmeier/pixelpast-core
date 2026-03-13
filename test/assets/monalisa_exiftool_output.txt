@@ -1,0 +1,54 @@
+======== monalisa-1.jpg
+Title                           : Title 1
+Object Name                     : Title 1
+Date/Time Original              : 2020:01:01 02:03:40
+Region Name                     : Mona Lisa
+Region Type                     : Face
+Weighted Flat Subject           : Mona Lisa, Persons, who, events, München, vacation
+Hierarchical Subject            : events, events|vacation|München, who|Persons|Mona Lisa
+Subject                         : Mona Lisa, München, events, vacation
+Keywords                        : Mona Lisa, München, events, vacation
+Creator                         : Leonardo da Vinci
+By-line                         : Leonardo da Vinci
+Artist                          : Leonardo da Vinci
+GPS Latitude Ref                : North
+GPS Longitude Ref               : East
+GPS Version ID                  : 2.2.0.0
+GPS Latitude                    : 48 deg 51' 42.81" N
+GPS Longitude                   : 2 deg 20' 9.19" E
+GPS Position                    : 48 deg 51' 42.81" N, 2 deg 20' 9.19" E
+======== monalisa-2.jpg
+Title                           : Title 2
+Object Name                     : Title 2
+Date/Time Original              : 2020:01:01 02:03:40
+GPS Latitude Ref                : North
+GPS Longitude Ref               : East
+Region Name                     : Mona Lisa, John Doe
+Region Type                     : Face, Face
+Weighted Flat Subject           : Mona Lisa, Persons, who, John Doe, vacation, events, San Marino, Italy
+Hierarchical Subject            : events|vacation, events|vacation|Italy|San Marino, who|Persons|John Doe, who|Persons|Mona Lisa
+Subject                         : Italy, John Doe, Mona Lisa, San Marino, events, vacation
+Keywords                        : Italy, John Doe, Mona Lisa, San Marino, events, vacation
+Creator                         : Leonardo da Vinci
+By-line                         : Leonardo da Vinci
+Artist                          : Leonardo da Vinci
+GPS Version ID                  : 2.2.0.0
+GPS Latitude                    : 48 deg 51' 37.43" N
+GPS Longitude                   : 2 deg 20' 4.51" E
+GPS Position                    : 48 deg 51' 37.43" N, 2 deg 20' 4.51" E
+======== monalisa-3.jpg
+Title                           : Title 3 äöüßÄÖÜ
+Object Name                     : Title 3 äöüßÄÖÜ
+Date/Time Original              : 2020:01:01 02:03:40
+Region Name                     : John Doe, John Doe, Mona Lisa
+Region Type                     : Face, Face, Face
+Weighted Flat Subject           : John Doe, Persons, who, Mona Lisa, München, vacation, events, wedding
+Hierarchical Subject            : events|vacation|München, events|wedding, who|Persons|John Doe, who|Persons|Mona Lisa
+Subject                         : John Doe, Mona Lisa, München, wedding
+Keywords                        : John Doe, Mona Lisa, München, wedding
+Creator                         : Leonardo da Vinci
+By-line                         : Leonardo da Vinci
+Artist                          : Leonardo da Vinci
+GPS Latitude                    : 48 deg 51' 37.38" N
+GPS Longitude                   : 2 deg 20' 18.82" E
+GPS Position                    : 48 deg 51' 37.38" N, 2 deg 20' 18.82" E
