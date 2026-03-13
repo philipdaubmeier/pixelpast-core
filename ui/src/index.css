@@ -23,11 +23,12 @@
 html,
 body,
 #root {
-  min-height: 100%;
+  height: 100%;
 }
 
 body {
   margin: 0;
+  overflow: hidden;
   background:
     radial-gradient(circle at top left, rgba(255, 255, 255, 0.65), transparent 32%),
     linear-gradient(180deg, #f8f2e8 0%, #f1e4d1 100%);
@@ -67,6 +68,27 @@ select {
   .panel-copy {
     color: var(--pp-muted);
     @apply text-sm leading-6;
+  }
+
+  .thin-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(98, 80, 46, 0.32) transparent;
+  }
+
+  .thin-scrollbar::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  .thin-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .thin-scrollbar::-webkit-scrollbar-thumb {
+    border: 2px solid transparent;
+    border-radius: 9999px;
+    background-color: rgba(98, 80, 46, 0.28);
+    background-clip: padding-box;
   }
 
   .subtle-grid {

@@ -27,12 +27,12 @@ export const YearGrid = forwardRef<HTMLElement, YearGridProps>(function YearGrid
   return (
     <section
       ref={ref}
-      className="grid scroll-mt-6 grid-cols-[44px_minmax(0,1fr)] gap-4"
+      className="grid scroll-mt-4 grid-cols-[34px_minmax(0,1fr)] gap-2.5"
       aria-label={`Year ${year}`}
       data-year={year}
     >
       <div className="flex items-center justify-center">
-        <span className="-rotate-90 text-[11px] font-semibold uppercase tracking-[0.4em] text-slate-500">
+        <span className="-rotate-90 text-[26px] font-thin uppercase tracking-[0.12em] text-slate-600">
           {year}
         </span>
       </div>

@@ -229,12 +229,11 @@ function AppBootstrap() {
 
   if (shellState === "loading") {
     return (
-      <main className="min-h-screen p-5 lg:p-7">
-        <div className="mx-auto flex max-w-[1600px] flex-col gap-6">
+      <main className="flex h-screen items-center justify-center p-5 lg:p-7">
+        <div className="mx-auto flex w-full max-w-[56rem] flex-col gap-6">
           <section className="panel-surface min-h-[18rem] p-6">
-            <p className="panel-title">Loading</p>
             <h1 className="mt-2 text-2xl font-semibold text-slate-950">
-              Connecting the exploration shell to the Python API
+              Loading exploration
             </h1>
             <p className="mt-3 max-w-2xl text-sm text-slate-600">
               Timeline projections and filter catalogs are loading from the API.
@@ -247,10 +246,9 @@ function AppBootstrap() {
 
   if (shellState === "error") {
     return (
-      <main className="min-h-screen p-5 lg:p-7">
-        <div className="mx-auto flex max-w-[1600px] flex-col gap-6">
+      <main className="flex h-screen items-center justify-center p-5 lg:p-7">
+        <div className="mx-auto flex w-full max-w-[56rem] flex-col gap-6">
           <section className="panel-surface min-h-[18rem] p-6">
-            <p className="panel-title">Unavailable</p>
             <h1 className="mt-2 text-2xl font-semibold text-slate-950">
               The exploration shell could not load
             </h1>

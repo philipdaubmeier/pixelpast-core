@@ -37,19 +37,11 @@ export function MapPanel({
   summary,
 }: MapPanelProps) {
   return (
-    <PanelCard
-      eyebrow="Context"
-      title="Map"
-      description={
-        hoveredDate
-          ? `Subtle spatial context for ${hoveredDate}. The map supports the grid, it does not replace it.`
-          : "A quiet map surface reserved for hovered-day and filtered-location context."
-      }
-    >
+    <PanelCard title="Map">
       {hoveredDate !== null && hoverContextStatus !== "ready" ? (
         <div
           className={[
-            "mb-4 rounded-2xl border px-3 py-2 text-sm",
+            "mb-3 rounded-2xl border px-3 py-2 text-sm",
             hoverContextStatus === "error"
               ? "border-rose-200 bg-rose-50 text-rose-700"
               : "border-amber-200 bg-amber-50 text-amber-700",
@@ -69,7 +61,7 @@ export function MapPanel({
                 ? "Hover context failed to load for this day."
                 : hasPersistentFilters
               ? "No coordinates matched the current persistent filters."
-              : "Hover a day to project its coordinates here."}
+              : "No location context."}
           </div>
         ) : (
           <>
@@ -90,30 +82,30 @@ export function MapPanel({
             ))}
           </>
         )}
-      </div>
-      <div className="mt-4 grid grid-cols-3 gap-3 text-center">
-        <div className="rounded-2xl bg-white/60 px-3 py-3">
-          <div className="text-lg font-semibold text-slate-900">
-            {summary?.events ?? 0}
+        <div className="pointer-events-none absolute inset-x-3 bottom-3 grid grid-cols-3 gap-2 text-center">
+          <div className="rounded-2xl bg-[color:rgba(255,252,247,0.9)] px-2 py-2 shadow-[0_8px_24px_rgba(61,44,15,0.08)] backdrop-blur-sm">
+            <div className="text-base font-semibold text-slate-900">
+              {summary?.events ?? 0}
+            </div>
+            <div className="text-[10px] uppercase tracking-[0.2em] text-slate-500">
+              Events
+            </div>
           </div>
-          <div className="text-xs uppercase tracking-[0.22em] text-slate-500">
-            Events
+          <div className="rounded-2xl bg-[color:rgba(255,252,247,0.9)] px-2 py-2 shadow-[0_8px_24px_rgba(61,44,15,0.08)] backdrop-blur-sm">
+            <div className="text-base font-semibold text-slate-900">
+              {summary?.assets ?? 0}
+            </div>
+            <div className="text-[10px] uppercase tracking-[0.2em] text-slate-500">
+              Assets
+            </div>
           </div>
-        </div>
-        <div className="rounded-2xl bg-white/60 px-3 py-3">
-          <div className="text-lg font-semibold text-slate-900">
-            {summary?.assets ?? 0}
-          </div>
-          <div className="text-xs uppercase tracking-[0.22em] text-slate-500">
-            Assets
-          </div>
-        </div>
-        <div className="rounded-2xl bg-white/60 px-3 py-3">
-          <div className="text-lg font-semibold text-slate-900">
-            {summary?.places ?? 0}
-          </div>
-          <div className="text-xs uppercase tracking-[0.22em] text-slate-500">
-            Places
+          <div className="rounded-2xl bg-[color:rgba(255,252,247,0.9)] px-2 py-2 shadow-[0_8px_24px_rgba(61,44,15,0.08)] backdrop-blur-sm">
+            <div className="text-base font-semibold text-slate-900">
+              {summary?.places ?? 0}
+            </div>
+            <div className="text-[10px] uppercase tracking-[0.2em] text-slate-500">
+              Places
+            </div>
           </div>
         </div>
       </div>

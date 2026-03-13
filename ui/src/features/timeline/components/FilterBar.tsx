@@ -27,16 +27,16 @@ export function FilterBar({
   onClear,
 }: FilterBarProps) {
   return (
-    <div className="flex flex-wrap items-center gap-3">
-      <div className="rounded-full bg-white/70 px-4 py-2 text-sm text-slate-700">
+    <div className="flex items-center gap-2">
+      <div className="rounded-full bg-white/70 px-3 py-1.5 text-[12px] text-slate-700">
         View: {activeViewModeLabel}
       </div>
-      <div className="rounded-full bg-white/70 px-4 py-2 text-sm text-slate-700">
+      <div className="rounded-full bg-white/70 px-3 py-1.5 text-[12px] text-slate-700">
         {hasPersistentFilters
           ? `${matchingDayCount} matching day${matchingDayCount === 1 ? "" : "s"}`
           : "No persistent filters active"}
       </div>
-      <div className="rounded-full bg-white/70 px-4 py-2 text-sm text-slate-700">
+      <div className="rounded-full bg-white/70 px-3 py-1.5 text-[12px] text-slate-700">
         Hover: {hoveredDate ?? "none"}
       </div>
       {selectedPersons.map((person) => (
@@ -44,7 +44,7 @@ export function FilterBar({
           key={person.id}
           type="button"
           onClick={() => onRemovePerson(person.id)}
-          className="rounded-full border border-[color:var(--pp-border)] bg-white px-4 py-2 text-sm text-slate-700 transition hover:border-slate-900 hover:text-slate-900"
+          className="rounded-full border border-[color:var(--pp-border)] bg-white px-3 py-1.5 text-[12px] text-slate-700 transition hover:border-slate-900 hover:text-slate-900"
         >
           Person: {person.name} x
         </button>
@@ -54,7 +54,7 @@ export function FilterBar({
           key={tag.path}
           type="button"
           onClick={() => onRemoveTag(tag.path)}
-          className="rounded-full border border-[color:var(--pp-border)] bg-white px-4 py-2 text-sm text-slate-700 transition hover:border-slate-900 hover:text-slate-900"
+          className="rounded-full border border-[color:var(--pp-border)] bg-white px-3 py-1.5 text-[12px] text-slate-700 transition hover:border-slate-900 hover:text-slate-900"
         >
           Tag: {tag.label} x
         </button>
@@ -63,7 +63,7 @@ export function FilterBar({
         type="button"
         onClick={onClear}
         disabled={!hasPersistentFilters}
-        className="rounded-full border border-[color:var(--pp-border)] px-4 py-2 text-sm text-slate-700 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-45"
+        className="rounded-full border border-[color:var(--pp-border)] px-3 py-1.5 text-[12px] text-slate-700 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-45"
       >
         Clear selections
       </button>

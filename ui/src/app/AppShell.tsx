@@ -62,22 +62,22 @@ export function AppShell({
     viewModes.find((viewMode) => viewMode.id === state.viewMode) ?? null;
 
   return (
-    <main className="min-h-screen p-5 lg:p-7">
-      <div className="mx-auto flex max-w-[1600px] flex-col gap-6">
-        <TopBar
-          viewModes={viewModes}
-          activeViewMode={state.viewMode}
-          activeViewModeLabel={activeViewMode?.label ?? state.viewMode}
-          selectedPersons={exploration.selectedPersons}
-          selectedTags={exploration.selectedTags}
-          matchingDayCount={exploration.matchingDayCount}
-          hasPersistentFilters={exploration.hasPersistentFilters}
-          hoveredDate={state.hoveredDate}
-          onSelectViewMode={setViewMode}
-          onTogglePerson={togglePerson}
-          onToggleTag={toggleTag}
-          onClearSelections={clearSelections}
-        />
+    <main className="h-screen overflow-hidden">
+      <TopBar
+        viewModes={viewModes}
+        activeViewMode={state.viewMode}
+        activeViewModeLabel={activeViewMode?.label ?? state.viewMode}
+        selectedPersons={exploration.selectedPersons}
+        selectedTags={exploration.selectedTags}
+        matchingDayCount={exploration.matchingDayCount}
+        hasPersistentFilters={exploration.hasPersistentFilters}
+        hoveredDate={state.hoveredDate}
+        onSelectViewMode={setViewMode}
+        onTogglePerson={togglePerson}
+        onToggleTag={toggleTag}
+        onClearSelections={clearSelections}
+      />
+      <div className="h-full px-2 pb-2 pt-[5rem] lg:px-2.5 lg:pb-2.5 lg:pt-[4.9rem]">
         <MainSplitLayout
           left={
             <LeftGridPane

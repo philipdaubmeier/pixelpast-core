@@ -121,7 +121,7 @@ export function YearGridStack({
   }, [onVisibleRangesChange, orderedYears, orderedYearsKey, scrollRoot, yearRanges]);
 
   return (
-    <div className="space-y-7">
+    <div className="space-y-[0.9rem]">
       {orderedYears.map((year) => (
         <YearGrid
           key={year}

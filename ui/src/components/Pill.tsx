@@ -19,7 +19,7 @@ export function Pill({
       type="button"
       onClick={onClick}
       className={[
-        "rounded-full border px-3 py-1.5 text-sm transition",
+        "rounded-full border px-2.5 py-1 text-[12px] leading-5 transition",
         active
           ? "border-slate-900 bg-slate-900 text-white"
           : muted

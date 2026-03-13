@@ -1,3 +1,4 @@
+import logoUrl from "../../assets/pixelpast-logo.svg";
 import { FilterBar } from "../../features/timeline/components/FilterBar";
 import { ViewModeSelector } from "../../features/timeline/components/ViewModeSelector";
 import type {
@@ -37,42 +38,31 @@ export function TopBar({
   onClearSelections,
 }: TopBarProps) {
   return (
-    <header className="panel-surface-strong flex flex-col gap-5 p-5 lg:flex-row lg:items-end lg:justify-between">
-      <div className="max-w-xl space-y-3">
-        <div>
-          <p className="panel-title">PixelPast</p>
-          <h1 className="text-3xl font-semibold tracking-tight text-slate-950">
-            Time stays visible.
-          </h1>
+    <header className="thin-scrollbar fixed inset-x-0 top-0 z-20 overflow-x-auto border-b border-[color:var(--pp-border)] bg-[color:rgba(255,249,241,0.96)] shadow-[0_10px_30px_rgba(61,44,15,0.06)] backdrop-blur-sm">
+      <div className="flex min-h-[4rem] min-w-max items-center gap-4 px-4 py-2 lg:px-5">
+        <img
+          src={logoUrl}
+          alt="PixelPast"
+          className="h-12 w-auto shrink-0 lg:h-[3.35rem]"
+        />
+        <div className="flex min-w-max items-center gap-3 lg:gap-4">
+          <ViewModeSelector
+            options={viewModes}
+            activeViewMode={activeViewMode}
+            onSelect={onSelectViewMode}
+          />
+          <FilterBar
+            activeViewModeLabel={activeViewModeLabel}
+            selectedPersons={selectedPersons}
+            selectedTags={selectedTags}
+            matchingDayCount={matchingDayCount}
+            hasPersistentFilters={hasPersistentFilters}
+            hoveredDate={hoveredDate}
+            onRemovePerson={onTogglePerson}
+            onRemoveTag={onToggleTag}
+            onClear={onClearSelections}
+          />
         </div>
-        <p className="panel-copy">
-          Desktop-first shell for the chronology grid, persistent exploration
-          controls, and context panes that react without replacing the timeline.
-        </p>
-      </div>
-      <div className="flex max-w-3xl flex-1 flex-col gap-4">
-        <ViewModeSelector
-          options={viewModes}
-          activeViewMode={activeViewMode}
-          onSelect={onSelectViewMode}
-        />
-        <FilterBar
-          activeViewModeLabel={activeViewModeLabel}
-          selectedPersons={selectedPersons}
-          selectedTags={selectedTags}
-          matchingDayCount={matchingDayCount}
-          hasPersistentFilters={hasPersistentFilters}
-          hoveredDate={hoveredDate}
-          onRemovePerson={onTogglePerson}
-          onRemoveTag={onToggleTag}
-          onClear={onClearSelections}
-        />
-        <input
-          type="text"
-          placeholder="Search and richer controls land here in later UI tasks"
-          disabled
-          className="rounded-full border border-[color:var(--pp-border)] bg-white/55 px-4 py-3 text-sm text-slate-500"
-        />
       </div>
     </header>
   );
