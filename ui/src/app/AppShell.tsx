@@ -7,6 +7,7 @@ import { PersonsPanel } from "../features/context/components/PersonsPanel";
 import { TagsPanel } from "../features/context/components/TagsPanel";
 import { buildExplorationProjection } from "../projections/exploration";
 import type {
+  DateRange,
   DayContextProjection,
   HeatmapDayProjection,
   PersonProjection,
@@ -15,6 +16,8 @@ import type {
 } from "../projections/timeline";
 import { useUiState } from "../state/UiStateContext";
 
+type HoverContextStatus = "idle" | "loading" | "ready" | "error";
+
 type AppShellProps = {
   heatmapDays: HeatmapDayProjection[];
   viewModes: ViewModeOption[];
@@ -22,6 +25,9 @@ type AppShellProps = {
   tags: TagProjection[];
   dayContextsByDate: Record<string, DayContextProjection>;
   activeDayContext: DayContextProjection | null;
+  hoverContextStatus: HoverContextStatus;
+  hoverContextError: string | null;
+  onVisibleRangesChange: (ranges: DateRange[]) => void;
 };
 
 export function AppShell({
@@ -31,6 +37,9 @@ export function AppShell({
   tags,
   dayContextsByDate,
   activeDayContext,
+  hoverContextStatus,
+  hoverContextError,
+  onVisibleRangesChange,
 }: AppShellProps) {
   const {
     state,
@@ -75,6 +84,7 @@ export function AppShell({
               days={exploration.gridDays}
               viewMode={state.viewMode}
               hoveredDate={state.hoveredDate}
+              onVisibleRangesChange={onVisibleRangesChange}
               onHover={setHoveredDate}
             />
           }
@@ -83,11 +93,15 @@ export function AppShell({
               <PersonsPanel
                 persons={exploration.visiblePersons}
                 hoveredDate={state.hoveredDate}
+                hoverContextStatus={hoverContextStatus}
+                hoverContextError={hoverContextError}
                 onTogglePerson={togglePerson}
               />
               <TagsPanel
                 tags={exploration.visibleTags}
                 hoveredDate={state.hoveredDate}
+                hoverContextStatus={hoverContextStatus}
+                hoverContextError={hoverContextError}
                 onToggleTag={toggleTag}
               />
               <MapPanel
@@ -95,6 +109,8 @@ export function AppShell({
                 mapPoints={exploration.mapPoints}
                 summary={exploration.mapSummary}
                 hasPersistentFilters={exploration.hasPersistentFilters}
+                hoverContextStatus={hoverContextStatus}
+                hoverContextError={hoverContextError}
               />
             </RightContextPane>
           }

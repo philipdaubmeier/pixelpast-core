@@ -1,5 +1,10 @@
 import type { ViewMode } from "../state/ui-state";
 
+export type DateRange = {
+  start: string;
+  end: string;
+};
+
 export type HeatmapDayProjection = {
   date: string;
   year: number;
@@ -28,8 +33,8 @@ export type TagProjection = {
 export type MapPointProjection = {
   id: string;
   label: string;
-  x: number;
-  y: number;
+  latitude: number;
+  longitude: number;
 };
 
 export type DayContextProjection = {

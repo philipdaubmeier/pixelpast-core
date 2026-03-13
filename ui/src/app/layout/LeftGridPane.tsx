@@ -1,11 +1,14 @@
+import { useState } from "react";
 import { YearGridStack } from "../../features/timeline/components/YearGridStack";
 import type { HeatmapDayRenderProjection } from "../../projections/exploration";
+import type { DateRange } from "../../projections/timeline";
 import type { ViewMode } from "../../state/ui-state";
 
 type LeftGridPaneProps = {
   days: HeatmapDayRenderProjection[];
   viewMode: ViewMode;
   hoveredDate: string | null;
+  onVisibleRangesChange: (ranges: DateRange[]) => void;
   onHover: (date: string | null) => void;
 };
 
@@ -13,8 +16,12 @@ export function LeftGridPane({
   days,
   viewMode,
   hoveredDate,
+  onVisibleRangesChange,
   onHover,
 }: LeftGridPaneProps) {
+  const [scrollContainer, setScrollContainer] = useState<HTMLDivElement | null>(
+    null,
+  );
   const years = Array.from(new Set(days.map((day) => day.year))).sort(
     (leftYear, rightYear) => leftYear - rightYear,
   );
@@ -38,6 +45,7 @@ export function LeftGridPane({
         </p>
       </div>
       <div
+        ref={setScrollContainer}
         className="h-[calc(100vh-17rem)] min-h-[32rem] overflow-y-auto pr-2"
         onMouseLeave={() => onHover(null)}
       >
@@ -45,6 +53,8 @@ export function LeftGridPane({
           days={days}
           viewMode={viewMode}
           hoveredDate={hoveredDate}
+          scrollRoot={scrollContainer}
+          onVisibleRangesChange={onVisibleRangesChange}
           onHover={onHover}
         />
       </div>

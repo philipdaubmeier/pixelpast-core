@@ -103,7 +103,7 @@ function getViewModeColorValue(
         return "high";
       }
 
-      if (day.personIds.includes("milo")) {
+      if (day.personIds.length > 0) {
         return "medium";
       }
 

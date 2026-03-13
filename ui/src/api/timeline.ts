@@ -1,99 +1,27 @@
 import type {
+  DateRange,
   DayContextProjection,
   HeatmapDayProjection,
   PersonProjection,
   TagProjection,
   ViewModeOption,
 } from "../projections/timeline";
+import {
+  timelineTransport,
+  type ApiDayContextResponse,
+  type ApiExplorationResponse,
+} from "./timelineTransport";
 
-type ExplorationBootstrapProjection = {
+export type ExplorationBootstrapProjection = {
+  range: DateRange;
   heatmapDays: HeatmapDayProjection[];
   viewModes: ViewModeOption[];
   persons: PersonProjection[];
   tags: TagProjection[];
 };
 
-type ApiExplorationResponse = {
-  range: {
-    start: string;
-    end: string;
-  };
-  view_modes: Array<{
-    id: ViewModeOption["id"];
-    label: string;
-    description: string;
-  }>;
-  persons: Array<{
-    id: number;
-    name: string;
-    role: string | null;
-  }>;
-  tags: Array<{
-    path: string;
-    label: string;
-  }>;
-  days: Array<{
-    date: string;
-    event_count: number;
-    asset_count: number;
-    activity_score: number;
-    color_value: HeatmapDayProjection["colorValue"];
-    has_data: boolean;
-    person_ids: number[];
-    tag_paths: string[];
-  }>;
-};
-
-type ApiDayContextResponse = {
-  range: {
-    start: string;
-    end: string;
-  };
-  days: Array<{
-    date: string;
-    persons: Array<{
-      id: number;
-      name: string;
-      role: string | null;
-    }>;
-    tags: Array<{
-      path: string;
-      label: string;
-    }>;
-    map_points: Array<{
-      id: string;
-      label: string;
-      latitude: number;
-      longitude: number;
-    }>;
-    summary_counts: {
-      events: number;
-      assets: number;
-      places: number;
-    };
-  }>;
-};
-
-const apiBaseUrl = (import.meta.env.VITE_PIXELPAST_API_BASE_URL ?? "").replace(
-  /\/$/,
-  "",
-);
 let explorationBootstrapPromise: Promise<ExplorationBootstrapProjection> | null =
   null;
-
-function buildApiUrl(path: string): string {
-  return `${apiBaseUrl}${path}`;
-}
-
-async function requestJson<T>(path: string): Promise<T> {
-  const response = await fetch(buildApiUrl(path));
-
-  if (!response.ok) {
-    throw new Error(`Timeline API request failed with status ${response.status}`);
-  }
-
-  return (await response.json()) as T;
-}
 
 function createUtcDateFromIso(date: string): Date {
   return new Date(`${date}T00:00:00Z`);
@@ -117,19 +45,9 @@ function getWeekIndex(date: Date): number {
   return Math.floor((date.getTime() - alignedStart.getTime()) / 604_800_000);
 }
 
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
-}
-
-function projectLongitude(longitude: number): number {
-  return clamp(((longitude + 180) / 360) * 100, 8, 92);
-}
-
-function projectLatitude(latitude: number): number {
-  return clamp(((90 - latitude) / 180) * 100, 10, 90);
-}
-
-function mapExplorationDay(day: ApiExplorationResponse["days"][number]): HeatmapDayProjection {
+function mapExplorationDay(
+  day: ApiExplorationResponse["days"][number],
+): HeatmapDayProjection {
   const parsedDate = createUtcDateFromIso(day.date);
 
   return {
@@ -180,8 +98,8 @@ function mapDayContextDay(
     mapPoints: day.map_points.map((point) => ({
       id: point.id,
       label: point.label,
-      x: projectLongitude(point.longitude),
-      y: projectLatitude(point.latitude),
+      latitude: point.latitude,
+      longitude: point.longitude,
     })),
     summaryCounts: {
       events: day.summary_counts.events,
@@ -194,29 +112,31 @@ function mapDayContextDay(
 export const timelineApi = {
   async getExploration(): Promise<ExplorationBootstrapProjection> {
     if (explorationBootstrapPromise === null) {
-      explorationBootstrapPromise = requestJson<ApiExplorationResponse>(
-        "/exploration",
-      ).then((response) => ({
-        heatmapDays: response.days.map(mapExplorationDay),
-        viewModes: response.view_modes,
-        persons: response.persons.map(mapPerson),
-        tags: response.tags.map(mapTag),
-      }));
+      explorationBootstrapPromise = timelineTransport.getExploration().then(
+        (response) => ({
+          range: response.range,
+          heatmapDays: response.days.map(mapExplorationDay),
+          viewModes: response.view_modes,
+          persons: response.persons.map(mapPerson),
+          tags: response.tags.map(mapTag),
+        }),
+      );
     }
 
     return explorationBootstrapPromise;
   },
 
-  async getDayContext(date: string | null): Promise<DayContextProjection | null> {
-    if (date === null) {
-      return null;
-    }
+  async getDayContextRange(
+    range: DateRange,
+  ): Promise<{
+    range: DateRange;
+    days: DayContextProjection[];
+  }> {
+    const response = await timelineTransport.getDayContextRange(range);
 
-    const response = await requestJson<ApiDayContextResponse>(
-      `/days/context?start=${date}&end=${date}`,
-    );
-    const [dayContext] = response.days;
-
-    return dayContext ? mapDayContextDay(dayContext) : null;
+    return {
+      range: response.range,
+      days: response.days.map(mapDayContextDay),
+    };
   },
 };

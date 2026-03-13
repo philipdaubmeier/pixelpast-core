@@ -89,12 +89,14 @@ Use the workspace locally with:
 ```text
 cd ui
 npm install
+set VITE_PIXELPAST_API_BASE_URL=http://127.0.0.1:8000
 npm run dev
 ```
 
-The current frontend increment is intentionally mock-backed. It establishes the
-application shell, split layout, placeholder year stack, and contextual panels
-without real backend integration yet.
+Run the FastAPI app in parallel and keep local CORS enabled for the default Vite
+origins (`http://localhost:5173` and `http://127.0.0.1:5173`).
+The live UI now boots from the Python exploration endpoints instead of a
+frontend runtime mock.
 
 ## 🤝 Contributing
 

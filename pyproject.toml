@@ -29,6 +29,7 @@ dev = [
   "httpx>=0.28",
   "pytest>=8.0",
   "ruff>=0.11.0",
+  "uvicorn>=0.34",
 ]
 
 [tool.setuptools]

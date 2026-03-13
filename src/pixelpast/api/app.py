@@ -1,6 +1,7 @@
 """FastAPI application factory."""
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from pixelpast.api.router import create_api_router
 from pixelpast.shared.runtime import create_runtime_context
@@ -16,6 +17,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         title=runtime.settings.app_name,
         debug=runtime.settings.debug,
     )
+    if runtime.settings.api_cors_allowed_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=list(runtime.settings.api_cors_allowed_origins),
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
     app.state.settings = runtime.settings
     app.state.session_factory = runtime.session_factory
     app.include_router(create_api_router())
