@@ -1,4 +1,4 @@
-import { startTransition, useEffect, useState } from "react";
+import { startTransition, useEffect, useRef, useState } from "react";
 import { timelineApi } from "../api/timeline";
 import type {
   DateRange,
@@ -72,6 +72,7 @@ function resolveHoverContextStatus(
 
 function AppBootstrap() {
   const { state } = useUiState();
+  const isMountedRef = useRef(true);
   const [shellState, setShellState] = useState<ShellLoadState>("loading");
   const [shellError, setShellError] = useState<string | null>(null);
   const [heatmapDays, setHeatmapDays] = useState<HeatmapDayProjection[]>([]);
@@ -94,13 +95,19 @@ function AppBootstrap() {
   const [hoverContextError, setHoverContextError] = useState<string | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
+    isMountedRef.current = true;
 
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
     async function loadInitialShell() {
       try {
         const exploration = await timelineApi.getExploration();
 
-        if (cancelled) {
+        if (!isMountedRef.current) {
           return;
         }
 
@@ -113,7 +120,7 @@ function AppBootstrap() {
           setShellError(null);
         });
       } catch (error) {
-        if (cancelled) {
+        if (!isMountedRef.current) {
           return;
         }
 
@@ -129,10 +136,6 @@ function AppBootstrap() {
     }
 
     void loadInitialShell();
-
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
   useEffect(() => {
@@ -150,8 +153,6 @@ function AppBootstrap() {
       return;
     }
 
-    let cancelled = false;
-
     for (const range of rangesToLoad) {
       startTransition(() => {
         setLoadingDayContextRanges((currentValue) =>
@@ -166,7 +167,7 @@ function AppBootstrap() {
         try {
           const response = await timelineApi.getDayContextRange(range);
 
-          if (cancelled) {
+          if (!isMountedRef.current) {
             return;
           }
 
@@ -189,7 +190,7 @@ function AppBootstrap() {
             setHoverContextError(null);
           });
         } catch (error) {
-          if (cancelled) {
+          if (!isMountedRef.current) {
             return;
           }
 
@@ -209,10 +210,6 @@ function AppBootstrap() {
         }
       })();
     }
-
-    return () => {
-      cancelled = true;
-    };
   }, [
     failedDayContextRanges,
     loadedDayContextRanges,
