@@ -20,6 +20,7 @@ The UI architecture must support:
 - explicit separation between backend domain data and frontend projection data
 - lightweight hover-driven context updates
 - persistent filter state and reproducible views
+- server-side execution of persistent timeline filters
 - incremental feature growth without architectural rewrites
 
 The architecture should optimize for clarity, predictability, and composability.
@@ -128,6 +129,17 @@ The UI should consume explicit projection endpoints instead of raw database enti
 
 Initial projection contracts should include:
 
+### `ExplorationBootstrapProjection`
+
+Represents lightweight shell/bootstrap metadata.
+
+Suggested fields:
+
+- `range`
+- `view_modes`
+- `persons`
+- `tags`
+
 ### `HeatmapDayProjection`
 
 Represents one day cell in the calendar grid.
@@ -141,10 +153,10 @@ Suggested fields:
 - `activity_score`
 - `color_value`
 - `has_data`
-- `event_count`
-- `asset_count`
-- `person_ids`
-- `tag_paths`
+
+The grid projection should stay intentionally small.
+Persistent filtering should be applied server-side before this data reaches the
+browser.
 
 ### `DayContextProjection`
 
@@ -202,7 +214,8 @@ Examples:
 - `selectedGeoFilter`
 - `selectedDateRange`
 
-This state defines the current exploration frame and drives recoloring.
+This state defines the current exploration frame and drives backend requests for
+the filtered grid.
 
 ---
 
@@ -226,7 +239,7 @@ Persistent exploration mode.
 
 Effects:
 
-- recolor matching days
+- request and render a server-filtered grid
 - update the URL
 - remain stable across refresh and navigation
 
@@ -379,5 +392,6 @@ This ordering preserves architectural stability while enabling incremental deliv
 - Projection DTOs are the UI contract.
 - Hover state is ephemeral.
 - Filter state is persistent.
+- Persistent filter evaluation belongs on the server.
 - UI simplicity beats feature density.
 - Avoid premature rendering complexity.

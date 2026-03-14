@@ -84,6 +84,12 @@ API Style:
 - REST-first
 - GraphQL optional later
 
+Exploration API direction:
+- separate bootstrap, grid, and day-context responsibilities
+- grid activity reads from the derived layer only
+- persistent filters are evaluated server-side
+- bounded hover-context ranges may be prefetched and consumed client-side
+
 ## 5. UI
 
 - React + TypeScript
@@ -95,6 +101,11 @@ Core features:
 - Zoom levels
 - Day drill-down view
 - Filters by source, person, type
+
+Interaction/data-loading principles:
+- persistent filters trigger backend requests instead of client-side full-grid filtering
+- hover remains client-side after bounded context preloading
+- UI consumes explicit projection contracts, not raw canonical tables
 
 ## 6. Deployment
 

@@ -129,6 +129,10 @@ Examples:
 - Applying a geographic filter highlights matching days.
 - Selecting a derived view recolors the grid entirely.
 
+Persistent filtering is a server-side concern.
+The browser should request an already filtered grid projection instead of trying
+to reproduce full-dataset filtering locally.
+
 ---
 
 ## 6. Grid Coloring Strategy
@@ -147,6 +151,9 @@ Each mode defines a distinct color strategy.
 
 The UI does not compute activity.
 It consumes derived projections from the backend.
+
+The UI also should not be the long-term execution site for complex persistent
+filters such as geographic predicates, distance filters, or filename searches.
 
 The grid must be able to fully re-render based on:
 
@@ -217,6 +224,9 @@ On hover:
 On filter:
 - show all matching points.
 
+Hover remains local once a bounded context range has been preloaded.
+Persistent filter changes may trigger backend requests.
+
 Map should not overwhelm the interface. If supported by the map view it should default to a subtle color grading, e.g. light grey colors if the whole UI has a light background or similarly dark grey colors in case of a dark UI theme.
 
 ---
@@ -250,4 +260,5 @@ The grid must remain readable at scale (10–30 years).
 - Time is primary.
 - Hover is lightweight.
 - Filtering is powerful.
+- Persistent filtering is server-side.
 - Simplicity beats density.

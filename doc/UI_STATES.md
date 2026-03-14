@@ -46,7 +46,7 @@ Characteristics:
 
 - stored in the URL where reasonable
 - survives refresh and navigation
-- drives recoloring and filtering
+- drives server requests for filtered grid data
 - must be explicit and composable
 
 Examples:
@@ -234,7 +234,7 @@ Derived from:
 - `hoveredDate`
 - loaded `DayContextProjection`
 
-### `filteredHeatmapDays`
+### `gridQueryKey`
 
 Derived from:
 
@@ -243,7 +243,9 @@ Derived from:
 - `selectedTags`
 - `selectedGeoFilter`
 - `selectedDateRange`
-- loaded `HeatmapDayProjection[]`
+
+This derived value identifies the server request for the current persistent
+exploration frame.
 
 ### `activeFilterSummary`
 
@@ -340,7 +342,7 @@ When a user selects a person, tag, or view mode:
 
 - update persistent state
 - update the URL
-- recompute grid coloring
+- request filtered grid data from the backend
 - visually mark active selections
 - preserve state across refresh where possible
 
@@ -380,22 +382,20 @@ Depends on persistent state such as:
 - `selectedGeoFilter`
 - `selectedDateRange`
 
-This data is suitable for caching and refetching based on query keys.
+This data should be requested from the backend using query-keyed caching.
 
 ### B. Day Context Fetching
 
 Depends primarily on:
 
 - `hoveredDate`
-- active persistent filter context when needed
+- the currently visible preloaded day-context range
 
 This data may be:
 
-- lazily fetched on hover
-- prefetched
-- derived from already available local data in early versions
-
-Depending on first learnings of using the UI live, it may be decided to never fetch any data on hover but to preload all data needed for hover highlighting whilst or directly after fetching persistent states.
+- prefetched per bounded range
+- cached client-side for immediate hover response
+- reused locally while the pointer moves across many day cells
 
 The first UI increment can stay fully mocked, but the data-fetching split should remain visible in the design.
 
@@ -476,5 +476,6 @@ This keeps the first UI slice small while preserving future extensibility.
 - Persistent state should be URL-representable.
 - The grid reacts to persistent state.
 - Context panels react to both hover and persistent state.
+- Persistent filtering should not rely on client-side full-grid scans.
 - There must be no duplicated source of truth.
 - Derived state must remain derived.

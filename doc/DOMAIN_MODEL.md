@@ -123,16 +123,26 @@ Represents a named group of people. Can be hierarchically nested with path if ne
 
 ### DailyAggregate
 
-_TODO:_ refine when defining first analytics layer increments. Questions: should aggregates only reflect "count" values or maybe weighted somehow by content and type? Media and music separate, why cluster media but leave music separate?
+Derived day-level read model for grid rendering and day summaries.
 
 - date
+- aggregate_scope (`overall` | `source_type`)
+- source_type
 - total_events
-- activity_score
 - media_count
-- music_count
-- finance_count
-- trip_count
+- activity_score
+- tag_summary (JSON)
+- person_summary (JSON)
+- location_summary (JSON)
 - metadata (JSON)
+
+Design note:
+- the day grid should read from `DailyAggregate`, not directly from canonical
+  `Event` or `Asset` rows
+- persistent filtering should increasingly target derived and database-backed
+  read models on the server
+- canonical associations remain valid sources for reusable catalogs and detail
+  reads where explicitly intended
 
 ## Design Decision
 
