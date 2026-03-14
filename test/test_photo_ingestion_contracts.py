@@ -44,7 +44,7 @@ from pixelpast.ingestion.photos.service import (
 from pixelpast.ingestion.photos.service import (
     PhotoIngestionResult as ServiceModulePhotoIngestionResult,
 )
-from pixelpast.ingestion.photos.service import _resolve_persistence_outcome
+from pixelpast.ingestion.photos.persist import _resolve_persistence_outcome
 from pixelpast.persistence.models import Asset
 from pixelpast.persistence.repositories import AssetRepository, AssetUpsertResult
 from pixelpast.shared.runtime import create_runtime_context, initialize_database

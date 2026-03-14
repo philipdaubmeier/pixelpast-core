@@ -20,9 +20,9 @@ from pixelpast.ingestion.photos.contracts import (
     PhotoIngestionResult,
     PhotoMetadataBatchProgress,
 )
+from pixelpast.ingestion.photos.persist import PhotoAssetPersister
 from pixelpast.persistence.repositories import (
     AssetRepository,
-    AssetUpsertResult,
     ImportRunRepository,
     PersonRepository,
     SourceRepository,
@@ -474,8 +474,11 @@ class PhotoIngestionService:
 
         session = runtime.session_factory()
         asset_repository = AssetRepository(session)
-        tag_repository = TagRepository(session)
-        person_repository = PersonRepository(session)
+        persister = PhotoAssetPersister(
+            asset_repository=asset_repository,
+            tag_repository=TagRepository(session),
+            person_repository=PersonRepository(session),
+        )
 
         try:
             progress.start_phase(phase="filesystem discovery", total=None)
@@ -525,12 +528,7 @@ class PhotoIngestionService:
                 total=len(assets),
             )
             for asset in assets:
-                outcome = self._persist_asset(
-                    asset=asset,
-                    asset_repository=asset_repository,
-                    tag_repository=tag_repository,
-                    person_repository=person_repository,
-                )
+                outcome = persister.persist(asset=asset)
                 progress.mark_persisted(outcome=outcome)
             session.commit()
             progress.finish_phase()
@@ -629,70 +627,6 @@ class PhotoIngestionService:
                 errors.append(issue)
                 progress.mark_analysis_failure(error=issue)
         return assets, errors
-
-    def _persist_asset(
-        self,
-        *,
-        asset: PhotoAssetCandidate,
-        asset_repository: AssetRepository,
-        tag_repository: TagRepository,
-        person_repository: PersonRepository,
-    ) -> str:
-        creator_person_id = None
-        if asset.creator_name is not None:
-            creator_person = person_repository.get_or_create(name=asset.creator_name)
-            creator_person_id = creator_person.id
-
-        upsert_result = asset_repository.upsert(
-            external_id=asset.external_id,
-            media_type=asset.media_type,
-            timestamp=asset.timestamp,
-            summary=asset.summary,
-            latitude=asset.latitude,
-            longitude=asset.longitude,
-            creator_person_id=creator_person_id,
-            metadata_json=asset.metadata_json,
-        )
-        persisted_tags = {
-            path: tag_repository.get_or_create(path=path)
-            for path in asset.tag_paths
-        }
-        tags_changed = asset_repository.replace_tag_links(
-            asset_id=upsert_result.asset.id,
-            tag_ids=[
-                persisted_tags[path].id
-                for path in asset.asset_tag_paths
-                if path in persisted_tags
-            ],
-        )
-        persisted_people = [
-            person_repository.get_or_create(name=person.name, path=person.path)
-            for person in asset.persons
-        ]
-        people_changed = asset_repository.replace_person_links(
-            asset_id=upsert_result.asset.id,
-            person_ids=[person.id for person in persisted_people],
-        )
-        return _resolve_persistence_outcome(
-            upsert_result=upsert_result,
-            tags_changed=tags_changed,
-            people_changed=people_changed,
-        )
-
-
-def _resolve_persistence_outcome(
-    *,
-    upsert_result: AssetUpsertResult,
-    tags_changed: bool,
-    people_changed: bool,
-) -> str:
-    """Resolve the deterministic persistence outcome for one canonical asset."""
-
-    if upsert_result.status == "inserted":
-        return "inserted"
-    if upsert_result.status == "updated" or tags_changed or people_changed:
-        return "updated"
-    return "unchanged"
 
 
 def _utc_now() -> datetime:
