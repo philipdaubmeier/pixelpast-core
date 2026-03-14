@@ -18,8 +18,10 @@ from pixelpast.ingestion.photos import (
     PhotoConnector,
     PhotoDiscoveryError,
     PhotoExifMetadata,
+    PhotoImportRunCoordinator,
     PhotoIngestionService,
     PhotoPersonCandidate,
+    build_initial_photo_import_progress_payload,
 )
 from pixelpast.ingestion.photos.discovery import PhotoFileDiscoverer
 from pixelpast.persistence.models import (
@@ -686,6 +688,87 @@ def test_photo_ingestion_persists_heartbeat_updates_during_a_long_running_run() 
         assert import_run.status == "completed"
         assert import_run.last_heartbeat_at == clock.now()
         assert import_run.progress_json["discovered_file_count"] == 3
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_photo_import_run_lifecycle_uses_authoritative_initial_progress_shape() -> None:
+    workspace_root = _create_workspace_dir(prefix="photo-lifecycle-bootstrap")
+    runtime = None
+    try:
+        photos_root = workspace_root / "photos"
+        photos_root.mkdir()
+        runtime = _create_runtime(
+            workspace_root=workspace_root,
+            photos_root=photos_root,
+        )
+
+        import_run_id = PhotoImportRunCoordinator().create_import_run(
+            runtime=runtime,
+            resolved_root=photos_root.resolve(),
+        )
+
+        with runtime.session_factory() as session:
+            import_run = session.execute(select(ImportRun)).scalar_one()
+            source = session.execute(select(Source)).scalar_one()
+
+        assert import_run.id == import_run_id
+        assert import_run.status == "running"
+        assert import_run.mode == "full"
+        assert import_run.phase == "initializing"
+        assert import_run.progress_json == build_initial_photo_import_progress_payload()
+        assert source.name == "Photos"
+        assert source.type == "photos"
+        assert source.config == {"root_path": photos_root.resolve().as_posix()}
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_photo_import_run_lifecycle_counts_missing_from_source_without_mutation() -> None:
+    workspace_root = _create_workspace_dir(prefix="photo-lifecycle-missing")
+    runtime = None
+    try:
+        photos_root = workspace_root / "photos"
+        photos_root.mkdir()
+        kept_path = photos_root / "kept.jpg"
+        missing_path = photos_root / "missing.jpg"
+        kept_path.write_bytes(b"photo")
+
+        runtime = _create_runtime(
+            workspace_root=workspace_root,
+            photos_root=photos_root,
+        )
+
+        with runtime.session_factory() as session:
+            repository = AssetRepository(session)
+            for path in (kept_path, missing_path):
+                repository.upsert(
+                    external_id=path.resolve().as_posix(),
+                    media_type="photo",
+                    timestamp=datetime(2024, 1, 1, tzinfo=UTC),
+                    summary=None,
+                    latitude=None,
+                    longitude=None,
+                    creator_person_id=None,
+                    metadata_json={},
+                )
+            session.commit()
+
+        with runtime.session_factory() as session:
+            repository = AssetRepository(session)
+            missing_count = PhotoImportRunCoordinator().count_missing_from_source(
+                asset_repository=repository,
+                resolved_root=photos_root.resolve(),
+                discovered_paths=[kept_path.resolve()],
+            )
+            assets = list(session.execute(select(Asset).order_by(Asset.external_id)).scalars())
+
+        assert missing_count == 1
+        assert len(assets) == 2
     finally:
         if runtime is not None:
             runtime.engine.dispose()

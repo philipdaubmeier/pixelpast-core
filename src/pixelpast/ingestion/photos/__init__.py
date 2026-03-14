@@ -10,6 +10,10 @@ from pixelpast.ingestion.photos.contracts import (
     PhotoMetadataBatchProgress,
     PhotoPersonCandidate,
 )
+from pixelpast.ingestion.photos.lifecycle import (
+    PhotoImportRunCoordinator,
+    build_initial_photo_import_progress_payload,
+)
 from pixelpast.ingestion.photos.service import PhotoIngestionService
 
 __all__ = [
@@ -18,9 +22,11 @@ __all__ = [
     "PhotoDiscoveryError",
     "PhotoDiscoveryResult",
     "PhotoExifMetadata",
+    "PhotoImportRunCoordinator",
     "PhotoIngestionProgressSnapshot",
     "PhotoIngestionResult",
     "PhotoIngestionService",
     "PhotoMetadataBatchProgress",
     "PhotoPersonCandidate",
+    "build_initial_photo_import_progress_payload",
 ]

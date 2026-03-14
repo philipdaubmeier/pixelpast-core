@@ -8,24 +8,23 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from time import monotonic
 
-from pixelpast.ingestion.progress import (
-    IngestionProgressCallback,
-    IngestionProgressSnapshot,
-)
 from pixelpast.ingestion.photos.connector import PhotoConnector
 from pixelpast.ingestion.photos.contracts import (
     PhotoAssetCandidate,
     PhotoDiscoveryError,
-    PhotoIngestionProgressSnapshot,
     PhotoIngestionResult,
     PhotoMetadataBatchProgress,
 )
+from pixelpast.ingestion.photos.lifecycle import PhotoImportRunCoordinator
 from pixelpast.ingestion.photos.persist import PhotoAssetPersister
+from pixelpast.ingestion.progress import (
+    IngestionProgressCallback,
+    IngestionProgressSnapshot,
+)
 from pixelpast.persistence.repositories import (
     AssetRepository,
     ImportRunRepository,
     PersonRepository,
-    SourceRepository,
     TagRepository,
 )
 from pixelpast.shared.runtime import RuntimeContext
@@ -130,7 +129,11 @@ class _PhotoIngestionProgressTracker:
                 "phase_completed": self._phase_completed,
             },
         )
-        self._emit(event="phase_completed", phase_status="completed", force_persist=True)
+        self._emit(
+            event="phase_completed",
+            phase_status="completed",
+            force_persist=True,
+        )
 
     def mark_missing_from_source(self, *, missing_from_source_count: int) -> None:
         """Record the informational count of known assets missing from the source."""
@@ -434,12 +437,14 @@ class PhotoIngestionService:
     def __init__(
         self,
         connector: PhotoConnector | None = None,
+        lifecycle: PhotoImportRunCoordinator | None = None,
         *,
         heartbeat_interval_seconds: float = _HEARTBEAT_INTERVAL_SECONDS,
         now_factory: Callable[[], datetime] | None = None,
         monotonic_factory: Callable[[], float] | None = None,
     ) -> None:
         self._connector = connector or PhotoConnector()
+        self._lifecycle = lifecycle or PhotoImportRunCoordinator()
         self._heartbeat_interval_seconds = heartbeat_interval_seconds
         self._now_factory = now_factory or _utc_now
         self._monotonic_factory = monotonic_factory or monotonic
@@ -459,7 +464,7 @@ class PhotoIngestionService:
             )
 
         resolved_root = photos_root.expanduser().resolve()
-        import_run_id = self._create_import_run(
+        import_run_id = self._lifecycle.create_import_run(
             runtime=runtime,
             resolved_root=resolved_root,
         )
@@ -491,17 +496,10 @@ class PhotoIngestionService:
             )
             progress.finish_phase()
 
-            discovered_external_ids = {
-                path.expanduser().resolve().as_posix() for path in supported_paths
-            }
-            missing_from_source_count = len(
-                set(
-                    asset_repository.list_external_ids_under_prefix(
-                        media_type="photo",
-                        external_id_prefix=resolved_root.as_posix(),
-                    )
-                )
-                - discovered_external_ids
+            missing_from_source_count = self._lifecycle.count_missing_from_source(
+                asset_repository=asset_repository,
+                resolved_root=resolved_root,
+                discovered_paths=supported_paths,
             )
             progress.mark_missing_from_source(
                 missing_from_source_count=missing_from_source_count
@@ -556,49 +554,6 @@ class PhotoIngestionService:
             session.rollback()
             progress.fail_run()
             raise
-        finally:
-            session.close()
-
-    def _create_import_run(
-        self,
-        *,
-        runtime: RuntimeContext,
-        resolved_root,
-    ) -> int:
-        session = runtime.session_factory()
-        source_repository = SourceRepository(session)
-        import_run_repository = ImportRunRepository(session)
-        try:
-            source = source_repository.get_or_create(
-                name="Photos",
-                source_type="photos",
-                config={"root_path": resolved_root.as_posix()},
-            )
-            import_run = import_run_repository.create(
-                source_id=source.id,
-                mode="full",
-                phase="initializing",
-                progress_json={
-                    "phase_total": None,
-                    "phase_completed": 0,
-                    "discovered_file_count": 0,
-                    "analyzed_file_count": 0,
-                    "analysis_failed_file_count": 0,
-                    "metadata_batches_submitted": 0,
-                    "metadata_batches_completed": 0,
-                    "items_persisted": 0,
-                    "inserted_item_count": 0,
-                    "updated_item_count": 0,
-                    "unchanged_item_count": 0,
-                    "skipped_item_count": 0,
-                    "missing_from_source_count": 0,
-                    "current_batch_index": None,
-                    "current_batch_total": None,
-                    "current_batch_size": None,
-                },
-            )
-            session.commit()
-            return import_run.id
         finally:
             session.close()
 
