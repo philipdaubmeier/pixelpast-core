@@ -10,7 +10,13 @@ from uuid import uuid4
 from sqlalchemy import select
 
 from pixelpast.analytics.daily_aggregate import DailyAggregateJob
-from pixelpast.persistence.models import Asset, DailyAggregate, Event, Source
+from pixelpast.persistence.models import (
+    Asset,
+    DAILY_AGGREGATE_SCOPE_SOURCE_TYPE,
+    DailyAggregate,
+    Event,
+    Source,
+)
 from pixelpast.shared.runtime import create_runtime_context, initialize_database
 from pixelpast.shared.settings import Settings
 
@@ -143,6 +149,94 @@ def test_daily_aggregate_job_recomputes_range_idempotently() -> None:
                 1,
                 "activity_score = total_events + media_count",
             ),
+        ]
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_daily_aggregate_schema_allows_multiple_scopes_for_same_day() -> None:
+    workspace_root = _create_workspace_dir(prefix="daily-aggregate-scopes")
+    runtime = None
+    try:
+        runtime = _create_runtime(workspace_root=workspace_root)
+
+        with runtime.session_factory() as session:
+            session.add_all(
+                [
+                    DailyAggregate(
+                        date=date(2024, 1, 2),
+                        total_events=2,
+                        media_count=1,
+                        activity_score=3,
+                        metadata_json={"score_version": "v2"},
+                    ),
+                    DailyAggregate(
+                        date=date(2024, 1, 2),
+                        aggregate_scope=DAILY_AGGREGATE_SCOPE_SOURCE_TYPE,
+                        source_type="photo",
+                        total_events=0,
+                        media_count=1,
+                        activity_score=1,
+                        tag_summary_json=[
+                            {
+                                "path": "travel/city",
+                                "label": "City",
+                                "count": 1,
+                            }
+                        ],
+                        person_summary_json=[
+                            {
+                                "person_id": 1,
+                                "name": "Anna",
+                                "count": 1,
+                            }
+                        ],
+                        location_summary_json=[
+                            {
+                                "label": "Berlin",
+                                "latitude": 52.52,
+                                "longitude": 13.405,
+                                "count": 1,
+                            }
+                        ],
+                        metadata_json={"score_version": "v2"},
+                    ),
+                ]
+            )
+            session.commit()
+
+        with runtime.session_factory() as session:
+            aggregates = list(
+                session.execute(
+                    select(DailyAggregate).order_by(
+                        DailyAggregate.date,
+                        DailyAggregate.aggregate_scope,
+                        DailyAggregate.source_type,
+                    )
+                ).scalars()
+            )
+
+        assert len(aggregates) == 2
+        assert aggregates[0].aggregate_scope == "overall"
+        assert aggregates[0].source_type == "__all__"
+        assert aggregates[0].tag_summary_json == []
+        assert aggregates[1].aggregate_scope == DAILY_AGGREGATE_SCOPE_SOURCE_TYPE
+        assert aggregates[1].source_type == "photo"
+        assert aggregates[1].tag_summary_json == [
+            {"path": "travel/city", "label": "City", "count": 1}
+        ]
+        assert aggregates[1].person_summary_json == [
+            {"person_id": 1, "name": "Anna", "count": 1}
+        ]
+        assert aggregates[1].location_summary_json == [
+            {
+                "label": "Berlin",
+                "latitude": 52.52,
+                "longitude": 13.405,
+                "count": 1,
+            }
         ]
     finally:
         if runtime is not None:

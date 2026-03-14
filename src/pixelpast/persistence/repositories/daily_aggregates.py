@@ -9,7 +9,13 @@ from typing import Any
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from pixelpast.persistence.models import Asset, DailyAggregate, Event
+from pixelpast.persistence.models import (
+    Asset,
+    DAILY_AGGREGATE_OVERALL_SOURCE_TYPE,
+    DAILY_AGGREGATE_SCOPE_OVERALL,
+    DailyAggregate,
+    Event,
+)
 
 
 @dataclass(slots=True, frozen=True)
@@ -20,7 +26,12 @@ class DailyAggregateSnapshot:
     total_events: int
     media_count: int
     activity_score: int
+    tag_summary_json: list[dict[str, Any]]
+    person_summary_json: list[dict[str, Any]]
+    location_summary_json: list[dict[str, Any]]
     metadata_json: dict[str, Any]
+    aggregate_scope: str = DAILY_AGGREGATE_SCOPE_OVERALL
+    source_type: str = DAILY_AGGREGATE_OVERALL_SOURCE_TYPE
 
 
 class CanonicalTimelineRepository:
@@ -102,9 +113,14 @@ class DailyAggregateRepository:
         self._session.add_all(
             DailyAggregate(
                 date=aggregate.date,
+                aggregate_scope=aggregate.aggregate_scope,
+                source_type=aggregate.source_type,
                 total_events=aggregate.total_events,
                 media_count=aggregate.media_count,
                 activity_score=aggregate.activity_score,
+                tag_summary_json=list(aggregate.tag_summary_json),
+                person_summary_json=list(aggregate.person_summary_json),
+                location_summary_json=list(aggregate.location_summary_json),
                 metadata_json=dict(aggregate.metadata_json),
             )
             for aggregate in aggregates

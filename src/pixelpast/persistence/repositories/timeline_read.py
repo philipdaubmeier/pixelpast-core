@@ -12,6 +12,8 @@ from pixelpast.persistence.models import (
     Asset,
     AssetPerson,
     AssetTag,
+    DAILY_AGGREGATE_OVERALL_SOURCE_TYPE,
+    DAILY_AGGREGATE_SCOPE_OVERALL,
     DailyAggregate,
     Event,
     EventPerson,
@@ -107,13 +109,15 @@ class DailyAggregateReadRepository:
         start_date: date,
         end_date: date,
     ) -> list[DailyAggregateReadSnapshot]:
-        """Return all aggregate rows in an inclusive date range."""
+        """Return overall aggregate rows in an inclusive date range."""
 
         statement = (
             select(DailyAggregate)
             .where(
                 DailyAggregate.date >= start_date,
                 DailyAggregate.date <= end_date,
+                DailyAggregate.aggregate_scope == DAILY_AGGREGATE_SCOPE_OVERALL,
+                DailyAggregate.source_type == DAILY_AGGREGATE_OVERALL_SOURCE_TYPE,
             )
             .order_by(DailyAggregate.date)
         )

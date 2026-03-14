@@ -12,7 +12,14 @@ from sqlalchemy.orm import Session
 from alembic import command
 from pixelpast.api.app import create_app
 from pixelpast.persistence.base import Base
-from pixelpast.persistence.models import Asset, DailyAggregate, Event, Source
+from pixelpast.persistence.models import (
+    Asset,
+    DAILY_AGGREGATE_OVERALL_SOURCE_TYPE,
+    DAILY_AGGREGATE_SCOPE_OVERALL,
+    DailyAggregate,
+    Event,
+    Source,
+)
 from pixelpast.persistence.session import session_scope
 from pixelpast.shared.runtime import create_runtime_context, initialize_database
 from pixelpast.shared.settings import Settings
@@ -100,7 +107,32 @@ def test_alembic_upgrade_head_runs() -> None:
             import_run_columns = {
                 column["name"] for column in inspector.get_columns("import_run")
             }
+            daily_aggregate_columns = {
+                column["name"] for column in inspector.get_columns("daily_aggregate")
+            }
+            daily_aggregate_indexes = {
+                index["name"] for index in inspector.get_indexes("daily_aggregate")
+            }
+            daily_aggregate_pk = inspector.get_pk_constraint("daily_aggregate")
             assert {"phase", "last_heartbeat_at", "progress"} <= import_run_columns
+            assert {
+                "date",
+                "aggregate_scope",
+                "source_type",
+                "total_events",
+                "media_count",
+                "activity_score",
+                "tag_summary",
+                "person_summary",
+                "location_summary",
+                "metadata",
+            } <= daily_aggregate_columns
+            assert daily_aggregate_indexes == {"ix_daily_aggregate_scope_date"}
+            assert daily_aggregate_pk["constrained_columns"] == [
+                "date",
+                "aggregate_scope",
+                "source_type",
+            ]
         finally:
             engine.dispose()
     finally:
@@ -200,6 +232,72 @@ def test_daily_aggregate_date_roundtrip_uses_python_date() -> None:
         stored_aggregate = session.query(DailyAggregate).one()
 
     assert stored_aggregate.date.isoformat() == "2026-03-11"
+    assert stored_aggregate.aggregate_scope == DAILY_AGGREGATE_SCOPE_OVERALL
+    assert stored_aggregate.source_type == DAILY_AGGREGATE_OVERALL_SOURCE_TYPE
+    assert stored_aggregate.tag_summary_json == []
+    assert stored_aggregate.person_summary_json == []
+    assert stored_aggregate.location_summary_json == []
+
+
+def test_daily_aggregate_schema_v2_upgrade_backfills_legacy_rows() -> None:
+    database_dir = Path("var")
+    database_dir.mkdir(exist_ok=True)
+    database_path = database_dir / f"test-daily-aggregate-v2-{uuid4().hex}.db"
+    config = Config("alembic.ini")
+    config.attributes["database_url"] = f"sqlite:///{database_path.as_posix()}"
+
+    try:
+        command.upgrade(config, "20260313_0005")
+        engine = create_engine(f"sqlite:///{database_path.as_posix()}")
+        try:
+            with engine.begin() as connection:
+                connection.execute(
+                    text(
+                        """
+                        INSERT INTO daily_aggregate (
+                            date,
+                            total_events,
+                            media_count,
+                            activity_score,
+                            metadata
+                        )
+                        VALUES (
+                            '2024-01-02',
+                            2,
+                            1,
+                            3,
+                            '{"score_version": "v1"}'
+                        )
+                        """
+                    )
+                )
+        finally:
+            engine.dispose()
+
+        command.upgrade(config, "head")
+        upgraded_engine = create_engine(f"sqlite:///{database_path.as_posix()}")
+        try:
+            with Session(upgraded_engine) as session:
+                stored_aggregate = session.query(DailyAggregate).one()
+
+            assert stored_aggregate.date.isoformat() == "2024-01-02"
+            assert stored_aggregate.aggregate_scope == DAILY_AGGREGATE_SCOPE_OVERALL
+            assert (
+                stored_aggregate.source_type
+                == DAILY_AGGREGATE_OVERALL_SOURCE_TYPE
+            )
+            assert stored_aggregate.total_events == 2
+            assert stored_aggregate.media_count == 1
+            assert stored_aggregate.activity_score == 3
+            assert stored_aggregate.tag_summary_json == []
+            assert stored_aggregate.person_summary_json == []
+            assert stored_aggregate.location_summary_json == []
+            assert stored_aggregate.metadata_json == {"score_version": "v1"}
+        finally:
+            upgraded_engine.dispose()
+    finally:
+        if database_path.exists():
+            database_path.unlink()
 
 
 def test_initialize_database_runs_alembic_for_file_database() -> None:

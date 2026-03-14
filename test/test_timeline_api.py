@@ -14,6 +14,7 @@ from pixelpast.persistence.models import (
     Asset,
     AssetPerson,
     AssetTag,
+    DAILY_AGGREGATE_SCOPE_SOURCE_TYPE,
     DailyAggregate,
     Event,
     EventPerson,
@@ -907,6 +908,58 @@ def test_heatmap_endpoint_returns_daily_aggregates_in_range_order() -> None:
                     "media_count": 2,
                     "activity_score": 2,
                 },
+            ],
+        }
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_heatmap_endpoint_uses_overall_daily_aggregate_rows_only() -> None:
+    workspace_root = _create_workspace_dir(prefix="timeline-api-heatmap-overall")
+    runtime = None
+    try:
+        runtime = _create_runtime(workspace_root=workspace_root)
+
+        with runtime.session_factory() as session:
+            session.add_all(
+                [
+                    DailyAggregate(
+                        date=date(2024, 1, 2),
+                        total_events=2,
+                        media_count=1,
+                        activity_score=3,
+                        metadata_json={"score_version": "v2"},
+                    ),
+                    DailyAggregate(
+                        date=date(2024, 1, 2),
+                        aggregate_scope=DAILY_AGGREGATE_SCOPE_SOURCE_TYPE,
+                        source_type="photo",
+                        total_events=0,
+                        media_count=1,
+                        activity_score=99,
+                        metadata_json={"score_version": "v2"},
+                    ),
+                ]
+            )
+            session.commit()
+
+        app = create_app(settings=runtime.settings)
+        with TestClient(app) as client:
+            response = client.get("/api/heatmap?start=2024-01-02&end=2024-01-02")
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "start": "2024-01-02",
+            "end": "2024-01-02",
+            "days": [
+                {
+                    "date": "2024-01-02",
+                    "total_events": 2,
+                    "media_count": 1,
+                    "activity_score": 3,
+                }
             ],
         }
     finally:

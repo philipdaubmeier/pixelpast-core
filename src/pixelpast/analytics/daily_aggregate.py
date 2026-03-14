@@ -128,6 +128,9 @@ def _build_snapshots(
                 total_events=event_counter[aggregate_date],
                 media_count=asset_counter[aggregate_date],
             ),
+            tag_summary_json=[],
+            person_summary_json=[],
+            location_summary_json=[],
             metadata_json=dict(_SCORE_METADATA),
         )
         for aggregate_date in aggregate_dates

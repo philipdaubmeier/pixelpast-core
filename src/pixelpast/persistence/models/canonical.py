@@ -7,6 +7,7 @@ from typing import Any
 
 from sqlalchemy import (
     JSON,
+    CheckConstraint,
     Date,
     Float,
     ForeignKey,
@@ -20,6 +21,10 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from pixelpast.persistence.base import Base
 from pixelpast.persistence.types import UTCDateTime
+
+DAILY_AGGREGATE_SCOPE_OVERALL = "overall"
+DAILY_AGGREGATE_SCOPE_SOURCE_TYPE = "source_type"
+DAILY_AGGREGATE_OVERALL_SOURCE_TYPE = "__all__"
 
 
 def utc_now() -> datetime:
@@ -136,14 +141,62 @@ class Asset(Base):
 
 
 class DailyAggregate(Base):
-    """Stores derived per-day activity summaries for heatmap-style exploration."""
+    """Stores per-day derived summaries for overall and connector-scoped views."""
 
     __tablename__ = "daily_aggregate"
+    __table_args__ = (
+        CheckConstraint(
+            "aggregate_scope IN ('overall', 'source_type')",
+            name="ck_daily_aggregate_scope",
+        ),
+        CheckConstraint(
+            "("
+            "aggregate_scope = 'overall' AND source_type = '__all__'"
+            ") OR ("
+            "aggregate_scope = 'source_type' AND source_type != '__all__'"
+            ")",
+            name="ck_daily_aggregate_scope_source_type",
+        ),
+        Index(
+            "ix_daily_aggregate_scope_date",
+            "aggregate_scope",
+            "source_type",
+            "date",
+        ),
+    )
 
     date: Mapped[date] = mapped_column(Date(), primary_key=True)
+    aggregate_scope: Mapped[str] = mapped_column(
+        String(50),
+        primary_key=True,
+        default=DAILY_AGGREGATE_SCOPE_OVERALL,
+    )
+    source_type: Mapped[str] = mapped_column(
+        String(100),
+        primary_key=True,
+        default=DAILY_AGGREGATE_OVERALL_SOURCE_TYPE,
+    )
     total_events: Mapped[int] = mapped_column(nullable=False, default=0)
     media_count: Mapped[int] = mapped_column(nullable=False, default=0)
     activity_score: Mapped[int] = mapped_column(nullable=False, default=0)
+    tag_summary_json: Mapped[list[dict[str, Any]]] = mapped_column(
+        "tag_summary",
+        JSON,
+        nullable=False,
+        default=list,
+    )
+    person_summary_json: Mapped[list[dict[str, Any]]] = mapped_column(
+        "person_summary",
+        JSON,
+        nullable=False,
+        default=list,
+    )
+    location_summary_json: Mapped[list[dict[str, Any]]] = mapped_column(
+        "location_summary",
+        JSON,
+        nullable=False,
+        default=list,
+    )
     metadata_json: Mapped[dict[str, Any]] = mapped_column(
         "metadata",
         JSON,
