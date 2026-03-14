@@ -3,6 +3,7 @@
 from pixelpast.api.providers.timeline import (
     DatabaseTimelineProjectionProvider,
     DemoTimelineProjectionProvider,
+    ExplorationGridFilters,
     TimelineProjectionProvider,
     get_default_view_modes,
 )
@@ -10,6 +11,7 @@ from pixelpast.api.providers.timeline import (
 __all__ = [
     "DatabaseTimelineProjectionProvider",
     "DemoTimelineProjectionProvider",
+    "ExplorationGridFilters",
     "TimelineProjectionProvider",
     "get_default_view_modes",
 ]

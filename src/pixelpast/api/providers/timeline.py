@@ -12,15 +12,11 @@ from pixelpast.api.schemas import (
     DayContextMapPoint,
     DayContextResponse,
     DayContextSummaryCounts,
-    ExplorationDay,
-    ExplorationDayDerivedSummary,
-    ExplorationDayLocationSummary,
-    ExplorationDayPersonSummary,
-    ExplorationDaySourceSummary,
-    ExplorationDayTagSummary,
+    ExplorationBootstrapResponse,
+    ExplorationGridDay,
+    ExplorationGridResponse,
     ExplorationPerson,
     ExplorationRange,
-    ExplorationResponse,
     ExplorationTag,
     ExplorationViewMode,
 )
@@ -65,6 +61,20 @@ _DEMO_REFERENCE_DATE: Final[date] = date(2021, 1, 1)
 
 
 @dataclass(slots=True, frozen=True)
+class ExplorationGridFilters:
+    """Server-owned persistent filters for exploration grid requests."""
+
+    view_mode: str
+    person_ids: tuple[int, ...] = ()
+    tag_paths: tuple[str, ...] = ()
+    location_geometry: str | None = None
+    distance_latitude: float | None = None
+    distance_longitude: float | None = None
+    distance_radius_meters: int | None = None
+    filename_query: str | None = None
+
+
+@dataclass(slots=True, frozen=True)
 class _DemoPersonDefinition:
     id: int
     name: str
@@ -102,14 +112,25 @@ class TimelineProjectionProvider(Protocol):
         """Return dense hover-context data for an inclusive date range."""
         ...
 
-    def get_exploration(
+    def get_exploration_bootstrap(
         self,
         *,
         start: date | None,
         end: date | None,
         today: date,
-    ) -> ExplorationResponse:
-        """Return dense exploration bootstrap data for the resolved date window."""
+    ) -> ExplorationBootstrapResponse:
+        """Return lightweight shell metadata for the resolved exploration range."""
+        ...
+
+    def get_exploration_grid(
+        self,
+        *,
+        start: date | None,
+        end: date | None,
+        today: date,
+        filters: ExplorationGridFilters,
+    ) -> ExplorationGridResponse:
+        """Return derived-only dense day activity for the resolved exploration range."""
         ...
 
 
@@ -173,32 +194,19 @@ class DatabaseTimelineProjectionProvider:
             ],
         )
 
-    def get_exploration(
+    def get_exploration_bootstrap(
         self,
         *,
         start: date | None,
         end: date | None,
         today: date,
-    ) -> ExplorationResponse:
-        """Return dense exploration bootstrap data for the resolved date window."""
+    ) -> ExplorationBootstrapResponse:
+        """Return shell metadata for the resolved exploration range."""
 
         range_start, range_end = self._resolve_exploration_range(
             start=start,
             end=end,
             today=today,
-        )
-        overall_aggregate_map = {
-            aggregate.date: aggregate
-            for aggregate in self._daily_aggregate_repository.list_range(
-                start_date=range_start,
-                end_date=range_end,
-            )
-        }
-        source_aggregate_map = _group_source_aggregates_by_day(
-            self._daily_aggregate_repository.list_source_type_range(
-                start_date=range_start,
-                end_date=range_end,
-            )
         )
         person_links = self._exploration_repository.list_person_links(
             start_date=range_start,
@@ -209,24 +217,46 @@ class DatabaseTimelineProjectionProvider:
             end_date=range_end,
         )
 
-        persons = _build_person_catalog(person_links)
-        tags = _build_tag_catalog(tag_links)
-
-        days = [
-            _build_exploration_day(
-                day=current_day,
-                overall_aggregate_map=overall_aggregate_map,
-                source_aggregate_map=source_aggregate_map,
-            )
-            for current_day in _iter_inclusive_dates(range_start, range_end)
-        ]
-
-        return ExplorationResponse(
+        return ExplorationBootstrapResponse(
             range=ExplorationRange(start=range_start, end=range_end),
             view_modes=get_default_view_modes(),
-            persons=persons,
-            tags=tags,
-            days=days,
+            persons=_build_person_catalog(person_links),
+            tags=_build_tag_catalog(tag_links),
+        )
+
+    def get_exploration_grid(
+        self,
+        *,
+        start: date | None,
+        end: date | None,
+        today: date,
+        filters: ExplorationGridFilters,
+    ) -> ExplorationGridResponse:
+        """Return a derived-only dense grid with server-side persistent filters."""
+
+        range_start, range_end = self._resolve_exploration_range(
+            start=start,
+            end=end,
+            today=today,
+        )
+        aggregate_map = {
+            aggregate.date: aggregate
+            for aggregate in self._daily_aggregate_repository.list_range(
+                start_date=range_start,
+                end_date=range_end,
+            )
+        }
+
+        return ExplorationGridResponse(
+            range=ExplorationRange(start=range_start, end=range_end),
+            days=[
+                _build_grid_day_from_aggregate(
+                    day=current_day,
+                    aggregate=aggregate_map.get(current_day),
+                    filters=filters,
+                )
+                for current_day in _iter_inclusive_dates(range_start, range_end)
+            ],
         )
 
     def _resolve_exploration_range(
@@ -266,14 +296,14 @@ class DemoTimelineProjectionProvider:
             days=days,
         )
 
-    def get_exploration(
+    def get_exploration_bootstrap(
         self,
         *,
         start: date | None,
         end: date | None,
         today: date,
-    ) -> ExplorationResponse:
-        """Return a deterministic multi-year exploration bootstrap payload."""
+    ) -> ExplorationBootstrapResponse:
+        """Return a deterministic exploration shell payload."""
 
         del today
         range_start, range_end = self._resolve_exploration_range(
@@ -282,7 +312,6 @@ class DemoTimelineProjectionProvider:
         )
         persons_by_id: dict[int, ExplorationPerson] = {}
         tags_by_path: dict[str, ExplorationTag] = {}
-        days: list[ExplorationDay] = []
 
         for current_day in _iter_inclusive_dates(range_start, range_end):
             snapshot = self._build_day_snapshot(current_day)
@@ -300,42 +329,7 @@ class DemoTimelineProjectionProvider:
                     label=tag.label,
                 )
 
-            days.append(
-                ExplorationDay(
-                    date=current_day,
-                    event_count=snapshot.event_count,
-                    asset_count=snapshot.asset_count,
-                    activity_score=snapshot.activity_score,
-                    color_value=_get_activity_color_value(snapshot.activity_score),
-                    has_data=snapshot.activity_score > 0,
-                    person_ids=list(snapshot.person_ids),
-                    tag_paths=list(snapshot.tag_paths),
-                    derived_summary=ExplorationDayDerivedSummary(
-                        tags=[
-                            ExplorationDayTagSummary(
-                                path=tag_path,
-                                label=_find_demo_tag(tag_path).label,
-                                count=1,
-                            )
-                            for tag_path in snapshot.tag_paths
-                        ],
-                        persons=[
-                            ExplorationDayPersonSummary(
-                                person_id=person_id,
-                                name=_find_demo_person(person_id).name,
-                                role=_find_demo_person(person_id).role,
-                                count=1,
-                            )
-                            for person_id in snapshot.person_ids
-                        ],
-                        locations=[],
-                        metadata={"projection_source": "demo"},
-                    ),
-                    source_summaries=[],
-                )
-            )
-
-        return ExplorationResponse(
+        return ExplorationBootstrapResponse(
             range=ExplorationRange(start=range_start, end=range_end),
             view_modes=get_default_view_modes(),
             persons=sorted(
@@ -346,7 +340,34 @@ class DemoTimelineProjectionProvider:
                 tags_by_path.values(),
                 key=lambda tag: (tag.path, tag.label.casefold()),
             ),
-            days=days,
+        )
+
+    def get_exploration_grid(
+        self,
+        *,
+        start: date | None,
+        end: date | None,
+        today: date,
+        filters: ExplorationGridFilters,
+    ) -> ExplorationGridResponse:
+        """Return a deterministic derived-only exploration grid payload."""
+
+        del today
+        range_start, range_end = self._resolve_exploration_range(
+            start=start,
+            end=end,
+        )
+
+        return ExplorationGridResponse(
+            range=ExplorationRange(start=range_start, end=range_end),
+            days=[
+                _build_grid_day_from_snapshot(
+                    day=current_day,
+                    snapshot=self._build_day_snapshot(current_day),
+                    filters=filters,
+                )
+                for current_day in _iter_inclusive_dates(range_start, range_end)
+            ],
         )
 
     def _resolve_exploration_range(
@@ -545,186 +566,85 @@ def get_default_view_modes() -> list[ExplorationViewMode]:
     ]
 
 
-def _build_exploration_day(
+def _build_grid_day_from_aggregate(
     *,
     day: date,
-    overall_aggregate_map: dict[date, DailyAggregateReadSnapshot],
-    source_aggregate_map: dict[date, list[DailyAggregateReadSnapshot]],
-) -> ExplorationDay:
-    """Compose a single dense exploration day."""
+    aggregate: DailyAggregateReadSnapshot | None,
+    filters: ExplorationGridFilters,
+) -> ExplorationGridDay:
+    """Compose one dense grid day from an overall derived aggregate row."""
 
-    aggregate = overall_aggregate_map.get(day)
-    source_aggregates = source_aggregate_map.get(day, [])
-    event_count = aggregate.total_events if aggregate is not None else 0
-    asset_count = aggregate.media_count if aggregate is not None else 0
-    activity_score = aggregate.activity_score if aggregate is not None else 0
-    person_ids = (
-        _extract_person_ids_from_summary(aggregate.person_summary_json)
-        if aggregate is not None
-        else []
-    )
-    tag_paths = (
-        _extract_tag_paths_from_summary(aggregate.tag_summary_json)
-        if aggregate is not None
-        else []
-    )
-    has_data = event_count > 0 or asset_count > 0 or activity_score > 0
+    if aggregate is None:
+        return _empty_grid_day(day)
 
-    return ExplorationDay(
-        date=day,
-        event_count=event_count,
-        asset_count=asset_count,
-        activity_score=activity_score,
-        color_value=_get_activity_color_value(activity_score),
-        has_data=has_data,
+    person_ids = _extract_person_ids_from_summary(aggregate.person_summary_json)
+    tag_paths = _extract_tag_paths_from_summary(aggregate.tag_summary_json)
+    has_data = (
+        aggregate.total_events > 0
+        or aggregate.media_count > 0
+        or aggregate.activity_score > 0
+    )
+    if not has_data or not _matches_grid_filters(
+        filters=filters,
         person_ids=person_ids,
         tag_paths=tag_paths,
-        derived_summary=_build_derived_summary(aggregate),
-        source_summaries=[
-            _build_source_summary(source_aggregate)
-            for source_aggregate in source_aggregates
-        ],
+    ):
+        return _empty_grid_day(day)
+
+    return ExplorationGridDay(
+        date=day,
+        activity_score=aggregate.activity_score,
+        color_value=_get_view_mode_color_value(
+            view_mode=filters.view_mode,
+            activity_score=aggregate.activity_score,
+            person_ids=person_ids,
+            tag_paths=tag_paths,
+        ),
+        has_data=True,
     )
 
 
-def _group_source_aggregates_by_day(
-    snapshots: list[DailyAggregateReadSnapshot],
-) -> dict[date, list[DailyAggregateReadSnapshot]]:
-    """Group connector-scoped derived aggregates by day."""
+def _build_grid_day_from_snapshot(
+    *,
+    day: date,
+    snapshot: _DemoDaySnapshot,
+    filters: ExplorationGridFilters,
+) -> ExplorationGridDay:
+    """Compose one dense grid day from deterministic demo data."""
 
-    grouped: dict[date, list[DailyAggregateReadSnapshot]] = defaultdict(list)
-    for snapshot in snapshots:
-        grouped[snapshot.date].append(snapshot)
+    has_data = (
+        snapshot.event_count > 0
+        or snapshot.asset_count > 0
+        or snapshot.activity_score > 0
+    )
+    if not has_data or not _matches_grid_filters(
+        filters=filters,
+        person_ids=list(snapshot.person_ids),
+        tag_paths=list(snapshot.tag_paths),
+    ):
+        return _empty_grid_day(day)
 
-    return {
-        day: sorted(day_snapshots, key=lambda snapshot: snapshot.source_type)
-        for day, day_snapshots in grouped.items()
-    }
-
-
-def _build_source_summary(
-    snapshot: DailyAggregateReadSnapshot,
-) -> ExplorationDaySourceSummary:
-    """Map a connector-scoped aggregate row to the exploration contract."""
-
-    return ExplorationDaySourceSummary(
-        source_type=snapshot.source_type,
-        event_count=snapshot.total_events,
-        asset_count=snapshot.media_count,
+    return ExplorationGridDay(
+        date=day,
         activity_score=snapshot.activity_score,
-        color_value=_get_activity_color_value(snapshot.activity_score),
-        has_data=snapshot.activity_score > 0,
-        person_ids=_extract_person_ids_from_summary(snapshot.person_summary_json),
-        tag_paths=_extract_tag_paths_from_summary(snapshot.tag_summary_json),
-        derived_summary=_build_derived_summary(snapshot),
+        color_value=_get_view_mode_color_value(
+            view_mode=filters.view_mode,
+            activity_score=snapshot.activity_score,
+            person_ids=list(snapshot.person_ids),
+            tag_paths=list(snapshot.tag_paths),
+        ),
+        has_data=True,
     )
 
 
-def _build_derived_summary(
-    snapshot: DailyAggregateReadSnapshot | None,
-) -> ExplorationDayDerivedSummary:
-    """Return the exploration-facing semantic summary for one derived row."""
+def _empty_grid_day(day: date) -> ExplorationGridDay:
+    """Return the canonical empty exploration-grid payload."""
 
-    if snapshot is None:
-        return ExplorationDayDerivedSummary(
-            tags=[],
-            persons=[],
-            locations=[],
-            metadata={},
-        )
-
-    return ExplorationDayDerivedSummary(
-        tags=[
-            ExplorationDayTagSummary(
-                path=summary["path"],
-                label=summary["label"],
-                count=summary["count"],
-            )
-            for summary in snapshot.tag_summary_json
-            if _is_tag_summary(summary)
-        ],
-        persons=[
-            ExplorationDayPersonSummary(
-                person_id=summary["person_id"],
-                name=summary["name"],
-                role=summary["role"],
-                count=summary["count"],
-            )
-            for summary in snapshot.person_summary_json
-            if _is_person_summary(summary)
-        ],
-        locations=[
-            ExplorationDayLocationSummary(
-                label=summary["label"],
-                latitude=summary["latitude"],
-                longitude=summary["longitude"],
-                count=summary["count"],
-            )
-            for summary in snapshot.location_summary_json
-            if _is_location_summary(summary)
-        ],
-        metadata=dict(snapshot.metadata_json),
-    )
-
-
-def _extract_person_ids_from_summary(
-    summaries: list[dict[str, object]],
-) -> list[int]:
-    """Extract person identifiers from a derived person summary payload."""
-
-    return [
-        summary["person_id"]
-        for summary in summaries
-        if _is_person_summary(summary)
-    ]
-
-
-def _extract_tag_paths_from_summary(
-    summaries: list[dict[str, object]],
-) -> list[str]:
-    """Extract tag paths from a derived tag summary payload."""
-
-    return [
-        summary["path"]
-        for summary in summaries
-        if _is_tag_summary(summary)
-    ]
-
-
-def _is_tag_summary(summary: object) -> bool:
-    """Return whether an object matches the derived tag summary shape."""
-
-    return (
-        isinstance(summary, dict)
-        and isinstance(summary.get("path"), str)
-        and isinstance(summary.get("label"), str)
-        and isinstance(summary.get("count"), int)
-    )
-
-
-def _is_person_summary(summary: object) -> bool:
-    """Return whether an object matches the derived person summary shape."""
-
-    return (
-        isinstance(summary, dict)
-        and isinstance(summary.get("person_id"), int)
-        and isinstance(summary.get("name"), str)
-        and isinstance(summary.get("count"), int)
-        and (
-            summary.get("role") is None or isinstance(summary.get("role"), str)
-        )
-    )
-
-
-def _is_location_summary(summary: object) -> bool:
-    """Return whether an object matches the derived location summary shape."""
-
-    return (
-        isinstance(summary, dict)
-        and isinstance(summary.get("label"), str)
-        and isinstance(summary.get("latitude"), (int, float))
-        and isinstance(summary.get("longitude"), (int, float))
-        and isinstance(summary.get("count"), int)
+    return ExplorationGridDay(
+        date=day,
+        activity_score=0,
+        color_value="empty",
+        has_data=False,
     )
 
 
@@ -754,11 +674,10 @@ def _build_person_catalog(
             ),
         )
 
-    persons = sorted(
+    return sorted(
         persons_by_id.values(),
         key=lambda person: (person.name.casefold(), person.id),
     )
-    return persons
 
 
 def _build_tag_catalog(
@@ -774,11 +693,10 @@ def _build_tag_catalog(
             ExplorationTag(path=link.tag_path, label=link.tag_label),
         )
 
-    tags = sorted(
+    return sorted(
         tags_by_path.values(),
         key=lambda tag: (tag.path, tag.label.casefold()),
     )
-    return tags
 
 
 def _build_day_context_persons(
@@ -860,6 +778,83 @@ def _iter_inclusive_dates(start: date, end: date) -> list[date]:
     return days
 
 
+def _matches_grid_filters(
+    *,
+    filters: ExplorationGridFilters,
+    person_ids: list[int],
+    tag_paths: list[str],
+) -> bool:
+    """Return whether a derived day matches the server-owned persistent filters."""
+
+    if filters.person_ids and not set(person_ids).intersection(filters.person_ids):
+        return False
+
+    if filters.tag_paths and not any(
+        _tag_path_matches_selection(day_tag_path=day_tag_path, selected_tag_path=tag_path)
+        for day_tag_path in tag_paths
+        for tag_path in filters.tag_paths
+    ):
+        return False
+
+    # Additional filter fields stay backend-owned even before they are fully
+    # implemented as database predicates, so the client no longer owns this flow.
+    return True
+
+
+def _tag_path_matches_selection(
+    *,
+    day_tag_path: str,
+    selected_tag_path: str,
+) -> bool:
+    """Return whether two normalized tag paths intersect hierarchically."""
+
+    return (
+        day_tag_path == selected_tag_path
+        or day_tag_path.startswith(f"{selected_tag_path}/")
+        or selected_tag_path.startswith(f"{day_tag_path}/")
+    )
+
+
+def _get_view_mode_color_value(
+    *,
+    view_mode: str,
+    activity_score: int,
+    person_ids: list[int],
+    tag_paths: list[str],
+) -> str:
+    """Resolve the server-side color token for the requested exploration mode."""
+
+    if view_mode == "activity":
+        return _get_activity_color_value(activity_score)
+
+    if view_mode == "travel":
+        if any(tag_path.startswith("travel/") for tag_path in tag_paths):
+            return "high"
+        if person_ids:
+            return "medium"
+        return "low" if activity_score >= 55 else "empty"
+
+    if view_mode == "sports":
+        if any(tag_path.startswith("activity/") for tag_path in tag_paths):
+            return "high"
+        if activity_score >= 78:
+            return "medium"
+        return "low" if activity_score >= 60 else "empty"
+
+    if view_mode == "party_probability":
+        if len(person_ids) >= 2:
+            return "high"
+        if len(person_ids) == 1:
+            return "medium"
+        return (
+            "low"
+            if any(tag_path.startswith("people/") for tag_path in tag_paths)
+            else "empty"
+        )
+
+    return _get_activity_color_value(activity_score)
+
+
 def _get_activity_color_value(activity_score: int) -> str:
     """Map an activity score to the shared heatmap intensity token."""
 
@@ -870,6 +865,45 @@ def _get_activity_color_value(activity_score: int) -> str:
     if activity_score < 70:
         return "medium"
     return "high"
+
+
+def _extract_person_ids_from_summary(
+    summaries: list[dict[str, object]],
+) -> list[int]:
+    """Extract person identifiers from a derived person summary payload."""
+
+    return [summary["person_id"] for summary in summaries if _is_person_summary(summary)]
+
+
+def _extract_tag_paths_from_summary(
+    summaries: list[dict[str, object]],
+) -> list[str]:
+    """Extract tag paths from a derived tag summary payload."""
+
+    return [summary["path"] for summary in summaries if _is_tag_summary(summary)]
+
+
+def _is_tag_summary(summary: object) -> bool:
+    """Return whether an object matches the derived tag summary shape."""
+
+    return (
+        isinstance(summary, dict)
+        and isinstance(summary.get("path"), str)
+        and isinstance(summary.get("label"), str)
+        and isinstance(summary.get("count"), int)
+    )
+
+
+def _is_person_summary(summary: object) -> bool:
+    """Return whether an object matches the derived person summary shape."""
+
+    return (
+        isinstance(summary, dict)
+        and isinstance(summary.get("person_id"), int)
+        and isinstance(summary.get("name"), str)
+        and isinstance(summary.get("count"), int)
+        and (summary.get("role") is None or isinstance(summary.get("role"), str))
+    )
 
 
 def _resolve_map_point_label(snapshot: DayMapPointSnapshot) -> str:

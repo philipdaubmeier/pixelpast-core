@@ -12,12 +12,15 @@ from pixelpast.api.dependencies import get_app_settings, get_db_session
 from pixelpast.api.providers import (
     DatabaseTimelineProjectionProvider,
     DemoTimelineProjectionProvider,
+    ExplorationGridFilters,
     TimelineProjectionProvider,
+    get_default_view_modes,
 )
 from pixelpast.api.schemas import (
     DayContextResponse,
     DayDetailResponse,
-    ExplorationResponse,
+    ExplorationBootstrapResponse,
+    ExplorationGridResponse,
     HeatmapResponse,
 )
 from pixelpast.api.services import TimelineQueryService
@@ -63,13 +66,8 @@ def get_timeline_projection_provider(
         session.close()
 
 
-@router.get("/exploration", response_model=ExplorationResponse)
-def get_exploration(
-    start: date | None = Query(default=None),
-    end: date | None = Query(default=None),
-    provider: TimelineProjectionProvider = Depends(get_timeline_projection_provider),
-) -> ExplorationResponse:
-    """Return a dense exploration bootstrap projection for the UI shell."""
+def _validate_optional_range(*, start: date | None, end: date | None) -> None:
+    """Validate the optional exploration range query."""
 
     if (start is None) != (end is None):
         raise HTTPException(
@@ -82,7 +80,88 @@ def get_exploration(
             detail="start must be less than or equal to end",
         )
 
-    return provider.get_exploration(start=start, end=end, today=date.today())
+
+def _build_exploration_grid_filters(
+    *,
+    view_mode: str,
+    person_ids: list[int],
+    tag_paths: list[str],
+    location_geometry: str | None,
+    distance_latitude: float | None,
+    distance_longitude: float | None,
+    distance_radius_meters: int | None,
+    filename_query: str | None,
+) -> ExplorationGridFilters:
+    """Normalize server-side persistent filter inputs for grid requests."""
+
+    valid_view_modes = {mode.id for mode in get_default_view_modes()}
+    if view_mode not in valid_view_modes:
+        raise HTTPException(
+            status_code=400,
+            detail=f"unsupported view_mode: {view_mode}",
+        )
+
+    return ExplorationGridFilters(
+        view_mode=view_mode,
+        person_ids=tuple(sorted(set(person_ids))),
+        tag_paths=tuple(sorted(set(tag_paths))),
+        location_geometry=location_geometry,
+        distance_latitude=distance_latitude,
+        distance_longitude=distance_longitude,
+        distance_radius_meters=distance_radius_meters,
+        filename_query=filename_query,
+    )
+
+
+@router.get("/exploration/bootstrap", response_model=ExplorationBootstrapResponse)
+def get_exploration_bootstrap(
+    start: date | None = Query(default=None),
+    end: date | None = Query(default=None),
+    provider: TimelineProjectionProvider = Depends(get_timeline_projection_provider),
+) -> ExplorationBootstrapResponse:
+    """Return exploration shell metadata without dense grid payloads."""
+
+    _validate_optional_range(start=start, end=end)
+    return provider.get_exploration_bootstrap(
+        start=start,
+        end=end,
+        today=date.today(),
+    )
+
+
+@router.get("/exploration", response_model=ExplorationGridResponse)
+def get_exploration(
+    start: date | None = Query(default=None),
+    end: date | None = Query(default=None),
+    view_mode: str = Query(default="activity"),
+    person_ids: list[int] = Query(default=[]),
+    tag_paths: list[str] = Query(default=[]),
+    location_geometry: str | None = Query(default=None),
+    distance_latitude: float | None = Query(default=None),
+    distance_longitude: float | None = Query(default=None),
+    distance_radius_meters: int | None = Query(default=None, ge=1),
+    filename_query: str | None = Query(default=None),
+    provider: TimelineProjectionProvider = Depends(get_timeline_projection_provider),
+) -> ExplorationGridResponse:
+    """Return derived-only dense grid activity with server-owned filters."""
+
+    _validate_optional_range(start=start, end=end)
+    filters = _build_exploration_grid_filters(
+        view_mode=view_mode,
+        person_ids=person_ids,
+        tag_paths=tag_paths,
+        location_geometry=location_geometry,
+        distance_latitude=distance_latitude,
+        distance_longitude=distance_longitude,
+        distance_radius_meters=distance_radius_meters,
+        filename_query=filename_query,
+    )
+    return provider.get_exploration_grid(
+        start=start,
+        end=end,
+        today=date.today(),
+        filters=filters,
+    )
 
 
 @router.get("/heatmap", response_model=HeatmapResponse)

@@ -9,7 +9,8 @@ import type {
 import {
   timelineTransport,
   type ApiDayContextResponse,
-  type ApiExplorationResponse,
+  type ApiExplorationBootstrapResponse,
+  type ApiExplorationGridResponse,
 } from "./timelineTransport";
 
 export type ExplorationBootstrapProjection = {
@@ -46,7 +47,7 @@ function getWeekIndex(date: Date): number {
 }
 
 function mapExplorationDay(
-  day: ApiExplorationResponse["days"][number],
+  day: ApiExplorationGridResponse["days"][number],
 ): HeatmapDayProjection {
   const parsedDate = createUtcDateFromIso(day.date);
 
@@ -58,16 +59,18 @@ function mapExplorationDay(
     activityScore: day.activity_score,
     colorValue: day.color_value,
     hasData: day.has_data,
-    eventCount: day.event_count,
-    assetCount: day.asset_count,
-    personIds: day.person_ids.map(String),
-    tagPaths: day.tag_paths,
+    // The backend grid contract is now intentionally minimal. These legacy
+    // client-only fields stay zeroed until the UI switches to server filtering.
+    eventCount: 0,
+    assetCount: 0,
+    personIds: [],
+    tagPaths: [],
   };
 }
 
 function mapPerson(
   person:
-    | ApiExplorationResponse["persons"][number]
+    | ApiExplorationBootstrapResponse["persons"][number]
     | ApiDayContextResponse["days"][number]["persons"][number],
 ): PersonProjection {
   return {
@@ -79,7 +82,7 @@ function mapPerson(
 
 function mapTag(
   tag:
-    | ApiExplorationResponse["tags"][number]
+    | ApiExplorationBootstrapResponse["tags"][number]
     | ApiDayContextResponse["days"][number]["tags"][number],
 ): TagProjection {
   return {
@@ -112,15 +115,16 @@ function mapDayContextDay(
 export const timelineApi = {
   async getExploration(): Promise<ExplorationBootstrapProjection> {
     if (explorationBootstrapPromise === null) {
-      explorationBootstrapPromise = timelineTransport.getExploration().then(
-        (response) => ({
-          range: response.range,
-          heatmapDays: response.days.map(mapExplorationDay),
-          viewModes: response.view_modes,
-          persons: response.persons.map(mapPerson),
-          tags: response.tags.map(mapTag),
-        }),
-      );
+      explorationBootstrapPromise = Promise.all([
+        timelineTransport.getExplorationBootstrap(),
+        timelineTransport.getExplorationGrid(),
+      ]).then(([bootstrap, grid]) => ({
+        range: bootstrap.range,
+        heatmapDays: grid.days.map(mapExplorationDay),
+        viewModes: bootstrap.view_modes,
+        persons: bootstrap.persons.map(mapPerson),
+        tags: bootstrap.tags.map(mapTag),
+      }));
     }
 
     return explorationBootstrapPromise;

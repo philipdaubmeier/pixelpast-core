@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Annotated, Any, Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field
 
@@ -29,7 +29,7 @@ class HeatmapResponse(BaseModel):
 
 
 class ExplorationRange(BaseModel):
-    """Resolved inclusive date range for exploration bootstrap."""
+    """Resolved inclusive date range for exploration responses."""
 
     start: date
     end: date
@@ -58,78 +58,29 @@ class ExplorationTag(BaseModel):
     label: str
 
 
-class ExplorationDayTagSummary(BaseModel):
-    """Derived tag summary attached to one explored day."""
-
-    path: str
-    label: str
-    count: int
-
-
-class ExplorationDayPersonSummary(BaseModel):
-    """Derived person summary attached to one explored day."""
-
-    person_id: int
-    name: str
-    role: str | None
-    count: int
-
-
-class ExplorationDayLocationSummary(BaseModel):
-    """Derived location summary attached to one explored day."""
-
-    label: str
-    latitude: float
-    longitude: float
-    count: int
-
-
-class ExplorationDayDerivedSummary(BaseModel):
-    """Derived semantic rollup for one explored day."""
-
-    tags: list[ExplorationDayTagSummary]
-    persons: list[ExplorationDayPersonSummary]
-    locations: list[ExplorationDayLocationSummary]
-    metadata: dict[str, Any]
-
-
-class ExplorationDaySourceSummary(BaseModel):
-    """Connector-scoped derived summary for one explored day."""
-
-    source_type: str
-    event_count: int
-    asset_count: int
-    activity_score: int
-    color_value: ColorValue
-    has_data: bool
-    person_ids: list[int]
-    tag_paths: list[str]
-    derived_summary: ExplorationDayDerivedSummary
-
-
-class ExplorationDay(BaseModel):
-    """Dense exploration day payload for the calendar grid."""
-
-    date: date
-    event_count: int
-    asset_count: int
-    activity_score: int
-    color_value: ColorValue
-    has_data: bool
-    person_ids: list[int]
-    tag_paths: list[str]
-    derived_summary: ExplorationDayDerivedSummary
-    source_summaries: list[ExplorationDaySourceSummary]
-
-
-class ExplorationResponse(BaseModel):
-    """Bootstrap projection for the exploration shell."""
+class ExplorationBootstrapResponse(BaseModel):
+    """Lightweight shell metadata for exploration initialization."""
 
     range: ExplorationRange
     view_modes: list[ExplorationViewMode]
     persons: list[ExplorationPerson]
     tags: list[ExplorationTag]
-    days: list[ExplorationDay]
+
+
+class ExplorationGridDay(BaseModel):
+    """Minimal derived activity payload for one calendar day."""
+
+    date: date
+    activity_score: int
+    color_value: ColorValue
+    has_data: bool
+
+
+class ExplorationGridResponse(BaseModel):
+    """Derived-only dense grid response for an inclusive date range."""
+
+    range: ExplorationRange
+    days: list[ExplorationGridDay]
 
 
 class DayContextMapPoint(BaseModel):

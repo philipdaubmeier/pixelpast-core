@@ -1,45 +1,6 @@
 import type { DateRange, ViewModeOption } from "../projections/timeline";
 
-type ApiExplorationDayTagSummary = {
-  path: string;
-  label: string;
-  count: number;
-};
-
-type ApiExplorationDayPersonSummary = {
-  person_id: number;
-  name: string;
-  role: string | null;
-  count: number;
-};
-
-type ApiExplorationDayLocationSummary = {
-  label: string;
-  latitude: number;
-  longitude: number;
-  count: number;
-};
-
-type ApiExplorationDayDerivedSummary = {
-  tags: ApiExplorationDayTagSummary[];
-  persons: ApiExplorationDayPersonSummary[];
-  locations: ApiExplorationDayLocationSummary[];
-  metadata: Record<string, unknown>;
-};
-
-type ApiExplorationDaySourceSummary = {
-  source_type: string;
-  event_count: number;
-  asset_count: number;
-  activity_score: number;
-  color_value: "empty" | "low" | "medium" | "high";
-  has_data: boolean;
-  person_ids: number[];
-  tag_paths: string[];
-  derived_summary: ApiExplorationDayDerivedSummary;
-};
-
-export type ApiExplorationResponse = {
+export type ApiExplorationBootstrapResponse = {
   range: DateRange;
   view_modes: Array<{
     id: ViewModeOption["id"];
@@ -55,17 +16,15 @@ export type ApiExplorationResponse = {
     path: string;
     label: string;
   }>;
+};
+
+export type ApiExplorationGridResponse = {
+  range: DateRange;
   days: Array<{
     date: string;
-    event_count: number;
-    asset_count: number;
     activity_score: number;
     color_value: "empty" | "low" | "medium" | "high";
     has_data: boolean;
-    person_ids: number[];
-    tag_paths: string[];
-    derived_summary: ApiExplorationDayDerivedSummary;
-    source_summaries: ApiExplorationDaySourceSummary[];
   }>;
 };
 
@@ -129,8 +88,12 @@ async function requestJson<T>(path: string): Promise<T> {
 }
 
 export const timelineTransport = {
-  getExploration(): Promise<ApiExplorationResponse> {
-    return requestJson<ApiExplorationResponse>("/exploration");
+  getExplorationBootstrap(): Promise<ApiExplorationBootstrapResponse> {
+    return requestJson<ApiExplorationBootstrapResponse>("/exploration/bootstrap");
+  },
+
+  getExplorationGrid(): Promise<ApiExplorationGridResponse> {
+    return requestJson<ApiExplorationGridResponse>("/exploration");
   },
 
   getDayContextRange(range: DateRange): Promise<ApiDayContextResponse> {
