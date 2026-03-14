@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -58,6 +58,55 @@ class ExplorationTag(BaseModel):
     label: str
 
 
+class ExplorationDayTagSummary(BaseModel):
+    """Derived tag summary attached to one explored day."""
+
+    path: str
+    label: str
+    count: int
+
+
+class ExplorationDayPersonSummary(BaseModel):
+    """Derived person summary attached to one explored day."""
+
+    person_id: int
+    name: str
+    role: str | None
+    count: int
+
+
+class ExplorationDayLocationSummary(BaseModel):
+    """Derived location summary attached to one explored day."""
+
+    label: str
+    latitude: float
+    longitude: float
+    count: int
+
+
+class ExplorationDayDerivedSummary(BaseModel):
+    """Derived semantic rollup for one explored day."""
+
+    tags: list[ExplorationDayTagSummary]
+    persons: list[ExplorationDayPersonSummary]
+    locations: list[ExplorationDayLocationSummary]
+    metadata: dict[str, Any]
+
+
+class ExplorationDaySourceSummary(BaseModel):
+    """Connector-scoped derived summary for one explored day."""
+
+    source_type: str
+    event_count: int
+    asset_count: int
+    activity_score: int
+    color_value: ColorValue
+    has_data: bool
+    person_ids: list[int]
+    tag_paths: list[str]
+    derived_summary: ExplorationDayDerivedSummary
+
+
 class ExplorationDay(BaseModel):
     """Dense exploration day payload for the calendar grid."""
 
@@ -69,6 +118,8 @@ class ExplorationDay(BaseModel):
     has_data: bool
     person_ids: list[int]
     tag_paths: list[str]
+    derived_summary: ExplorationDayDerivedSummary
+    source_summaries: list[ExplorationDaySourceSummary]
 
 
 class ExplorationResponse(BaseModel):

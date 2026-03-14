@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime
+from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -14,6 +15,7 @@ from pixelpast.persistence.models import (
     AssetTag,
     DAILY_AGGREGATE_OVERALL_SOURCE_TYPE,
     DAILY_AGGREGATE_SCOPE_OVERALL,
+    DAILY_AGGREGATE_SCOPE_SOURCE_TYPE,
     DailyAggregate,
     Event,
     EventPerson,
@@ -26,12 +28,18 @@ from pixelpast.persistence.repositories.daily_aggregates import _apply_datetime_
 
 @dataclass(slots=True, frozen=True)
 class DailyAggregateReadSnapshot:
-    """Serializable read-model payload for a heatmap day."""
+    """Serializable read-model payload for one derived daily aggregate row."""
 
     date: date
     total_events: int
     media_count: int
     activity_score: int
+    aggregate_scope: str
+    source_type: str
+    tag_summary_json: list[dict[str, Any]]
+    person_summary_json: list[dict[str, Any]]
+    location_summary_json: list[dict[str, Any]]
+    metadata_json: dict[str, Any]
 
 
 @dataclass(slots=True, frozen=True)
@@ -123,14 +131,46 @@ class DailyAggregateReadRepository:
         )
         aggregates = self._session.execute(statement).scalars()
         return [
-            DailyAggregateReadSnapshot(
-                date=aggregate.date,
-                total_events=aggregate.total_events,
-                media_count=aggregate.media_count,
-                activity_score=aggregate.activity_score,
-            )
+            _to_daily_aggregate_read_snapshot(aggregate)
             for aggregate in aggregates
         ]
+
+    def list_source_type_range(
+        self,
+        *,
+        start_date: date,
+        end_date: date,
+    ) -> list[DailyAggregateReadSnapshot]:
+        """Return connector-scoped aggregate rows in an inclusive date range."""
+
+        statement = (
+            select(DailyAggregate)
+            .where(
+                DailyAggregate.date >= start_date,
+                DailyAggregate.date <= end_date,
+                DailyAggregate.aggregate_scope == DAILY_AGGREGATE_SCOPE_SOURCE_TYPE,
+            )
+            .order_by(DailyAggregate.date, DailyAggregate.source_type)
+        )
+        aggregates = self._session.execute(statement).scalars()
+        return [
+            _to_daily_aggregate_read_snapshot(aggregate)
+            for aggregate in aggregates
+        ]
+
+    def resolve_bounds(self) -> TimelineBoundsSnapshot | None:
+        """Return aggregate-backed timeline bounds for exploration grid ranges."""
+
+        min_date, max_date = self._session.execute(
+            select(func.min(DailyAggregate.date), func.max(DailyAggregate.date)).where(
+                DailyAggregate.aggregate_scope == DAILY_AGGREGATE_SCOPE_OVERALL,
+                DailyAggregate.source_type == DAILY_AGGREGATE_OVERALL_SOURCE_TYPE,
+            )
+        ).one()
+        if min_date is None or max_date is None:
+            return None
+
+        return TimelineBoundsSnapshot(start_date=min_date, end_date=max_date)
 
 
 class ExplorationReadRepository:
@@ -138,21 +178,6 @@ class ExplorationReadRepository:
 
     def __init__(self, session: Session) -> None:
         self._session = session
-
-    def resolve_timeline_bounds(self) -> TimelineBoundsSnapshot | None:
-        """Return the earliest and latest available UTC dates across timeline data."""
-
-        candidates = [
-            *self._list_candidate_bounds_from_aggregates(),
-            *self._list_candidate_bounds_from_events(),
-            *self._list_candidate_bounds_from_assets(),
-        ]
-        if not candidates:
-            return None
-
-        start_date = min(candidate[0] for candidate in candidates)
-        end_date = max(candidate[1] for candidate in candidates)
-        return TimelineBoundsSnapshot(start_date=start_date, end_date=end_date)
 
     def list_event_days(
         self,
@@ -273,36 +298,6 @@ class ExplorationReadRepository:
                 snapshot.item_type,
                 snapshot.item_id,
             ),
-        )
-
-    def _list_candidate_bounds_from_aggregates(self) -> list[tuple[date, date]]:
-        """Return aggregate date bounds when daily aggregates exist."""
-
-        min_date, max_date = self._session.execute(
-            select(func.min(DailyAggregate.date), func.max(DailyAggregate.date))
-        ).one()
-        return _pair_bounds(min_date, max_date)
-
-    def _list_candidate_bounds_from_events(self) -> list[tuple[date, date]]:
-        """Return canonical event date bounds when events exist."""
-
-        min_timestamp, max_timestamp = self._session.execute(
-            select(func.min(Event.timestamp_start), func.max(Event.timestamp_start))
-        ).one()
-        return _pair_bounds(
-            _to_utc_date(min_timestamp),
-            _to_utc_date(max_timestamp),
-        )
-
-    def _list_candidate_bounds_from_assets(self) -> list[tuple[date, date]]:
-        """Return canonical asset date bounds when assets exist."""
-
-        min_timestamp, max_timestamp = self._session.execute(
-            select(func.min(Asset.timestamp), func.max(Asset.timestamp))
-        ).one()
-        return _pair_bounds(
-            _to_utc_date(min_timestamp),
-            _to_utc_date(max_timestamp),
         )
 
     def _list_event_person_links(
@@ -580,31 +575,21 @@ class DayTimelineRepository:
         ]
 
 
-def _pair_bounds(
-    start_value: date | None,
-    end_value: date | None,
-) -> list[tuple[date, date]]:
-    """Return a bound pair only when both values are present."""
+def _to_daily_aggregate_read_snapshot(aggregate: DailyAggregate) -> DailyAggregateReadSnapshot:
+    """Map an ORM row to a read-only derived aggregate snapshot."""
 
-    if start_value is None or end_value is None:
-        return []
-    return [(start_value, end_value)]
-
-
-def _to_utc_date(value: date | datetime | None) -> date | None:
-    """Normalize SQL result values to plain UTC calendar dates."""
-
-    if value is None:
-        return None
-    if isinstance(value, str):
-        normalized = value.replace("Z", "+00:00")
-        try:
-            return datetime.fromisoformat(normalized).date()
-        except ValueError:
-            return date.fromisoformat(value)
-    if isinstance(value, datetime):
-        return value.date()
-    return value
+    return DailyAggregateReadSnapshot(
+        date=aggregate.date,
+        total_events=aggregate.total_events,
+        media_count=aggregate.media_count,
+        activity_score=aggregate.activity_score,
+        aggregate_scope=aggregate.aggregate_scope,
+        source_type=aggregate.source_type,
+        tag_summary_json=list(aggregate.tag_summary_json),
+        person_summary_json=list(aggregate.person_summary_json),
+        location_summary_json=list(aggregate.location_summary_json),
+        metadata_json=dict(aggregate.metadata_json),
+    )
 
 
 def _extract_person_role(metadata_json: object) -> str | None:

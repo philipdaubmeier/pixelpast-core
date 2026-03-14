@@ -72,16 +72,9 @@ def test_exploration_endpoint_returns_current_year_dense_grid_when_empty() -> No
         assert payload["persons"] == []
         assert payload["tags"] == []
         assert len(payload["days"]) == day_count
-        assert payload["days"][0] == {
-            "date": f"{current_year}-01-01",
-            "event_count": 0,
-            "asset_count": 0,
-            "activity_score": 0,
-            "color_value": "empty",
-            "has_data": False,
-            "person_ids": [],
-            "tag_paths": [],
-        }
+        assert payload["days"][0] == _empty_exploration_day_payload(
+            f"{current_year}-01-01"
+        )
         assert payload["days"][-1]["date"] == f"{current_year}-12-31"
     finally:
         if runtime is not None:
@@ -89,7 +82,7 @@ def test_exploration_endpoint_returns_current_year_dense_grid_when_empty() -> No
         shutil.rmtree(workspace_root, ignore_errors=True)
 
 
-def test_exploration_endpoint_returns_dense_days_catalog_without_taxonomy_logic(
+def test_exploration_endpoint_returns_derived_only_grid_and_canonical_catalogs(
 ) -> None:
     workspace_root = _create_workspace_dir(prefix="timeline-api-exploration-range")
     runtime = None
@@ -173,7 +166,84 @@ def test_exploration_endpoint_returns_dense_days_catalog_without_taxonomy_logic(
                         total_events=1,
                         media_count=1,
                         activity_score=40,
-                        metadata_json={"score_version": "v1"},
+                        tag_summary_json=[
+                            {
+                                "path": "family/anna",
+                                "label": "Family Anna",
+                                "count": 1,
+                            },
+                            {
+                                "path": "projects/apollo",
+                                "label": "Project Apollo",
+                                "count": 1,
+                            },
+                        ],
+                        person_summary_json=[
+                            {
+                                "person_id": anna.id,
+                                "name": "Anna",
+                                "role": "Family",
+                                "count": 1,
+                            },
+                            {
+                                "person_id": milo.id,
+                                "name": "Milo",
+                                "role": "Travel buddy",
+                                "count": 1,
+                            },
+                        ],
+                        location_summary_json=[],
+                        metadata_json={"score_version": "v2"},
+                    ),
+                    DailyAggregate(
+                        date=date(2024, 1, 2),
+                        aggregate_scope=DAILY_AGGREGATE_SCOPE_SOURCE_TYPE,
+                        source_type="calendar",
+                        total_events=1,
+                        media_count=0,
+                        activity_score=20,
+                        tag_summary_json=[
+                            {
+                                "path": "projects/apollo",
+                                "label": "Project Apollo",
+                                "count": 1,
+                            }
+                        ],
+                        person_summary_json=[
+                            {
+                                "person_id": anna.id,
+                                "name": "Anna",
+                                "role": "Family",
+                                "count": 1,
+                            }
+                        ],
+                        location_summary_json=[],
+                        metadata_json={"score_version": "v2", "source_type": "calendar"},
+                    ),
+                    DailyAggregate(
+                        date=date(2024, 1, 2),
+                        aggregate_scope=DAILY_AGGREGATE_SCOPE_SOURCE_TYPE,
+                        source_type="photo",
+                        total_events=0,
+                        media_count=1,
+                        activity_score=20,
+                        tag_summary_json=[
+                            {
+                                "path": "family/anna",
+                                "label": "Family Anna",
+                                "count": 1,
+                            }
+                        ],
+                        person_summary_json=[
+                            {
+                                "person_id": milo.id,
+                                "name": "Milo",
+                                "role": "Travel buddy",
+                                "count": 1,
+                            }
+                        ],
+                        location_summary_json=[],
+                        metadata_json={"score_version": "v2", "source_type": "photo"},
                     ),
                 ]
             )
@@ -244,16 +314,7 @@ def test_exploration_endpoint_returns_dense_days_catalog_without_taxonomy_logic(
                 },
             ],
             "days": [
-                {
-                    "date": "2024-01-01",
-                    "event_count": 0,
-                    "asset_count": 0,
-                    "activity_score": 0,
-                    "color_value": "empty",
-                    "has_data": False,
-                    "person_ids": [],
-                    "tag_paths": [],
-                },
+                _empty_exploration_day_payload("2024-01-01"),
                 {
                     "date": "2024-01-02",
                     "event_count": 1,
@@ -263,17 +324,104 @@ def test_exploration_endpoint_returns_dense_days_catalog_without_taxonomy_logic(
                     "has_data": True,
                     "person_ids": [1, 2],
                     "tag_paths": ["family/anna", "projects/apollo"],
+                    "derived_summary": {
+                        "tags": [
+                            {
+                                "path": "family/anna",
+                                "label": "Family Anna",
+                                "count": 1,
+                            },
+                            {
+                                "path": "projects/apollo",
+                                "label": "Project Apollo",
+                                "count": 1,
+                            },
+                        ],
+                        "persons": [
+                            {
+                                "person_id": 1,
+                                "name": "Anna",
+                                "role": "Family",
+                                "count": 1,
+                            },
+                            {
+                                "person_id": 2,
+                                "name": "Milo",
+                                "role": "Travel buddy",
+                                "count": 1,
+                            },
+                        ],
+                        "locations": [],
+                        "metadata": {"score_version": "v2"},
+                    },
+                    "source_summaries": [
+                        {
+                            "source_type": "calendar",
+                            "event_count": 1,
+                            "asset_count": 0,
+                            "activity_score": 20,
+                            "color_value": "low",
+                            "has_data": True,
+                            "person_ids": [1],
+                            "tag_paths": ["projects/apollo"],
+                            "derived_summary": {
+                                "tags": [
+                                    {
+                                        "path": "projects/apollo",
+                                        "label": "Project Apollo",
+                                        "count": 1,
+                                    }
+                                ],
+                                "persons": [
+                                    {
+                                        "person_id": 1,
+                                        "name": "Anna",
+                                        "role": "Family",
+                                        "count": 1,
+                                    }
+                                ],
+                                "locations": [],
+                                "metadata": {
+                                    "score_version": "v2",
+                                    "source_type": "calendar",
+                                },
+                            },
+                        },
+                        {
+                            "source_type": "photo",
+                            "event_count": 0,
+                            "asset_count": 1,
+                            "activity_score": 20,
+                            "color_value": "low",
+                            "has_data": True,
+                            "person_ids": [2],
+                            "tag_paths": ["family/anna"],
+                            "derived_summary": {
+                                "tags": [
+                                    {
+                                        "path": "family/anna",
+                                        "label": "Family Anna",
+                                        "count": 1,
+                                    }
+                                ],
+                                "persons": [
+                                    {
+                                        "person_id": 2,
+                                        "name": "Milo",
+                                        "role": "Travel buddy",
+                                        "count": 1,
+                                    }
+                                ],
+                                "locations": [],
+                                "metadata": {
+                                    "score_version": "v2",
+                                    "source_type": "photo",
+                                },
+                            },
+                        },
+                    ],
                 },
-                {
-                    "date": "2024-01-03",
-                    "event_count": 1,
-                    "asset_count": 0,
-                    "activity_score": 1,
-                    "color_value": "low",
-                    "has_data": True,
-                    "person_ids": [],
-                    "tag_paths": ["mood/focused"],
-                },
+                _empty_exploration_day_payload("2024-01-03"),
             ],
         }
     finally:
@@ -289,29 +437,20 @@ def test_exploration_endpoint_resolves_available_timeline_and_pads_years() -> No
         runtime = _create_runtime(workspace_root=workspace_root)
 
         with runtime.session_factory() as session:
-            source = Source(name="Calendar", type="calendar", config={})
-            session.add(source)
-            session.flush()
             session.add_all(
                 [
-                    Event(
-                        source_id=source.id,
-                        type="calendar",
-                        timestamp_start=datetime(2024, 5, 10, 9, 0, tzinfo=UTC),
-                        timestamp_end=None,
-                        title="Trip planning",
-                        summary=None,
-                        latitude=None,
-                        longitude=None,
-                        raw_payload={},
-                        derived_payload={},
+                    DailyAggregate(
+                        date=date(2024, 5, 10),
+                        total_events=1,
+                        media_count=0,
+                        activity_score=1,
+                        metadata_json={},
                     ),
-                    Asset(
-                        external_id="asset-1",
-                        media_type="photo",
-                        timestamp=datetime(2025, 2, 3, 18, 0, tzinfo=UTC),
-                        latitude=None,
-                        longitude=None,
+                    DailyAggregate(
+                        date=date(2025, 2, 3),
+                        total_events=0,
+                        media_count=1,
+                        activity_score=1,
                         metadata_json={},
                     ),
                 ]
@@ -340,6 +479,13 @@ def test_exploration_endpoint_resolves_available_timeline_and_pads_years() -> No
             "has_data": True,
             "person_ids": [],
             "tag_paths": [],
+            "derived_summary": {
+                "tags": [],
+                "persons": [],
+                "locations": [],
+                "metadata": {},
+            },
+            "source_summaries": [],
         }
         assert day_by_date["2025-02-03"] == {
             "date": "2025-02-03",
@@ -350,7 +496,58 @@ def test_exploration_endpoint_resolves_available_timeline_and_pads_years() -> No
             "has_data": True,
             "person_ids": [],
             "tag_paths": [],
+            "derived_summary": {
+                "tags": [],
+                "persons": [],
+                "locations": [],
+                "metadata": {},
+            },
+            "source_summaries": [],
         }
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_exploration_endpoint_ignores_canonical_bounds_without_derived_rows() -> None:
+    workspace_root = _create_workspace_dir(prefix="timeline-api-exploration-no-derived")
+    runtime = None
+    try:
+        runtime = _create_runtime(workspace_root=workspace_root)
+
+        with runtime.session_factory() as session:
+            source = Source(name="Calendar", type="calendar", config={})
+            session.add(source)
+            session.flush()
+            session.add(
+                Event(
+                    source_id=source.id,
+                    type="calendar",
+                    timestamp_start=datetime(2024, 5, 10, 9, 0, tzinfo=UTC),
+                    timestamp_end=None,
+                    title="Trip planning",
+                    summary=None,
+                    latitude=None,
+                    longitude=None,
+                    raw_payload={},
+                    derived_payload={},
+                )
+            )
+            session.commit()
+
+        app = create_app(settings=runtime.settings)
+        with TestClient(app) as client:
+            response = client.get("/api/exploration")
+
+        assert response.status_code == 200
+        payload = response.json()
+        current_year = date.today().year
+        assert payload["range"] == {
+            "start": f"{current_year}-01-01",
+            "end": f"{current_year}-12-31",
+        }
+        assert all(day["has_data"] is False for day in payload["days"])
     finally:
         if runtime is not None:
             runtime.engine.dispose()
@@ -1202,6 +1399,28 @@ def _seed_timeline(
             )
 
         session.commit()
+
+
+def _empty_exploration_day_payload(day: str) -> dict[str, object]:
+    """Return the canonical empty exploration-day payload."""
+
+    return {
+        "date": day,
+        "event_count": 0,
+        "asset_count": 0,
+        "activity_score": 0,
+        "color_value": "empty",
+        "has_data": False,
+        "person_ids": [],
+        "tag_paths": [],
+        "derived_summary": {
+            "tags": [],
+            "persons": [],
+            "locations": [],
+            "metadata": {},
+        },
+        "source_summaries": [],
+    }
 
 
 def _create_runtime(*, workspace_root: Path):

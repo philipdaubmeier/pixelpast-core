@@ -1,5 +1,44 @@
 import type { DateRange, ViewModeOption } from "../projections/timeline";
 
+type ApiExplorationDayTagSummary = {
+  path: string;
+  label: string;
+  count: number;
+};
+
+type ApiExplorationDayPersonSummary = {
+  person_id: number;
+  name: string;
+  role: string | null;
+  count: number;
+};
+
+type ApiExplorationDayLocationSummary = {
+  label: string;
+  latitude: number;
+  longitude: number;
+  count: number;
+};
+
+type ApiExplorationDayDerivedSummary = {
+  tags: ApiExplorationDayTagSummary[];
+  persons: ApiExplorationDayPersonSummary[];
+  locations: ApiExplorationDayLocationSummary[];
+  metadata: Record<string, unknown>;
+};
+
+type ApiExplorationDaySourceSummary = {
+  source_type: string;
+  event_count: number;
+  asset_count: number;
+  activity_score: number;
+  color_value: "empty" | "low" | "medium" | "high";
+  has_data: boolean;
+  person_ids: number[];
+  tag_paths: string[];
+  derived_summary: ApiExplorationDayDerivedSummary;
+};
+
 export type ApiExplorationResponse = {
   range: DateRange;
   view_modes: Array<{
@@ -25,6 +64,8 @@ export type ApiExplorationResponse = {
     has_data: boolean;
     person_ids: number[];
     tag_paths: string[];
+    derived_summary: ApiExplorationDayDerivedSummary;
+    source_summaries: ApiExplorationDaySourceSummary[];
   }>;
 };
 

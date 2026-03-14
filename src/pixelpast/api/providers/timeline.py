@@ -13,6 +13,11 @@ from pixelpast.api.schemas import (
     DayContextResponse,
     DayContextSummaryCounts,
     ExplorationDay,
+    ExplorationDayDerivedSummary,
+    ExplorationDayLocationSummary,
+    ExplorationDayPersonSummary,
+    ExplorationDaySourceSummary,
+    ExplorationDayTagSummary,
     ExplorationPerson,
     ExplorationRange,
     ExplorationResponse,
@@ -121,7 +126,7 @@ class DatabaseTimelineProjectionProvider:
         self._exploration_repository = exploration_repository
 
     def get_day_context(self, *, start: date, end: date) -> DayContextResponse:
-        """Return a dense hover-context projection for an inclusive date range."""
+        """Return canonical hover-context data for an inclusive date range."""
 
         event_days = self._exploration_repository.list_event_days(
             start_date=start,
@@ -182,20 +187,18 @@ class DatabaseTimelineProjectionProvider:
             end=end,
             today=today,
         )
-        aggregate_map = {
+        overall_aggregate_map = {
             aggregate.date: aggregate
             for aggregate in self._daily_aggregate_repository.list_range(
                 start_date=range_start,
                 end_date=range_end,
             )
         }
-        event_days = self._exploration_repository.list_event_days(
-            start_date=range_start,
-            end_date=range_end,
-        )
-        asset_days = self._exploration_repository.list_asset_days(
-            start_date=range_start,
-            end_date=range_end,
+        source_aggregate_map = _group_source_aggregates_by_day(
+            self._daily_aggregate_repository.list_source_type_range(
+                start_date=range_start,
+                end_date=range_end,
+            )
         )
         person_links = self._exploration_repository.list_person_links(
             start_date=range_start,
@@ -206,19 +209,14 @@ class DatabaseTimelineProjectionProvider:
             end_date=range_end,
         )
 
-        event_counts = _count_items_by_day(event_days)
-        asset_counts = _count_items_by_day(asset_days)
-        person_ids_by_day, persons = _build_person_catalog(person_links)
-        tag_paths_by_day, tags = _build_tag_catalog(tag_links)
+        persons = _build_person_catalog(person_links)
+        tags = _build_tag_catalog(tag_links)
 
         days = [
             _build_exploration_day(
                 day=current_day,
-                aggregate_map=aggregate_map,
-                event_counts=event_counts,
-                asset_counts=asset_counts,
-                person_ids_by_day=person_ids_by_day,
-                tag_paths_by_day=tag_paths_by_day,
+                overall_aggregate_map=overall_aggregate_map,
+                source_aggregate_map=source_aggregate_map,
             )
             for current_day in _iter_inclusive_dates(range_start, range_end)
         ]
@@ -243,7 +241,7 @@ class DatabaseTimelineProjectionProvider:
         if start is not None and end is not None:
             return start, end
 
-        bounds = self._exploration_repository.resolve_timeline_bounds()
+        bounds = self._daily_aggregate_repository.resolve_bounds()
         if bounds is None:
             return date(today.year, 1, 1), date(today.year, 12, 31)
 
@@ -257,7 +255,7 @@ class DemoTimelineProjectionProvider:
     """Generate deterministic demo projections without reading production data."""
 
     def get_day_context(self, *, start: date, end: date) -> DayContextResponse:
-        """Return a dense hover-context projection for an inclusive date range."""
+        """Return canonical-style hover-context data for an inclusive date range."""
 
         days = [
             self._build_day_context_day(current_day)
@@ -312,6 +310,28 @@ class DemoTimelineProjectionProvider:
                     has_data=snapshot.activity_score > 0,
                     person_ids=list(snapshot.person_ids),
                     tag_paths=list(snapshot.tag_paths),
+                    derived_summary=ExplorationDayDerivedSummary(
+                        tags=[
+                            ExplorationDayTagSummary(
+                                path=tag_path,
+                                label=_find_demo_tag(tag_path).label,
+                                count=1,
+                            )
+                            for tag_path in snapshot.tag_paths
+                        ],
+                        persons=[
+                            ExplorationDayPersonSummary(
+                                person_id=person_id,
+                                name=_find_demo_person(person_id).name,
+                                role=_find_demo_person(person_id).role,
+                                count=1,
+                            )
+                            for person_id in snapshot.person_ids
+                        ],
+                        locations=[],
+                        metadata={"projection_source": "demo"},
+                    ),
+                    source_summaries=[],
                 )
             )
 
@@ -528,26 +548,26 @@ def get_default_view_modes() -> list[ExplorationViewMode]:
 def _build_exploration_day(
     *,
     day: date,
-    aggregate_map: dict[date, DailyAggregateReadSnapshot],
-    event_counts: dict[date, int],
-    asset_counts: dict[date, int],
-    person_ids_by_day: dict[date, list[int]],
-    tag_paths_by_day: dict[date, list[str]],
+    overall_aggregate_map: dict[date, DailyAggregateReadSnapshot],
+    source_aggregate_map: dict[date, list[DailyAggregateReadSnapshot]],
 ) -> ExplorationDay:
     """Compose a single dense exploration day."""
 
-    aggregate = aggregate_map.get(day)
-    event_count = (
-        aggregate.total_events if aggregate is not None else event_counts.get(day, 0)
+    aggregate = overall_aggregate_map.get(day)
+    source_aggregates = source_aggregate_map.get(day, [])
+    event_count = aggregate.total_events if aggregate is not None else 0
+    asset_count = aggregate.media_count if aggregate is not None else 0
+    activity_score = aggregate.activity_score if aggregate is not None else 0
+    person_ids = (
+        _extract_person_ids_from_summary(aggregate.person_summary_json)
+        if aggregate is not None
+        else []
     )
-    asset_count = (
-        aggregate.media_count if aggregate is not None else asset_counts.get(day, 0)
+    tag_paths = (
+        _extract_tag_paths_from_summary(aggregate.tag_summary_json)
+        if aggregate is not None
+        else []
     )
-    activity_score = (
-        aggregate.activity_score if aggregate is not None else event_count + asset_count
-    )
-    person_ids = person_ids_by_day.get(day, [])
-    tag_paths = tag_paths_by_day.get(day, [])
     has_data = event_count > 0 or asset_count > 0 or activity_score > 0
 
     return ExplorationDay(
@@ -559,6 +579,152 @@ def _build_exploration_day(
         has_data=has_data,
         person_ids=person_ids,
         tag_paths=tag_paths,
+        derived_summary=_build_derived_summary(aggregate),
+        source_summaries=[
+            _build_source_summary(source_aggregate)
+            for source_aggregate in source_aggregates
+        ],
+    )
+
+
+def _group_source_aggregates_by_day(
+    snapshots: list[DailyAggregateReadSnapshot],
+) -> dict[date, list[DailyAggregateReadSnapshot]]:
+    """Group connector-scoped derived aggregates by day."""
+
+    grouped: dict[date, list[DailyAggregateReadSnapshot]] = defaultdict(list)
+    for snapshot in snapshots:
+        grouped[snapshot.date].append(snapshot)
+
+    return {
+        day: sorted(day_snapshots, key=lambda snapshot: snapshot.source_type)
+        for day, day_snapshots in grouped.items()
+    }
+
+
+def _build_source_summary(
+    snapshot: DailyAggregateReadSnapshot,
+) -> ExplorationDaySourceSummary:
+    """Map a connector-scoped aggregate row to the exploration contract."""
+
+    return ExplorationDaySourceSummary(
+        source_type=snapshot.source_type,
+        event_count=snapshot.total_events,
+        asset_count=snapshot.media_count,
+        activity_score=snapshot.activity_score,
+        color_value=_get_activity_color_value(snapshot.activity_score),
+        has_data=snapshot.activity_score > 0,
+        person_ids=_extract_person_ids_from_summary(snapshot.person_summary_json),
+        tag_paths=_extract_tag_paths_from_summary(snapshot.tag_summary_json),
+        derived_summary=_build_derived_summary(snapshot),
+    )
+
+
+def _build_derived_summary(
+    snapshot: DailyAggregateReadSnapshot | None,
+) -> ExplorationDayDerivedSummary:
+    """Return the exploration-facing semantic summary for one derived row."""
+
+    if snapshot is None:
+        return ExplorationDayDerivedSummary(
+            tags=[],
+            persons=[],
+            locations=[],
+            metadata={},
+        )
+
+    return ExplorationDayDerivedSummary(
+        tags=[
+            ExplorationDayTagSummary(
+                path=summary["path"],
+                label=summary["label"],
+                count=summary["count"],
+            )
+            for summary in snapshot.tag_summary_json
+            if _is_tag_summary(summary)
+        ],
+        persons=[
+            ExplorationDayPersonSummary(
+                person_id=summary["person_id"],
+                name=summary["name"],
+                role=summary["role"],
+                count=summary["count"],
+            )
+            for summary in snapshot.person_summary_json
+            if _is_person_summary(summary)
+        ],
+        locations=[
+            ExplorationDayLocationSummary(
+                label=summary["label"],
+                latitude=summary["latitude"],
+                longitude=summary["longitude"],
+                count=summary["count"],
+            )
+            for summary in snapshot.location_summary_json
+            if _is_location_summary(summary)
+        ],
+        metadata=dict(snapshot.metadata_json),
+    )
+
+
+def _extract_person_ids_from_summary(
+    summaries: list[dict[str, object]],
+) -> list[int]:
+    """Extract person identifiers from a derived person summary payload."""
+
+    return [
+        summary["person_id"]
+        for summary in summaries
+        if _is_person_summary(summary)
+    ]
+
+
+def _extract_tag_paths_from_summary(
+    summaries: list[dict[str, object]],
+) -> list[str]:
+    """Extract tag paths from a derived tag summary payload."""
+
+    return [
+        summary["path"]
+        for summary in summaries
+        if _is_tag_summary(summary)
+    ]
+
+
+def _is_tag_summary(summary: object) -> bool:
+    """Return whether an object matches the derived tag summary shape."""
+
+    return (
+        isinstance(summary, dict)
+        and isinstance(summary.get("path"), str)
+        and isinstance(summary.get("label"), str)
+        and isinstance(summary.get("count"), int)
+    )
+
+
+def _is_person_summary(summary: object) -> bool:
+    """Return whether an object matches the derived person summary shape."""
+
+    return (
+        isinstance(summary, dict)
+        and isinstance(summary.get("person_id"), int)
+        and isinstance(summary.get("name"), str)
+        and isinstance(summary.get("count"), int)
+        and (
+            summary.get("role") is None or isinstance(summary.get("role"), str)
+        )
+    )
+
+
+def _is_location_summary(summary: object) -> bool:
+    """Return whether an object matches the derived location summary shape."""
+
+    return (
+        isinstance(summary, dict)
+        and isinstance(summary.get("label"), str)
+        and isinstance(summary.get("latitude"), (int, float))
+        and isinstance(summary.get("longitude"), (int, float))
+        and isinstance(summary.get("count"), int)
     )
 
 
@@ -573,14 +739,12 @@ def _count_items_by_day(snapshots: list[DayActivityItemSnapshot]) -> dict[date, 
 
 def _build_person_catalog(
     links: list[DayPersonLinkSnapshot],
-) -> tuple[dict[date, list[int]], list[ExplorationPerson]]:
-    """Build dense day-to-person ids plus the visible person catalog."""
+) -> list[ExplorationPerson]:
+    """Build the visible person catalog from canonical associations."""
 
-    person_ids_by_day: dict[date, set[int]] = defaultdict(set)
     persons_by_id: dict[int, ExplorationPerson] = {}
 
     for link in links:
-        person_ids_by_day[link.day].add(link.person_id)
         persons_by_id.setdefault(
             link.person_id,
             ExplorationPerson(
@@ -594,25 +758,17 @@ def _build_person_catalog(
         persons_by_id.values(),
         key=lambda person: (person.name.casefold(), person.id),
     )
-    return (
-        {
-            day: sorted(person_ids)
-            for day, person_ids in person_ids_by_day.items()
-        },
-        persons,
-    )
+    return persons
 
 
 def _build_tag_catalog(
     links: list[DayTagLinkSnapshot],
-) -> tuple[dict[date, list[str]], list[ExplorationTag]]:
-    """Build dense day-to-tag paths plus the visible tag catalog."""
+) -> list[ExplorationTag]:
+    """Build the visible tag catalog from canonical associations."""
 
-    tag_paths_by_day: dict[date, set[str]] = defaultdict(set)
     tags_by_path: dict[str, ExplorationTag] = {}
 
     for link in links:
-        tag_paths_by_day[link.day].add(link.tag_path)
         tags_by_path.setdefault(
             link.tag_path,
             ExplorationTag(path=link.tag_path, label=link.tag_label),
@@ -622,13 +778,7 @@ def _build_tag_catalog(
         tags_by_path.values(),
         key=lambda tag: (tag.path, tag.label.casefold()),
     )
-    return (
-        {
-            day: sorted(tag_paths)
-            for day, tag_paths in tag_paths_by_day.items()
-        },
-        tags,
-    )
+    return tags
 
 
 def _build_day_context_persons(
