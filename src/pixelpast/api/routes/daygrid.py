@@ -1,20 +1,18 @@
-"""Routes for day-grid exploration and derived heatmap reads."""
+"""Routes for exploration-oriented day-grid reads."""
 
 from __future__ import annotations
 
 from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 
 from pixelpast.api.providers import TimelineProjectionProvider
 from pixelpast.api.routes.shared import (
     build_exploration_grid_filters,
     get_timeline_projection_provider,
-    get_timeline_query_service,
     validate_optional_range,
 )
-from pixelpast.api.schemas import ExplorationGridResponse, HeatmapResponse
-from pixelpast.api.services import TimelineQueryService
+from pixelpast.api.schemas import ExplorationGridResponse
 
 router = APIRouter(tags=["timeline"])
 
@@ -52,20 +50,3 @@ def get_exploration(
         today=date.today(),
         filters=filters,
     )
-
-
-@router.get("/heatmap", response_model=HeatmapResponse)
-def get_heatmap(
-    start: date = Query(...),
-    end: date = Query(...),
-    service: TimelineQueryService = Depends(get_timeline_query_service),
-) -> HeatmapResponse:
-    """Return derived day-level activity data for a UTC date range."""
-
-    if start > end:
-        raise HTTPException(
-            status_code=400,
-            detail="start must be less than or equal to end",
-        )
-
-    return service.get_heatmap(start=start, end=end)

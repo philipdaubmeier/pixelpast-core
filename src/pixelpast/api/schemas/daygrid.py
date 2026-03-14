@@ -1,4 +1,4 @@
-"""Schemas for day-grid and heatmap exploration payloads."""
+"""Schemas for exploration day-grid payloads."""
 
 from __future__ import annotations
 
@@ -11,23 +11,6 @@ from pixelpast.api.schemas.bootstrap_ui import ExplorationRange
 
 
 ColorValue = Literal["empty", "low", "medium", "high"]
-
-
-class HeatmapDay(BaseModel):
-    """Serialized per-day heatmap payload."""
-
-    date: date
-    total_events: int
-    media_count: int
-    activity_score: int
-
-
-class HeatmapResponse(BaseModel):
-    """Serialized heatmap response for an inclusive date range."""
-
-    start: date
-    end: date
-    days: list[HeatmapDay]
 
 
 class ExplorationGridDay(BaseModel):

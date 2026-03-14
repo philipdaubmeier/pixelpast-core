@@ -29,7 +29,7 @@
 
 - DailyAggregate job
 - Activity score calculation
-- Heatmap API endpoint
+- Exploration grid API endpoint
 
 ## Phase 3 – UI v1
 

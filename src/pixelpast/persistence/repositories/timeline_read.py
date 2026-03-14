@@ -106,7 +106,7 @@ class DayTimelineItemSnapshot:
 
 
 class DailyAggregateReadRepository:
-    """Read derived daily aggregate rows for heatmap endpoints."""
+    """Read derived daily aggregate rows for exploration projections."""
 
     def __init__(self, session: Session) -> None:
         self._session = session

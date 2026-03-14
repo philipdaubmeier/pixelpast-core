@@ -28,10 +28,9 @@ from pixelpast.shared.settings import Settings
 def get_timeline_query_service(
     session: Session = Depends(get_db_session),
 ) -> TimelineQueryService:
-    """Build the read service for timeline endpoints."""
+    """Build the read service for timeline detail endpoints."""
 
     return TimelineQueryService(
-        daily_aggregate_repository=DailyAggregateReadRepository(session),
         day_timeline_repository=DayTimelineRepository(session),
     )
 

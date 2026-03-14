@@ -140,7 +140,7 @@ Suggested fields:
 - `persons`
 - `tags`
 
-### `HeatmapDayProjection`
+### `ExplorationGridDayProjection`
 
 Represents one day cell in the calendar grid.
 

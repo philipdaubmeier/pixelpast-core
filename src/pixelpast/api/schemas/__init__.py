@@ -15,8 +15,6 @@ from pixelpast.api.schemas.day_detail import (
 from pixelpast.api.schemas.daygrid import (
     ExplorationGridDay,
     ExplorationGridResponse,
-    HeatmapDay,
-    HeatmapResponse,
 )
 from pixelpast.api.schemas.hovercontext import (
     DayContextDay,
@@ -40,6 +38,4 @@ __all__ = [
     "ExplorationRange",
     "ExplorationTag",
     "ExplorationViewMode",
-    "HeatmapDay",
-    "HeatmapResponse",
 ]

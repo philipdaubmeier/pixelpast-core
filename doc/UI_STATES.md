@@ -372,7 +372,7 @@ One practical visual rule for v1:
 
 The state model implies two broad categories of data fetching:
 
-### A. Heatmap Projection Fetching
+### A. Grid Projection Fetching
 
 Depends on persistent state such as:
 

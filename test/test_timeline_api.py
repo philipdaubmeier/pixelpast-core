@@ -1,9 +1,9 @@
-"""Integration tests for heatmap and day-detail API endpoints."""
+"""Integration tests for day-context and day-detail API endpoints."""
 
 from __future__ import annotations
 
 import shutil
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
@@ -14,8 +14,6 @@ from pixelpast.persistence.models import (
     Asset,
     AssetPerson,
     AssetTag,
-    DAILY_AGGREGATE_SCOPE_SOURCE_TYPE,
-    DailyAggregate,
     Event,
     EventPerson,
     EventTag,
@@ -419,163 +417,6 @@ def test_day_context_endpoint_rejects_ranges_beyond_configured_limit() -> None:
         assert response.status_code == 400
         assert response.json() == {
             "detail": "requested range exceeds maximum day context window of 2 days",
-        }
-    finally:
-        if runtime is not None:
-            runtime.engine.dispose()
-        shutil.rmtree(workspace_root, ignore_errors=True)
-
-
-def test_heatmap_endpoint_returns_empty_range() -> None:
-    workspace_root = _create_workspace_dir(prefix="timeline-api-heatmap-empty")
-    runtime = None
-    try:
-        runtime = _create_runtime(workspace_root=workspace_root)
-        app = create_app(settings=runtime.settings)
-
-        with TestClient(app) as client:
-            response = client.get("/api/heatmap?start=2024-01-01&end=2024-01-03")
-
-        assert response.status_code == 200
-        assert response.json() == {
-            "start": "2024-01-01",
-            "end": "2024-01-03",
-            "days": [],
-        }
-    finally:
-        if runtime is not None:
-            runtime.engine.dispose()
-        shutil.rmtree(workspace_root, ignore_errors=True)
-
-
-def test_heatmap_endpoint_returns_daily_aggregates_in_range_order() -> None:
-    workspace_root = _create_workspace_dir(prefix="timeline-api-heatmap-data")
-    runtime = None
-    try:
-        runtime = _create_runtime(workspace_root=workspace_root)
-
-        with runtime.session_factory() as session:
-            session.add_all(
-                [
-                    DailyAggregate(
-                        date=date(2024, 1, 1),
-                        total_events=1,
-                        media_count=0,
-                        activity_score=1,
-                        metadata_json={"score_version": "v1"},
-                    ),
-                    DailyAggregate(
-                        date=date(2024, 1, 2),
-                        total_events=2,
-                        media_count=1,
-                        activity_score=3,
-                        metadata_json={"score_version": "v1"},
-                    ),
-                    DailyAggregate(
-                        date=date(2024, 1, 4),
-                        total_events=0,
-                        media_count=2,
-                        activity_score=2,
-                        metadata_json={"score_version": "v1"},
-                    ),
-                ]
-            )
-            session.commit()
-
-        app = create_app(settings=runtime.settings)
-        with TestClient(app) as client:
-            response = client.get("/api/heatmap?start=2024-01-02&end=2024-01-04")
-
-        assert response.status_code == 200
-        assert response.json() == {
-            "start": "2024-01-02",
-            "end": "2024-01-04",
-            "days": [
-                {
-                    "date": "2024-01-02",
-                    "total_events": 2,
-                    "media_count": 1,
-                    "activity_score": 3,
-                },
-                {
-                    "date": "2024-01-04",
-                    "total_events": 0,
-                    "media_count": 2,
-                    "activity_score": 2,
-                },
-            ],
-        }
-    finally:
-        if runtime is not None:
-            runtime.engine.dispose()
-        shutil.rmtree(workspace_root, ignore_errors=True)
-
-
-def test_heatmap_endpoint_uses_overall_daily_aggregate_rows_only() -> None:
-    workspace_root = _create_workspace_dir(prefix="timeline-api-heatmap-overall")
-    runtime = None
-    try:
-        runtime = _create_runtime(workspace_root=workspace_root)
-
-        with runtime.session_factory() as session:
-            session.add_all(
-                [
-                    DailyAggregate(
-                        date=date(2024, 1, 2),
-                        total_events=2,
-                        media_count=1,
-                        activity_score=3,
-                        metadata_json={"score_version": "v2"},
-                    ),
-                    DailyAggregate(
-                        date=date(2024, 1, 2),
-                        aggregate_scope=DAILY_AGGREGATE_SCOPE_SOURCE_TYPE,
-                        source_type="photo",
-                        total_events=0,
-                        media_count=1,
-                        activity_score=99,
-                        metadata_json={"score_version": "v2"},
-                    ),
-                ]
-            )
-            session.commit()
-
-        app = create_app(settings=runtime.settings)
-        with TestClient(app) as client:
-            response = client.get("/api/heatmap?start=2024-01-02&end=2024-01-02")
-
-        assert response.status_code == 200
-        assert response.json() == {
-            "start": "2024-01-02",
-            "end": "2024-01-02",
-            "days": [
-                {
-                    "date": "2024-01-02",
-                    "total_events": 2,
-                    "media_count": 1,
-                    "activity_score": 3,
-                }
-            ],
-        }
-    finally:
-        if runtime is not None:
-            runtime.engine.dispose()
-        shutil.rmtree(workspace_root, ignore_errors=True)
-
-
-def test_heatmap_endpoint_rejects_invalid_range() -> None:
-    workspace_root = _create_workspace_dir(prefix="timeline-api-heatmap-invalid")
-    runtime = None
-    try:
-        runtime = _create_runtime(workspace_root=workspace_root)
-        app = create_app(settings=runtime.settings)
-
-        with TestClient(app) as client:
-            response = client.get("/api/heatmap?start=2024-01-03&end=2024-01-01")
-
-        assert response.status_code == 400
-        assert response.json() == {
-            "detail": "start must be less than or equal to end",
         }
     finally:
         if runtime is not None:
