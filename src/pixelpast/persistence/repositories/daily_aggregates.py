@@ -10,11 +10,18 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from pixelpast.persistence.models import (
-    Asset,
     DAILY_AGGREGATE_OVERALL_SOURCE_TYPE,
     DAILY_AGGREGATE_SCOPE_OVERALL,
+    Asset,
+    AssetPerson,
+    AssetTag,
     DailyAggregate,
     Event,
+    EventPerson,
+    EventTag,
+    Person,
+    Source,
+    Tag,
 )
 
 
@@ -34,45 +41,291 @@ class DailyAggregateSnapshot:
     source_type: str = DAILY_AGGREGATE_OVERALL_SOURCE_TYPE
 
 
+@dataclass(slots=True, frozen=True)
+class CanonicalEventAggregateInput:
+    """Canonical event contribution to a UTC day/source-type aggregate."""
+
+    day: date
+    source_type: str
+    event_type: str
+    title: str
+    latitude: float | None
+    longitude: float | None
+
+
+@dataclass(slots=True, frozen=True)
+class CanonicalAssetAggregateInput:
+    """Canonical asset contribution to a UTC day/source-type aggregate."""
+
+    day: date
+    source_type: str
+    external_id: str
+    media_type: str
+    summary: str | None
+    metadata_json: dict[str, Any] | None
+    latitude: float | None
+    longitude: float | None
+
+
+@dataclass(slots=True, frozen=True)
+class CanonicalTagAggregateInput:
+    """Canonical tag contribution to a UTC day/source-type aggregate."""
+
+    day: date
+    source_type: str
+    path: str
+    label: str
+
+
+@dataclass(slots=True, frozen=True)
+class CanonicalPersonAggregateInput:
+    """Canonical person contribution to a UTC day/source-type aggregate."""
+
+    day: date
+    source_type: str
+    person_id: int
+    name: str
+    role: str | None
+
+
 class CanonicalTimelineRepository:
-    """Read canonical timestamps used to build day-level summaries."""
+    """Read canonical day-level contributions used to build derived summaries."""
 
     def __init__(self, session: Session) -> None:
         self._session = session
 
-    def list_event_dates(
+    def list_event_inputs(
         self,
         *,
         start_date: date | None = None,
         end_date: date | None = None,
-    ) -> list[date]:
-        """Return UTC calendar dates for canonical events in the requested range."""
+    ) -> list[CanonicalEventAggregateInput]:
+        """Return canonical event contributions in the requested UTC range."""
 
         statement = _apply_datetime_range(
-            select(Event.timestamp_start),
+            select(
+                Event.timestamp_start,
+                Source.type,
+                Event.type,
+                Event.title,
+                Event.latitude,
+                Event.longitude,
+            )
+            .join(Source, Source.id == Event.source_id)
+            .order_by(Event.timestamp_start, Source.type, Event.id),
             column=Event.timestamp_start,
             start_date=start_date,
             end_date=end_date,
         )
-        timestamps = self._session.execute(statement).scalars()
-        return [timestamp.date() for timestamp in timestamps]
+        rows = self._session.execute(statement)
+        return [
+            CanonicalEventAggregateInput(
+                day=timestamp.date(),
+                source_type=source_type,
+                event_type=event_type,
+                title=title,
+                latitude=latitude,
+                longitude=longitude,
+            )
+            for timestamp, source_type, event_type, title, latitude, longitude in rows
+        ]
 
-    def list_asset_dates(
+    def list_asset_inputs(
         self,
         *,
         start_date: date | None = None,
         end_date: date | None = None,
-    ) -> list[date]:
-        """Return UTC calendar dates for canonical assets in the requested range."""
+    ) -> list[CanonicalAssetAggregateInput]:
+        """Return canonical asset contributions in the requested UTC range."""
 
         statement = _apply_datetime_range(
-            select(Asset.timestamp),
+            select(
+                Asset.timestamp,
+                Asset.media_type,
+                Asset.external_id,
+                Asset.summary,
+                Asset.metadata_json,
+                Asset.latitude,
+                Asset.longitude,
+            ).order_by(Asset.timestamp, Asset.media_type, Asset.id),
             column=Asset.timestamp,
             start_date=start_date,
             end_date=end_date,
         )
-        timestamps = self._session.execute(statement).scalars()
-        return [timestamp.date() for timestamp in timestamps]
+        rows = self._session.execute(statement)
+        return [
+            CanonicalAssetAggregateInput(
+                day=timestamp.date(),
+                source_type=media_type,
+                external_id=external_id,
+                media_type=media_type,
+                summary=summary,
+                metadata_json=metadata_json,
+                latitude=latitude,
+                longitude=longitude,
+            )
+            for (
+                timestamp,
+                media_type,
+                external_id,
+                summary,
+                metadata_json,
+                latitude,
+                longitude,
+            ) in rows
+        ]
+
+    def list_event_tag_inputs(
+        self,
+        *,
+        start_date: date | None = None,
+        end_date: date | None = None,
+    ) -> list[CanonicalTagAggregateInput]:
+        """Return event-linked tags in the requested UTC range."""
+
+        statement = _apply_datetime_range(
+            select(
+                Event.timestamp_start,
+                Source.type,
+                Tag.path,
+                Tag.label,
+            )
+            .join(Source, Source.id == Event.source_id)
+            .join(EventTag, EventTag.event_id == Event.id)
+            .join(Tag, Tag.id == EventTag.tag_id)
+            .where(Tag.path.is_not(None))
+            .order_by(Event.timestamp_start, Source.type, Tag.path, Tag.id, Event.id),
+            column=Event.timestamp_start,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        rows = self._session.execute(statement)
+        return [
+            CanonicalTagAggregateInput(
+                day=timestamp.date(),
+                source_type=source_type,
+                path=tag_path,
+                label=tag_label,
+            )
+            for timestamp, source_type, tag_path, tag_label in rows
+        ]
+
+    def list_asset_tag_inputs(
+        self,
+        *,
+        start_date: date | None = None,
+        end_date: date | None = None,
+    ) -> list[CanonicalTagAggregateInput]:
+        """Return asset-linked tags in the requested UTC range."""
+
+        statement = _apply_datetime_range(
+            select(
+                Asset.timestamp,
+                Asset.media_type,
+                Tag.path,
+                Tag.label,
+            )
+            .join(AssetTag, AssetTag.asset_id == Asset.id)
+            .join(Tag, Tag.id == AssetTag.tag_id)
+            .where(Tag.path.is_not(None))
+            .order_by(Asset.timestamp, Asset.media_type, Tag.path, Tag.id, Asset.id),
+            column=Asset.timestamp,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        rows = self._session.execute(statement)
+        return [
+            CanonicalTagAggregateInput(
+                day=timestamp.date(),
+                source_type=source_type,
+                path=tag_path,
+                label=tag_label,
+            )
+            for timestamp, source_type, tag_path, tag_label in rows
+        ]
+
+    def list_event_person_inputs(
+        self,
+        *,
+        start_date: date | None = None,
+        end_date: date | None = None,
+    ) -> list[CanonicalPersonAggregateInput]:
+        """Return event-linked people in the requested UTC range."""
+
+        statement = _apply_datetime_range(
+            select(
+                Event.timestamp_start,
+                Source.type,
+                Person.id,
+                Person.name,
+                Person.metadata_json,
+            )
+            .join(Source, Source.id == Event.source_id)
+            .join(EventPerson, EventPerson.event_id == Event.id)
+            .join(Person, Person.id == EventPerson.person_id)
+            .order_by(
+                Event.timestamp_start,
+                Source.type,
+                Person.name,
+                Person.id,
+                Event.id,
+            ),
+            column=Event.timestamp_start,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        rows = self._session.execute(statement)
+        return [
+            CanonicalPersonAggregateInput(
+                day=timestamp.date(),
+                source_type=source_type,
+                person_id=person_id,
+                name=person_name,
+                role=_extract_person_role(metadata_json),
+            )
+            for timestamp, source_type, person_id, person_name, metadata_json in rows
+        ]
+
+    def list_asset_person_inputs(
+        self,
+        *,
+        start_date: date | None = None,
+        end_date: date | None = None,
+    ) -> list[CanonicalPersonAggregateInput]:
+        """Return asset-linked people in the requested UTC range."""
+
+        statement = _apply_datetime_range(
+            select(
+                Asset.timestamp,
+                Asset.media_type,
+                Person.id,
+                Person.name,
+                Person.metadata_json,
+            )
+            .join(AssetPerson, AssetPerson.asset_id == Asset.id)
+            .join(Person, Person.id == AssetPerson.person_id)
+            .order_by(
+                Asset.timestamp,
+                Asset.media_type,
+                Person.name,
+                Person.id,
+                Asset.id,
+            ),
+            column=Asset.timestamp,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        rows = self._session.execute(statement)
+        return [
+            CanonicalPersonAggregateInput(
+                day=timestamp.date(),
+                source_type=source_type,
+                person_id=person_id,
+                name=person_name,
+                role=_extract_person_role(metadata_json),
+            )
+            for timestamp, source_type, person_id, person_name, metadata_json in rows
+        ]
 
 
 class DailyAggregateRepository:
@@ -152,3 +405,13 @@ def _apply_datetime_range(
         )
 
     return statement
+
+
+def _extract_person_role(metadata_json: object) -> str | None:
+    """Extract a lightweight display role from person metadata."""
+
+    if not isinstance(metadata_json, dict):
+        return None
+
+    role = metadata_json.get("role")
+    return role if isinstance(role, str) and role else None

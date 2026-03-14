@@ -11,11 +11,18 @@ from sqlalchemy import select
 
 from pixelpast.analytics.daily_aggregate import DailyAggregateJob
 from pixelpast.persistence.models import (
-    Asset,
+    DAILY_AGGREGATE_OVERALL_SOURCE_TYPE,
     DAILY_AGGREGATE_SCOPE_SOURCE_TYPE,
+    Asset,
+    AssetPerson,
+    AssetTag,
     DailyAggregate,
     Event,
+    EventPerson,
+    EventTag,
+    Person,
     Source,
+    Tag,
 )
 from pixelpast.shared.runtime import create_runtime_context, initialize_database
 from pixelpast.shared.settings import Settings
@@ -56,31 +63,324 @@ def test_daily_aggregate_job_clears_rows_for_empty_canonical_dataset() -> None:
         shutil.rmtree(workspace_root, ignore_errors=True)
 
 
-def test_daily_aggregate_job_recomputes_range_idempotently() -> None:
+def test_daily_aggregate_job_builds_connector_scoped_rows_with_semantic_summaries(
+) -> None:
+    workspace_root = _create_workspace_dir(prefix="daily-aggregate-v2")
+    runtime = None
+    try:
+        runtime = _create_runtime(workspace_root=workspace_root)
+
+        with runtime.session_factory() as session:
+            calendar_source = Source(name="Calendar", type="calendar", config={})
+            session.add(calendar_source)
+
+            anna = Person(name="Anna", aliases=None, metadata_json={"role": "Family"})
+            ben = Person(name="Ben", aliases=None, metadata_json={"role": "Friend"})
+            milo = Person(name="Milo", aliases=None, metadata_json=None)
+            project_tag = Tag(
+                label="Project Apollo",
+                path="projects/apollo",
+                metadata_json=None,
+            )
+            travel_tag = Tag(label="Travel", path="travel", metadata_json=None)
+            session.add_all([anna, ben, milo, project_tag, travel_tag])
+            session.flush()
+
+            mixed_event = Event(
+                source_id=calendar_source.id,
+                type="calendar",
+                timestamp_start=datetime(2024, 1, 2, 10, 0, tzinfo=UTC),
+                timestamp_end=None,
+                title="Planning",
+                summary=None,
+                latitude=52.52,
+                longitude=13.405,
+                raw_payload={},
+                derived_payload={},
+            )
+            tag_only_event = Event(
+                source_id=calendar_source.id,
+                type="calendar",
+                timestamp_start=datetime(2024, 1, 3, 8, 0, tzinfo=UTC),
+                timestamp_end=None,
+                title="Trip prep",
+                summary=None,
+                latitude=None,
+                longitude=None,
+                raw_payload={},
+                derived_payload={},
+            )
+            mixed_photo_one = Asset(
+                external_id="asset-1",
+                media_type="photo",
+                timestamp=datetime(2024, 1, 2, 12, 0, tzinfo=UTC),
+                summary=None,
+                latitude=48.8566,
+                longitude=2.3522,
+                metadata_json={"title": "Museum"},
+            )
+            mixed_photo_two = Asset(
+                external_id="asset-2",
+                media_type="photo",
+                timestamp=datetime(2024, 1, 2, 13, 0, tzinfo=UTC),
+                summary="Museum",
+                latitude=48.8566,
+                longitude=2.3522,
+                metadata_json={},
+            )
+            person_only_photo = Asset(
+                external_id="asset-day-four",
+                media_type="photo",
+                timestamp=datetime(2024, 1, 4, 9, 30, tzinfo=UTC),
+                summary=None,
+                latitude=40.7128,
+                longitude=-74.006,
+                metadata_json={"filename": "asset-day-four.jpg"},
+            )
+            session.add_all(
+                [
+                    mixed_event,
+                    tag_only_event,
+                    mixed_photo_one,
+                    mixed_photo_two,
+                    person_only_photo,
+                ]
+            )
+            session.flush()
+
+            session.add_all(
+                [
+                    EventPerson(event_id=mixed_event.id, person_id=anna.id),
+                    AssetPerson(asset_id=mixed_photo_one.id, person_id=ben.id),
+                    AssetPerson(asset_id=mixed_photo_two.id, person_id=anna.id),
+                    AssetPerson(asset_id=person_only_photo.id, person_id=milo.id),
+                    EventTag(event_id=mixed_event.id, tag_id=project_tag.id),
+                    EventTag(event_id=tag_only_event.id, tag_id=travel_tag.id),
+                    AssetTag(asset_id=mixed_photo_one.id, tag_id=travel_tag.id),
+                    AssetTag(asset_id=mixed_photo_two.id, tag_id=project_tag.id),
+                ]
+            )
+            session.commit()
+
+        result = DailyAggregateJob().run(runtime=runtime)
+
+        assert result.mode == "full"
+        assert result.aggregate_count == 7
+        assert result.total_events == 2
+        assert result.media_count == 3
+        assert result.start_date == date(2024, 1, 2)
+        assert result.end_date == date(2024, 1, 4)
+
+        with runtime.session_factory() as session:
+            stored_aggregates = list(
+                session.execute(
+                    select(DailyAggregate).order_by(
+                        DailyAggregate.date,
+                        DailyAggregate.aggregate_scope,
+                        DailyAggregate.source_type,
+                    )
+                ).scalars()
+            )
+
+        aggregates = {
+            (
+                aggregate.date.isoformat(),
+                aggregate.aggregate_scope,
+                aggregate.source_type,
+            ): aggregate
+            for aggregate in stored_aggregates
+        }
+
+        mixed_overall = aggregates[("2024-01-02", "overall", "__all__")]
+        assert mixed_overall.total_events == 1
+        assert mixed_overall.media_count == 2
+        assert mixed_overall.activity_score == 3
+        assert mixed_overall.tag_summary_json == [
+            {"path": "projects/apollo", "label": "Project Apollo", "count": 2},
+            {"path": "travel", "label": "Travel", "count": 1},
+        ]
+        assert mixed_overall.person_summary_json == [
+            {"person_id": 1, "name": "Anna", "role": "Family", "count": 2},
+            {"person_id": 2, "name": "Ben", "role": "Friend", "count": 1},
+        ]
+        assert mixed_overall.location_summary_json == [
+            {
+                "label": "Museum",
+                "latitude": 48.8566,
+                "longitude": 2.3522,
+                "count": 2,
+            },
+            {
+                "label": "Planning",
+                "latitude": 52.52,
+                "longitude": 13.405,
+                "count": 1,
+            },
+        ]
+        assert mixed_overall.metadata_json == {
+            "score_version": "v2",
+            "score_formula": "activity_score = total_events + media_count",
+            "summary_version": "v1",
+            "source_partitioning": "events use source.type; assets use media_type",
+        }
+
+        mixed_calendar = aggregates[("2024-01-02", "source_type", "calendar")]
+        assert mixed_calendar.total_events == 1
+        assert mixed_calendar.media_count == 0
+        assert mixed_calendar.tag_summary_json == [
+            {"path": "projects/apollo", "label": "Project Apollo", "count": 1}
+        ]
+        assert mixed_calendar.person_summary_json == [
+            {"person_id": 1, "name": "Anna", "role": "Family", "count": 1}
+        ]
+        assert mixed_calendar.location_summary_json == [
+            {
+                "label": "Planning",
+                "latitude": 52.52,
+                "longitude": 13.405,
+                "count": 1,
+            }
+        ]
+
+        mixed_photo = aggregates[("2024-01-02", "source_type", "photo")]
+        assert mixed_photo.total_events == 0
+        assert mixed_photo.media_count == 2
+        assert mixed_photo.tag_summary_json == [
+            {"path": "projects/apollo", "label": "Project Apollo", "count": 1},
+            {"path": "travel", "label": "Travel", "count": 1},
+        ]
+        assert mixed_photo.person_summary_json == [
+            {"person_id": 1, "name": "Anna", "role": "Family", "count": 1},
+            {"person_id": 2, "name": "Ben", "role": "Friend", "count": 1},
+        ]
+        assert mixed_photo.location_summary_json == [
+            {
+                "label": "Museum",
+                "latitude": 48.8566,
+                "longitude": 2.3522,
+                "count": 2,
+            }
+        ]
+
+        event_only_overall = aggregates[("2024-01-03", "overall", "__all__")]
+        assert event_only_overall.total_events == 1
+        assert event_only_overall.media_count == 0
+        assert event_only_overall.tag_summary_json == [
+            {"path": "travel", "label": "Travel", "count": 1}
+        ]
+        assert event_only_overall.person_summary_json == []
+        assert event_only_overall.location_summary_json == []
+
+        event_only_calendar = aggregates[("2024-01-03", "source_type", "calendar")]
+        assert event_only_calendar.total_events == 1
+        assert event_only_calendar.media_count == 0
+        assert event_only_calendar.tag_summary_json == [
+            {"path": "travel", "label": "Travel", "count": 1}
+        ]
+        assert event_only_calendar.person_summary_json == []
+
+        asset_only_overall = aggregates[("2024-01-04", "overall", "__all__")]
+        assert asset_only_overall.total_events == 0
+        assert asset_only_overall.media_count == 1
+        assert asset_only_overall.tag_summary_json == []
+        assert asset_only_overall.person_summary_json == [
+            {"person_id": 3, "name": "Milo", "role": None, "count": 1}
+        ]
+        assert asset_only_overall.location_summary_json == [
+            {
+                "label": "asset-day-four.jpg",
+                "latitude": 40.7128,
+                "longitude": -74.006,
+                "count": 1,
+            }
+        ]
+
+        asset_only_photo = aggregates[("2024-01-04", "source_type", "photo")]
+        assert asset_only_photo.total_events == 0
+        assert asset_only_photo.media_count == 1
+        assert asset_only_photo.tag_summary_json == []
+        assert asset_only_photo.person_summary_json == [
+            {"person_id": 3, "name": "Milo", "role": None, "count": 1}
+        ]
+
+        assert all(
+            aggregate.source_type == DAILY_AGGREGATE_OVERALL_SOURCE_TYPE
+            or aggregate.aggregate_scope == DAILY_AGGREGATE_SCOPE_SOURCE_TYPE
+            for aggregate in stored_aggregates
+        )
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_daily_aggregate_job_recomputes_range_idempotently_for_v2_rows() -> None:
     workspace_root = _create_workspace_dir(prefix="daily-aggregate-range")
     runtime = None
     try:
         runtime = _create_runtime(workspace_root=workspace_root)
-        _seed_timeline(
-            runtime=runtime,
-            events=[
-                datetime(2024, 1, 1, 8, 0, tzinfo=UTC),
-                datetime(2024, 1, 2, 9, 0, tzinfo=UTC),
-            ],
-            assets=[
-                datetime(2024, 1, 2, 10, 0, tzinfo=UTC),
-                datetime(2024, 1, 3, 11, 0, tzinfo=UTC),
-            ],
-        )
-
-        initial_result = DailyAggregateJob().run(runtime=runtime)
-        assert initial_result.aggregate_count == 3
 
         with runtime.session_factory() as session:
-            source = session.execute(select(Source)).scalar_one()
+            calendar_source = Source(name="Calendar", type="calendar", config={})
+            session.add(calendar_source)
+            session.flush()
+
+            session.add_all(
+                [
+                    Event(
+                        source_id=calendar_source.id,
+                        type="calendar",
+                        timestamp_start=datetime(2024, 1, 1, 8, 0, tzinfo=UTC),
+                        timestamp_end=None,
+                        title="Day one",
+                        summary=None,
+                        latitude=None,
+                        longitude=None,
+                        raw_payload={},
+                        derived_payload={},
+                    ),
+                    Event(
+                        source_id=calendar_source.id,
+                        type="calendar",
+                        timestamp_start=datetime(2024, 1, 2, 9, 0, tzinfo=UTC),
+                        timestamp_end=None,
+                        title="Day two",
+                        summary=None,
+                        latitude=None,
+                        longitude=None,
+                        raw_payload={},
+                        derived_payload={},
+                    ),
+                    Asset(
+                        external_id="asset-1",
+                        media_type="photo",
+                        timestamp=datetime(2024, 1, 2, 10, 0, tzinfo=UTC),
+                        summary=None,
+                        latitude=None,
+                        longitude=None,
+                        metadata_json={},
+                    ),
+                    Asset(
+                        external_id="asset-2",
+                        media_type="photo",
+                        timestamp=datetime(2024, 1, 3, 11, 0, tzinfo=UTC),
+                        summary=None,
+                        latitude=None,
+                        longitude=None,
+                        metadata_json={},
+                    ),
+                ]
+            )
+            session.commit()
+
+        initial_result = DailyAggregateJob().run(runtime=runtime)
+        assert initial_result.aggregate_count == 7
+
+        with runtime.session_factory() as session:
+            calendar_source = session.execute(select(Source)).scalar_one()
             session.add(
                 Event(
-                    source_id=source.id,
+                    source_id=calendar_source.id,
                     type="calendar",
                     timestamp_start=datetime(2024, 1, 2, 18, 30, tzinfo=UTC),
                     timestamp_end=None,
@@ -99,144 +399,126 @@ def test_daily_aggregate_job_recomputes_range_idempotently() -> None:
             start_date=date(2024, 1, 2),
             end_date=date(2024, 1, 2),
         )
-        repeated_result = DailyAggregateJob().run(
-            runtime=runtime,
-            start_date=date(2024, 1, 2),
-            end_date=date(2024, 1, 2),
-        )
-
-        assert range_result.mode == "range"
-        assert range_result.aggregate_count == 1
-        assert range_result.total_events == 2
-        assert range_result.media_count == 1
-        assert repeated_result.aggregate_count == 1
-
         with runtime.session_factory() as session:
-            aggregates = list(
-                session.execute(
-                    select(DailyAggregate).order_by(DailyAggregate.date)
-                ).scalars()
-            )
-
-        assert [
-            (
-                aggregate.date.isoformat(),
-                aggregate.total_events,
-                aggregate.media_count,
-                aggregate.activity_score,
-                aggregate.metadata_json["score_formula"],
-            )
-            for aggregate in aggregates
-        ] == [
-            (
-                "2024-01-01",
-                1,
-                0,
-                1,
-                "activity_score = total_events + media_count",
-            ),
-            (
-                "2024-01-02",
-                2,
-                1,
-                3,
-                "activity_score = total_events + media_count",
-            ),
-            (
-                "2024-01-03",
-                0,
-                1,
-                1,
-                "activity_score = total_events + media_count",
-            ),
-        ]
-    finally:
-        if runtime is not None:
-            runtime.engine.dispose()
-        shutil.rmtree(workspace_root, ignore_errors=True)
-
-
-def test_daily_aggregate_schema_allows_multiple_scopes_for_same_day() -> None:
-    workspace_root = _create_workspace_dir(prefix="daily-aggregate-scopes")
-    runtime = None
-    try:
-        runtime = _create_runtime(workspace_root=workspace_root)
-
-        with runtime.session_factory() as session:
-            session.add_all(
-                [
-                    DailyAggregate(
-                        date=date(2024, 1, 2),
-                        total_events=2,
-                        media_count=1,
-                        activity_score=3,
-                        metadata_json={"score_version": "v2"},
-                    ),
-                    DailyAggregate(
-                        date=date(2024, 1, 2),
-                        aggregate_scope=DAILY_AGGREGATE_SCOPE_SOURCE_TYPE,
-                        source_type="photo",
-                        total_events=0,
-                        media_count=1,
-                        activity_score=1,
-                        tag_summary_json=[
-                            {
-                                "path": "travel/city",
-                                "label": "City",
-                                "count": 1,
-                            }
-                        ],
-                        person_summary_json=[
-                            {
-                                "person_id": 1,
-                                "name": "Anna",
-                                "count": 1,
-                            }
-                        ],
-                        location_summary_json=[
-                            {
-                                "label": "Berlin",
-                                "latitude": 52.52,
-                                "longitude": 13.405,
-                                "count": 1,
-                            }
-                        ],
-                        metadata_json={"score_version": "v2"},
-                    ),
-                ]
-            )
-            session.commit()
-
-        with runtime.session_factory() as session:
-            aggregates = list(
-                session.execute(
+            first_pass_rows = [
+                _serialize_aggregate(aggregate)
+                for aggregate in session.execute(
                     select(DailyAggregate).order_by(
                         DailyAggregate.date,
                         DailyAggregate.aggregate_scope,
                         DailyAggregate.source_type,
                     )
                 ).scalars()
-            )
+            ]
 
-        assert len(aggregates) == 2
-        assert aggregates[0].aggregate_scope == "overall"
-        assert aggregates[0].source_type == "__all__"
-        assert aggregates[0].tag_summary_json == []
-        assert aggregates[1].aggregate_scope == DAILY_AGGREGATE_SCOPE_SOURCE_TYPE
-        assert aggregates[1].source_type == "photo"
-        assert aggregates[1].tag_summary_json == [
-            {"path": "travel/city", "label": "City", "count": 1}
-        ]
-        assert aggregates[1].person_summary_json == [
-            {"person_id": 1, "name": "Anna", "count": 1}
-        ]
-        assert aggregates[1].location_summary_json == [
+        repeated_result = DailyAggregateJob().run(
+            runtime=runtime,
+            start_date=date(2024, 1, 2),
+            end_date=date(2024, 1, 2),
+        )
+        with runtime.session_factory() as session:
+            second_pass_rows = [
+                _serialize_aggregate(aggregate)
+                for aggregate in session.execute(
+                    select(DailyAggregate).order_by(
+                        DailyAggregate.date,
+                        DailyAggregate.aggregate_scope,
+                        DailyAggregate.source_type,
+                    )
+                ).scalars()
+            ]
+
+        assert range_result.mode == "range"
+        assert range_result.aggregate_count == 3
+        assert range_result.total_events == 2
+        assert range_result.media_count == 1
+        assert repeated_result.aggregate_count == 3
+        assert first_pass_rows == second_pass_rows
+        assert first_pass_rows == [
             {
-                "label": "Berlin",
-                "latitude": 52.52,
-                "longitude": 13.405,
-                "count": 1,
-            }
+                "date": "2024-01-01",
+                "scope": "overall",
+                "source_type": "__all__",
+                "total_events": 1,
+                "media_count": 0,
+                "activity_score": 1,
+                "tag_summary": [],
+                "person_summary": [],
+                "location_summary": [],
+                "score_version": "v2",
+            },
+            {
+                "date": "2024-01-01",
+                "scope": "source_type",
+                "source_type": "calendar",
+                "total_events": 1,
+                "media_count": 0,
+                "activity_score": 1,
+                "tag_summary": [],
+                "person_summary": [],
+                "location_summary": [],
+                "score_version": "v2",
+            },
+            {
+                "date": "2024-01-02",
+                "scope": "overall",
+                "source_type": "__all__",
+                "total_events": 2,
+                "media_count": 1,
+                "activity_score": 3,
+                "tag_summary": [],
+                "person_summary": [],
+                "location_summary": [],
+                "score_version": "v2",
+            },
+            {
+                "date": "2024-01-02",
+                "scope": "source_type",
+                "source_type": "calendar",
+                "total_events": 2,
+                "media_count": 0,
+                "activity_score": 2,
+                "tag_summary": [],
+                "person_summary": [],
+                "location_summary": [],
+                "score_version": "v2",
+            },
+            {
+                "date": "2024-01-02",
+                "scope": "source_type",
+                "source_type": "photo",
+                "total_events": 0,
+                "media_count": 1,
+                "activity_score": 1,
+                "tag_summary": [],
+                "person_summary": [],
+                "location_summary": [],
+                "score_version": "v2",
+            },
+            {
+                "date": "2024-01-03",
+                "scope": "overall",
+                "source_type": "__all__",
+                "total_events": 0,
+                "media_count": 1,
+                "activity_score": 1,
+                "tag_summary": [],
+                "person_summary": [],
+                "location_summary": [],
+                "score_version": "v2",
+            },
+            {
+                "date": "2024-01-03",
+                "scope": "source_type",
+                "source_type": "photo",
+                "total_events": 0,
+                "media_count": 1,
+                "activity_score": 1,
+                "tag_summary": [],
+                "person_summary": [],
+                "location_summary": [],
+                "score_version": "v2",
+            },
         ]
     finally:
         if runtime is not None:
@@ -244,46 +526,21 @@ def test_daily_aggregate_schema_allows_multiple_scopes_for_same_day() -> None:
         shutil.rmtree(workspace_root, ignore_errors=True)
 
 
-def _seed_timeline(
-    *,
-    runtime,
-    events: list[datetime],
-    assets: list[datetime],
-) -> None:
-    with runtime.session_factory() as session:
-        source = Source(name="Calendar", type="calendar", config={})
-        session.add(source)
-        session.flush()
+def _serialize_aggregate(aggregate: DailyAggregate) -> dict[str, object]:
+    """Return a compact, assertion-friendly aggregate representation."""
 
-        for index, timestamp in enumerate(events, start=1):
-            session.add(
-                Event(
-                    source_id=source.id,
-                    type="calendar",
-                    timestamp_start=timestamp,
-                    timestamp_end=None,
-                    title=f"Event {index}",
-                    summary=None,
-                    latitude=None,
-                    longitude=None,
-                    raw_payload={},
-                    derived_payload={},
-                )
-            )
-
-        for index, timestamp in enumerate(assets, start=1):
-            session.add(
-                Asset(
-                    external_id=f"asset-{index}",
-                    media_type="photo",
-                    timestamp=timestamp,
-                    latitude=None,
-                    longitude=None,
-                    metadata_json={},
-                )
-            )
-
-        session.commit()
+    return {
+        "date": aggregate.date.isoformat(),
+        "scope": aggregate.aggregate_scope,
+        "source_type": aggregate.source_type,
+        "total_events": aggregate.total_events,
+        "media_count": aggregate.media_count,
+        "activity_score": aggregate.activity_score,
+        "tag_summary": aggregate.tag_summary_json,
+        "person_summary": aggregate.person_summary_json,
+        "location_summary": aggregate.location_summary_json,
+        "score_version": aggregate.metadata_json["score_version"],
+    }
 
 
 def _create_runtime(*, workspace_root: Path):
