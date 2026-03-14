@@ -15,6 +15,12 @@ logger = logging.getLogger(__name__)
 _SUPPORTED_SOURCES = frozenset({"photos"})
 
 
+def list_supported_ingest_sources() -> tuple[str, ...]:
+    """Return the supported ingest source names in deterministic order."""
+
+    return tuple(sorted(_SUPPORTED_SOURCES))
+
+
 def run_ingest_source(
     *,
     source: str,
@@ -24,7 +30,7 @@ def run_ingest_source(
     """Run an ingestion entrypoint for a configured source."""
 
     if source not in _SUPPORTED_SOURCES:
-        available_sources = ", ".join(sorted(_SUPPORTED_SOURCES))
+        available_sources = ", ".join(list_supported_ingest_sources())
         raise ValueError(
             f"Unsupported source '{source}'. Available sources: {available_sources}."
         )

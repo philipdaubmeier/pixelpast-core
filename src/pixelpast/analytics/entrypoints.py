@@ -11,6 +11,12 @@ logger = logging.getLogger(__name__)
 _SUPPORTED_JOBS = frozenset({"daily-aggregate"})
 
 
+def list_supported_derive_jobs() -> tuple[str, ...]:
+    """Return the supported derive job names in deterministic order."""
+
+    return tuple(sorted(_SUPPORTED_JOBS))
+
+
 def run_derive_job(
     *,
     job: str,
@@ -21,7 +27,7 @@ def run_derive_job(
     """Run a derived-data job entrypoint."""
 
     if job not in _SUPPORTED_JOBS:
-        available_jobs = ", ".join(sorted(_SUPPORTED_JOBS))
+        available_jobs = ", ".join(list_supported_derive_jobs())
         raise ValueError(
             f"Unsupported job '{job}'. Available jobs: {available_jobs}."
         )

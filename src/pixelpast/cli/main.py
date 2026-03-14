@@ -15,9 +15,15 @@ from typing import Annotated
 
 import typer
 
-from pixelpast.analytics.entrypoints import run_derive_job
+from pixelpast.analytics.entrypoints import (
+    list_supported_derive_jobs,
+    run_derive_job,
+)
 from pixelpast.ingestion.progress import IngestionProgressSnapshot
-from pixelpast.ingestion.entrypoints import run_ingest_source
+from pixelpast.ingestion.entrypoints import (
+    list_supported_ingest_sources,
+    run_ingest_source,
+)
 from pixelpast.shared.logging import configure_logging
 from pixelpast.shared.runtime import (
     RuntimeContext,
@@ -29,6 +35,8 @@ logger = logging.getLogger(__name__)
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 UI_WORKSPACE = REPOSITORY_ROOT / "ui"
+SUPPORTED_INGEST_SOURCES = list_supported_ingest_sources()
+SUPPORTED_DERIVE_JOBS = list_supported_derive_jobs()
 
 
 class ExitCode(IntEnum):
@@ -238,7 +246,15 @@ def dev_command(
 
 @app.command("ingest")
 def ingest_command(
-    source: Annotated[str, typer.Argument(help="Source connector name.")],
+    source: Annotated[
+        str,
+        typer.Argument(
+            help=(
+                "Source connector name. "
+                f"Available sources: {', '.join(SUPPORTED_INGEST_SOURCES)}."
+            ),
+        ),
+    ],
 ) -> None:
     """Run an ingestion source entrypoint."""
 
@@ -256,7 +272,15 @@ def ingest_command(
 
 @app.command("derive")
 def derive_command(
-    job: Annotated[str, typer.Argument(help="Derived job name.")],
+    job: Annotated[
+        str,
+        typer.Argument(
+            help=(
+                "Derived job name. "
+                f"Available jobs: {', '.join(SUPPORTED_DERIVE_JOBS)}."
+            ),
+        ),
+    ],
     start_date: Annotated[
         str | None,
         typer.Option(

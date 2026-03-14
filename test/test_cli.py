@@ -15,7 +15,9 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 from typer.testing import CliRunner
 
+from pixelpast.analytics.entrypoints import list_supported_derive_jobs
 from pixelpast.cli.main import UI_WORKSPACE, _build_dev_process_specs, app
+from pixelpast.ingestion.entrypoints import list_supported_ingest_sources
 from pixelpast.persistence.models import Asset, DailyAggregate, Event, ImportRun, Source
 from pixelpast.shared.logging import KeyValueFormatter
 from pixelpast.shared.runtime import create_runtime_context, initialize_database
@@ -32,6 +34,22 @@ def test_cli_help_lists_available_commands() -> None:
     assert "dev" in result.stdout
     assert "ingest" in result.stdout
     assert "derive" in result.stdout
+
+
+def test_cli_ingest_help_lists_supported_sources() -> None:
+    result = runner.invoke(app, ["ingest", "--help"])
+
+    assert result.exit_code == 0
+    for source in list_supported_ingest_sources():
+        assert source in result.stdout
+
+
+def test_cli_derive_help_lists_supported_jobs() -> None:
+    result = runner.invoke(app, ["derive", "--help"])
+
+    assert result.exit_code == 0
+    for job in list_supported_derive_jobs():
+        assert job in result.stdout
 
 
 def test_build_dev_process_specs_returns_api_and_ui_commands(monkeypatch) -> None:
@@ -239,7 +257,11 @@ def test_cli_derive_daily_aggregate_rebuilds_rows(monkeypatch) -> None:
             with Session(engine) as session:
                 aggregates = list(
                     session.execute(
-                        select(DailyAggregate).order_by(DailyAggregate.date)
+                        select(DailyAggregate).order_by(
+                            DailyAggregate.date,
+                            DailyAggregate.aggregate_scope,
+                            DailyAggregate.source_type,
+                        )
                     ).scalars()
                 )
         finally:
@@ -248,14 +270,19 @@ def test_cli_derive_daily_aggregate_rebuilds_rows(monkeypatch) -> None:
         assert [
             (
                 aggregate.date.isoformat(),
+                aggregate.aggregate_scope,
+                aggregate.source_type,
                 aggregate.total_events,
                 aggregate.media_count,
                 aggregate.activity_score,
             )
             for aggregate in aggregates
         ] == [
-            ("2024-01-02", 2, 1, 3),
-            ("2024-01-03", 0, 1, 1),
+            ("2024-01-02", "overall", "__all__", 2, 1, 3),
+            ("2024-01-02", "source_type", "calendar", 2, 0, 2),
+            ("2024-01-02", "source_type", "photo", 0, 1, 1),
+            ("2024-01-03", "overall", "__all__", 0, 1, 1),
+            ("2024-01-03", "source_type", "photo", 0, 1, 1),
         ]
     finally:
         get_settings.cache_clear()
@@ -272,6 +299,22 @@ def test_cli_returns_invalid_argument_exit_code_for_unknown_source(
 
     try:
         result = runner.invoke(app, ["ingest", "unknown-source"])
+        assert result.exit_code == 2
+    finally:
+        get_settings.cache_clear()
+        if database_path.exists():
+            database_path.unlink()
+
+
+def test_cli_returns_invalid_argument_exit_code_for_unknown_derive_job(
+    monkeypatch,
+) -> None:
+    database_path = _build_test_database_path("cli-invalid-derive")
+    monkeypatch.setenv("PIXELPAST_DATABASE_URL", f"sqlite:///{database_path.as_posix()}")
+    get_settings.cache_clear()
+
+    try:
+        result = runner.invoke(app, ["derive", "unknown-job"])
         assert result.exit_code == 2
     finally:
         get_settings.cache_clear()
