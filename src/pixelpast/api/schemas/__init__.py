@@ -1,22 +1,28 @@
 """Explicit request and response schemas for the REST API."""
 
-from pixelpast.api.schemas.timeline import (
-    DayContextDay,
-    DayContextMapPoint,
-    DayContextResponse,
-    DayContextSummaryCounts,
+from pixelpast.api.schemas.bootstrap_ui import (
     ExplorationBootstrapResponse,
-    ExplorationGridDay,
-    ExplorationGridResponse,
     ExplorationPerson,
     ExplorationRange,
     ExplorationTag,
     ExplorationViewMode,
+)
+from pixelpast.api.schemas.day_detail import (
     DayAssetItem,
     DayDetailResponse,
     DayEventItem,
+)
+from pixelpast.api.schemas.daygrid import (
+    ExplorationGridDay,
+    ExplorationGridResponse,
     HeatmapDay,
     HeatmapResponse,
+)
+from pixelpast.api.schemas.hovercontext import (
+    DayContextDay,
+    DayContextMapPoint,
+    DayContextResponse,
+    DayContextSummaryCounts,
 )
 
 __all__ = [
