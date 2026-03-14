@@ -205,37 +205,37 @@ class IngestionProgressEngine:
         if not force and not self._heartbeat_due():
             return False
 
-        heartbeat_at = self._now_factory()
-        with self._runtime.session_factory() as session:
-            repository = ImportRunRepository(session)
-            import_run = repository.update_progress(
+        self._persist_import_run(
+            persist=lambda repository, heartbeat_at: repository.update_progress(
                 import_run_id=self.state.import_run_id,
                 phase=self.state.phase,
                 progress_json=self._payload_factory(),
                 last_heartbeat_at=heartbeat_at,
                 status=self.state.status,
             )
-            if import_run is None:
-                raise RuntimeError(
-                    f"ImportRun {self.state.import_run_id} is missing from persistence."
-                )
-            session.commit()
-
-        self.last_heartbeat_at = heartbeat_at
-        self._last_persist_monotonic = self._monotonic_factory()
+        )
         return True
 
     def _persist_terminal_state(self, *, status: str) -> datetime:
-        heartbeat_at = self._now_factory()
-        with self._runtime.session_factory() as session:
-            repository = ImportRunRepository(session)
-            import_run = repository.mark_finished_by_id(
+        return self._persist_import_run(
+            persist=lambda repository, heartbeat_at: repository.mark_finished_by_id(
                 import_run_id=self.state.import_run_id,
                 status=status,
                 phase=self.state.phase,
                 last_heartbeat_at=heartbeat_at,
                 progress_json=self._payload_factory(),
             )
+        )
+
+    def _persist_import_run(
+        self,
+        *,
+        persist: Callable[[ImportRunRepository, datetime], object | None],
+    ) -> datetime:
+        heartbeat_at = self._now_factory()
+        with self._runtime.session_factory() as session:
+            repository = ImportRunRepository(session)
+            import_run = persist(repository, heartbeat_at)
             if import_run is None:
                 raise RuntimeError(
                     f"ImportRun {self.state.import_run_id} is missing from persistence."
