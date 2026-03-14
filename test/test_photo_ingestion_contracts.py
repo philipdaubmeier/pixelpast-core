@@ -101,40 +101,17 @@ def test_photo_ingestion_emits_stable_progress_event_names_and_batch_counters() 
         events = [snapshot.event for snapshot in snapshots]
         assert "phase_started" in events
         assert "phase_completed" in events
-        assert "metadata_batch_submitted" in events
-        assert "metadata_batch_completed" in events
         assert events[-1] == "run_finished"
-
-        submitted_snapshot = next(
-            snapshot
-            for snapshot in snapshots
-            if snapshot.event == "metadata_batch_submitted"
-        )
-        assert submitted_snapshot.metadata_batches_submitted == 1
-        assert submitted_snapshot.metadata_batches_completed == 0
-        assert submitted_snapshot.current_batch_index == 1
-        assert submitted_snapshot.current_batch_total == 1
-        assert submitted_snapshot.current_batch_size == 2
-
-        completed_snapshot = next(
-            snapshot
-            for snapshot in snapshots
-            if snapshot.event == "metadata_batch_completed"
-        )
-        assert completed_snapshot.metadata_batches_submitted == 1
-        assert completed_snapshot.metadata_batches_completed == 1
-        assert completed_snapshot.current_batch_index == 1
-        assert completed_snapshot.current_batch_total == 1
-        assert completed_snapshot.current_batch_size == 2
 
         finished_snapshot = snapshots[-1]
         assert finished_snapshot.phase == "finalization"
         assert finished_snapshot.status == "completed"
-        assert finished_snapshot.phase_status == "completed"
-        assert finished_snapshot.items_persisted == 2
-        assert finished_snapshot.inserted_item_count == 2
-        assert finished_snapshot.updated_item_count == 0
-        assert finished_snapshot.unchanged_item_count == 0
+        assert finished_snapshot.total == 1
+        assert finished_snapshot.completed == 1
+        assert finished_snapshot.inserted == 2
+        assert finished_snapshot.updated == 0
+        assert finished_snapshot.unchanged == 0
+        assert finished_snapshot.failed == 0
     finally:
         if runtime is not None:
             runtime.engine.dispose()
@@ -173,7 +150,7 @@ def test_photo_ingestion_emits_run_failed_event_for_terminal_failures(
 
         assert snapshots[-1].event == "run_failed"
         assert snapshots[-1].status == "failed"
-        assert snapshots[-1].phase_status == "failed"
+        assert snapshots[-1].failed == 0
     finally:
         if runtime is not None:
             runtime.engine.dispose()

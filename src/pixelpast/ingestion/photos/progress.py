@@ -25,22 +25,18 @@ PhotoIngestionProgressSnapshot = IngestionProgressSnapshot
 
 @dataclass(slots=True)
 class PhotoIngestionProgressState:
-    """Photo-specific counters and batch cursor for progress snapshots."""
+    """Photo-specific counters tracked alongside the generic progress snapshot."""
 
     discovered_file_count: int = 0
     analyzed_file_count: int = 0
-    analysis_failed_file_count: int = 0
+    failed: int = 0
     metadata_batches_submitted: int = 0
     metadata_batches_completed: int = 0
-    items_persisted: int = 0
-    inserted_item_count: int = 0
-    updated_item_count: int = 0
-    unchanged_item_count: int = 0
-    skipped_item_count: int = 0
-    missing_from_source_count: int = 0
-    current_batch_index: int | None = None
-    current_batch_total: int | None = None
-    current_batch_size: int | None = None
+    inserted: int = 0
+    updated: int = 0
+    unchanged: int = 0
+    skipped: int = 0
+    missing_from_source: int = 0
 
     def apply_discovery_count(self, *, discovered_file_count: int) -> None:
         """Replace the cumulative discovery count."""
@@ -54,45 +50,39 @@ class PhotoIngestionProgressState:
     ) -> None:
         """Replace the informational missing-from-source count."""
 
-        self.missing_from_source_count = missing_from_source_count
+        self.missing_from_source = missing_from_source_count
 
     def apply_metadata_batch(self, progress: PhotoMetadataBatchProgress) -> None:
-        """Advance batch counters and keep the current batch cursor in sync."""
+        """Advance photo-specific metadata batch counters for diagnostics/results."""
 
-        self.current_batch_index = progress.batch_index
-        self.current_batch_total = progress.batch_total
-        self.current_batch_size = progress.batch_size
         if progress.event == "submitted":
             self.metadata_batches_submitted += 1
         elif progress.event == "completed":
             self.metadata_batches_completed += 1
 
     def mark_analysis_success(self) -> int:
-        """Advance successful analysis progress and return total completed work."""
+        """Advance successful analysis progress and return phase completion."""
 
         self.analyzed_file_count += 1
         return self.analysis_completed_count
 
     def mark_analysis_failure(self) -> int:
-        """Advance failed analysis progress and return total completed work."""
+        """Advance failed analysis progress and return phase completion."""
 
-        self.analysis_failed_file_count += 1
+        self.failed += 1
         return self.analysis_completed_count
 
     def mark_persisted(self, *, outcome: str) -> None:
         """Advance persistence counters for one analyzed asset."""
 
         if outcome == "inserted":
-            self.inserted_item_count += 1
-            self.items_persisted += 1
+            self.inserted += 1
         elif outcome == "updated":
-            self.updated_item_count += 1
-            self.items_persisted += 1
+            self.updated += 1
         elif outcome == "unchanged":
-            self.unchanged_item_count += 1
-            self.items_persisted += 1
+            self.unchanged += 1
         elif outcome == "skipped":
-            self.skipped_item_count += 1
+            self.skipped += 1
         else:
             raise ValueError(f"Unsupported persistence outcome: {outcome}")
 
@@ -100,40 +90,37 @@ class PhotoIngestionProgressState:
     def analysis_completed_count(self) -> int:
         """Return the total analyzed or failed files in the current run."""
 
-        return self.analyzed_file_count + self.analysis_failed_file_count
+        return self.analyzed_file_count + self.failed
 
-    def clear_batch_cursor(self) -> None:
-        """Clear the transient batch cursor when a phase starts."""
+    @property
+    def analysis_failed_file_count(self) -> int:
+        """Return the photo-specific failed analysis count."""
 
-        self.current_batch_index = None
-        self.current_batch_total = None
-        self.current_batch_size = None
+        return self.failed
+
+    @property
+    def items_persisted(self) -> int:
+        """Return the total persisted or reconciled canonical assets."""
+
+        return self.inserted + self.updated + self.unchanged
 
     def to_progress_payload(
         self,
         *,
-        phase_total: int | None,
-        phase_completed: int,
+        total: int | None,
+        completed: int,
     ) -> dict[str, int | None]:
-        """Render the persisted progress JSON payload."""
+        """Render the persisted generic progress JSON payload."""
 
         return {
-            "phase_total": phase_total,
-            "phase_completed": phase_completed,
-            "discovered_file_count": self.discovered_file_count,
-            "analyzed_file_count": self.analyzed_file_count,
-            "analysis_failed_file_count": self.analysis_failed_file_count,
-            "metadata_batches_submitted": self.metadata_batches_submitted,
-            "metadata_batches_completed": self.metadata_batches_completed,
-            "items_persisted": self.items_persisted,
-            "inserted_item_count": self.inserted_item_count,
-            "updated_item_count": self.updated_item_count,
-            "unchanged_item_count": self.unchanged_item_count,
-            "skipped_item_count": self.skipped_item_count,
-            "missing_from_source_count": self.missing_from_source_count,
-            "current_batch_index": self.current_batch_index,
-            "current_batch_total": self.current_batch_total,
-            "current_batch_size": self.current_batch_size,
+            "total": total,
+            "completed": completed,
+            "inserted": self.inserted,
+            "updated": self.updated,
+            "unchanged": self.unchanged,
+            "skipped": self.skipped,
+            "failed": self.failed,
+            "missing_from_source": self.missing_from_source,
         }
 
 
@@ -172,18 +159,15 @@ class PhotoIngestionProgressTracker:
     def start_phase(self, *, phase: str, total: int | None) -> None:
         """Enter a new operational phase and persist the transition immediately."""
 
-        self._state.clear_batch_cursor()
         logger.info(
             "photo ingest phase started",
             extra={
                 "import_run_id": self._engine.state.import_run_id,
                 "phase": phase,
-                "phase_total": total,
+                "total": total,
             },
         )
-        self._log_heartbeat_if_written(
-            self._engine.start_phase(phase=phase, total=total)
-        )
+        self._log_heartbeat_if_written(self._engine.start_phase(phase=phase, total=total))
 
     def mark_discovered(self, *, path: str, discovered_file_count: int) -> None:
         """Update discovery counts as supported files are found."""
@@ -199,10 +183,10 @@ class PhotoIngestionProgressTracker:
                 "import_run_id": self._engine.state.import_run_id,
                 "phase": self._engine.state.phase,
                 "path": path,
-                "discovered_file_count": discovered_file_count,
+                "completed": discovered_file_count,
             },
         )
-        self._emit(event="progress", phase_status="running")
+        self._emit(event="progress")
 
     def finish_phase(self) -> None:
         """Persist the end of the current phase."""
@@ -212,8 +196,8 @@ class PhotoIngestionProgressTracker:
             extra={
                 "import_run_id": self._engine.state.import_run_id,
                 "phase": self._engine.state.phase,
-                "phase_total": self._engine.state.phase_total,
-                "phase_completed": self._engine.state.phase_completed,
+                "total": self._engine.state.total,
+                "completed": self._engine.state.completed,
             },
         )
         self._log_heartbeat_if_written(self._engine.finish_phase())
@@ -228,13 +212,13 @@ class PhotoIngestionProgressTracker:
             "photo ingest missing-from-source count",
             extra={
                 "import_run_id": self._engine.state.import_run_id,
-                "missing_from_source_count": missing_from_source_count,
+                "missing_from_source": missing_from_source_count,
             },
         )
-        self._emit(event="progress", phase_status="running", force_persist=True)
+        self._emit(event="progress", force_persist=True)
 
     def mark_metadata_batch(self, progress: PhotoMetadataBatchProgress) -> None:
-        """Record metadata batch submission and completion progress."""
+        """Record metadata batch progress for logs and photo-specific summaries."""
 
         self._state.apply_metadata_batch(progress)
         logger.info(
@@ -250,7 +234,7 @@ class PhotoIngestionProgressTracker:
                 "metadata_batches_completed": self._state.metadata_batches_completed,
             },
         )
-        self._emit(event=f"metadata_batch_{progress.event}", phase_status="running")
+        self._emit(event="progress")
 
     def mark_analysis_success(self) -> None:
         """Record one successfully analyzed file."""
@@ -258,7 +242,7 @@ class PhotoIngestionProgressTracker:
         self._engine.state.set_phase_progress(
             completed=self._state.mark_analysis_success(),
         )
-        self._emit(event="progress", phase_status="running")
+        self._emit(event="progress")
 
     def mark_analysis_failure(self, *, error: PhotoDiscoveryError) -> None:
         """Record one file that failed during analysis."""
@@ -275,7 +259,7 @@ class PhotoIngestionProgressTracker:
                 "reason": error.message,
             },
         )
-        self._emit(event="progress", phase_status="running", force_persist=True)
+        self._emit(event="progress", force_persist=True)
 
     def mark_persisted(self, *, outcome: str) -> None:
         """Record one completed persistence outcome for an analyzed asset."""
@@ -287,16 +271,15 @@ class PhotoIngestionProgressTracker:
             extra={
                 "import_run_id": self._engine.state.import_run_id,
                 "phase": self._engine.state.phase,
-                "phase_total": self._engine.state.phase_total,
-                "phase_completed": self._engine.state.phase_completed,
-                "items_persisted": self._state.items_persisted,
-                "inserted_item_count": self._state.inserted_item_count,
-                "updated_item_count": self._state.updated_item_count,
-                "unchanged_item_count": self._state.unchanged_item_count,
-                "skipped_item_count": self._state.skipped_item_count,
+                "total": self._engine.state.total,
+                "completed": self._engine.state.completed,
+                "inserted": self._state.inserted,
+                "updated": self._state.updated,
+                "unchanged": self._state.unchanged,
+                "skipped": self._state.skipped,
             },
         )
-        self._emit(event="progress", phase_status="running")
+        self._emit(event="progress")
 
     def finish_run(self, *, status: str) -> IngestionProgressSnapshot:
         """Persist the terminal success or partial-failure state."""
@@ -337,12 +320,10 @@ class PhotoIngestionProgressTracker:
         self,
         *,
         event: str,
-        phase_status: str,
         force_persist: bool = False,
     ) -> IngestionProgressSnapshot:
         snapshot = self._engine.emit(
             event=event,
-            phase_status=phase_status,
             force_persist=force_persist,
         )
         self._log_heartbeat_if_written(snapshot)
@@ -350,14 +331,13 @@ class PhotoIngestionProgressTracker:
 
     def _progress_payload(self) -> dict[str, int | None]:
         return self._state.to_progress_payload(
-            phase_total=self._engine.state.phase_total,
-            phase_completed=self._engine.state.phase_completed,
+            total=self._engine.state.total,
+            completed=self._engine.state.completed,
         )
 
     def _build_snapshot(
         self,
         event: str,
-        phase_status: str,
         heartbeat_written: bool,
     ) -> IngestionProgressSnapshot:
         return IngestionProgressSnapshot(
@@ -365,24 +345,15 @@ class PhotoIngestionProgressTracker:
             source=self._engine.state.source,
             import_run_id=self._engine.state.import_run_id,
             phase=self._engine.state.phase,
-            phase_status=phase_status,
-            phase_total=self._engine.state.phase_total,
-            phase_completed=self._engine.state.phase_completed,
             status=self._engine.state.status,
-            discovered_file_count=self._state.discovered_file_count,
-            analyzed_file_count=self._state.analyzed_file_count,
-            analysis_failed_file_count=self._state.analysis_failed_file_count,
-            metadata_batches_submitted=self._state.metadata_batches_submitted,
-            metadata_batches_completed=self._state.metadata_batches_completed,
-            items_persisted=self._state.items_persisted,
-            inserted_item_count=self._state.inserted_item_count,
-            updated_item_count=self._state.updated_item_count,
-            unchanged_item_count=self._state.unchanged_item_count,
-            skipped_item_count=self._state.skipped_item_count,
-            missing_from_source_count=self._state.missing_from_source_count,
-            current_batch_index=self._state.current_batch_index,
-            current_batch_total=self._state.current_batch_total,
-            current_batch_size=self._state.current_batch_size,
+            total=self._engine.state.total,
+            completed=self._engine.state.completed,
+            inserted=self._state.inserted,
+            updated=self._state.updated,
+            unchanged=self._state.unchanged,
+            skipped=self._state.skipped,
+            failed=self._state.failed,
+            missing_from_source=self._state.missing_from_source,
             heartbeat_written=heartbeat_written,
         )
 

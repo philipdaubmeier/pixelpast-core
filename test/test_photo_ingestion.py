@@ -500,8 +500,8 @@ def test_photo_connector_partial_failure_is_reported_and_persisted() -> None:
         assert import_run.status == "partial_failure"
         assert import_run.phase == "finalization"
         assert import_run.progress_json is not None
-        assert import_run.progress_json["analysis_failed_file_count"] == 1
-        assert import_run.progress_json["inserted_item_count"] == 1
+        assert import_run.progress_json["failed"] == 1
+        assert import_run.progress_json["inserted"] == 1
     finally:
         if runtime is not None:
             runtime.engine.dispose()
@@ -654,14 +654,14 @@ def test_photo_ingestion_persists_heartbeat_updates_during_a_long_running_run() 
         def capture_progress(snapshot) -> None:
             if not snapshot.heartbeat_written or snapshot.phase != "filesystem discovery":
                 return
-            if snapshot.discovered_file_count < 2:
+            if snapshot.completed < 2:
                 return
             with runtime.session_factory() as session:
                 import_run = session.execute(select(ImportRun)).scalar_one()
             observed_heartbeats.append(
                 (
                     import_run.phase or "",
-                    import_run.progress_json["discovered_file_count"],
+                    import_run.progress_json["completed"],
                     import_run.last_heartbeat_at,
                 )
             )
@@ -687,7 +687,7 @@ def test_photo_ingestion_persists_heartbeat_updates_during_a_long_running_run() 
 
         assert import_run.status == "completed"
         assert import_run.last_heartbeat_at == clock.now()
-        assert import_run.progress_json["discovered_file_count"] == 3
+        assert import_run.progress_json["completed"] == 1
     finally:
         if runtime is not None:
             runtime.engine.dispose()

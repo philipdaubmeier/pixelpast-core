@@ -21,22 +21,14 @@ def build_initial_photo_import_progress_payload() -> dict[str, int | None]:
     """Return the authoritative zeroed progress payload for a new photo run."""
 
     return {
-        "phase_total": None,
-        "phase_completed": 0,
-        "discovered_file_count": 0,
-        "analyzed_file_count": 0,
-        "analysis_failed_file_count": 0,
-        "metadata_batches_submitted": 0,
-        "metadata_batches_completed": 0,
-        "items_persisted": 0,
-        "inserted_item_count": 0,
-        "updated_item_count": 0,
-        "unchanged_item_count": 0,
-        "skipped_item_count": 0,
-        "missing_from_source_count": 0,
-        "current_batch_index": None,
-        "current_batch_total": None,
-        "current_batch_size": None,
+        "total": None,
+        "completed": 0,
+        "inserted": 0,
+        "updated": 0,
+        "unchanged": 0,
+        "skipped": 0,
+        "failed": 0,
+        "missing_from_source": 0,
     }
 
 

@@ -19,31 +19,22 @@ class IngestionProgressSnapshot:
     source: str
     import_run_id: int
     phase: str
-    phase_status: str
-    phase_total: int | None
-    phase_completed: int
     status: str
-    discovered_file_count: int
-    analyzed_file_count: int
-    analysis_failed_file_count: int
-    metadata_batches_submitted: int
-    metadata_batches_completed: int
-    items_persisted: int
-    inserted_item_count: int
-    updated_item_count: int
-    unchanged_item_count: int
-    skipped_item_count: int
-    missing_from_source_count: int
-    current_batch_index: int | None
-    current_batch_total: int | None
-    current_batch_size: int | None
+    total: int | None
+    completed: int
+    inserted: int
+    updated: int
+    unchanged: int
+    skipped: int
+    failed: int
+    missing_from_source: int
     heartbeat_written: bool
 
 
 IngestionProgressCallback = Callable[[IngestionProgressSnapshot], None]
 IngestionProgressPayloadFactory = Callable[[], dict[str, int | None]]
 IngestionProgressSnapshotFactory = Callable[
-    [str, str, bool],
+    [str, bool],
     IngestionProgressSnapshot,
 ]
 
@@ -57,16 +48,16 @@ class IngestionProgressState:
     source: str
     import_run_id: int
     phase: str = "initializing"
-    phase_total: int | None = None
-    phase_completed: int = 0
+    total: int | None = None
+    completed: int = 0
     status: str = "running"
 
     def start_phase(self, *, phase: str, total: int | None) -> None:
         """Reset phase-local progress and enter a new operational phase."""
 
         self.phase = phase
-        self.phase_total = total
-        self.phase_completed = 0
+        self.total = total
+        self.completed = 0
 
     def set_phase_progress(
         self,
@@ -76,28 +67,28 @@ class IngestionProgressState:
     ) -> None:
         """Overwrite deterministic phase counters."""
 
-        self.phase_completed = completed
+        self.completed = completed
         if total is not _UNSET:
-            self.phase_total = total
+            self.total = total
 
     def increment_phase_completed(self, *, amount: int = 1) -> None:
         """Advance completed work within the current phase."""
 
-        self.phase_completed += amount
+        self.completed += amount
 
     def finish_phase(self) -> None:
         """Mark the current phase as completed."""
 
-        if self.phase_total is None:
-            self.phase_total = self.phase_completed
+        if self.total is None:
+            self.total = self.completed
 
     def start_terminal_phase(self, *, phase: str, status: str) -> None:
         """Enter the finalization phase with a terminal status."""
 
         self.status = status
         self.phase = phase
-        self.phase_total = 1
-        self.phase_completed = 1
+        self.total = 1
+        self.completed = 1
 
     def mark_failed(self) -> None:
         """Record a terminal failure without changing the current phase."""
@@ -146,7 +137,6 @@ class IngestionProgressEngine:
         self.state.start_phase(phase=phase, total=total)
         return self.emit(
             event="phase_started",
-            phase_status="started",
             force_persist=True,
         )
 
@@ -156,7 +146,6 @@ class IngestionProgressEngine:
         self.state.finish_phase()
         return self.emit(
             event="phase_completed",
-            phase_status="completed",
             force_persist=True,
         )
 
@@ -164,7 +153,6 @@ class IngestionProgressEngine:
         self,
         *,
         event: str,
-        phase_status: str,
         force_persist: bool = False,
     ) -> IngestionProgressSnapshot:
         """Persist a heartbeat if due and emit a snapshot."""
@@ -172,7 +160,6 @@ class IngestionProgressEngine:
         heartbeat_written = self._persist_progress(force=force_persist)
         snapshot = self._snapshot_factory(
             event,
-            phase_status,
             heartbeat_written,
         )
         if self._callback is not None:
@@ -190,13 +177,11 @@ class IngestionProgressEngine:
         self.state.start_terminal_phase(phase=final_phase, status=status)
         self.emit(
             event="phase_started",
-            phase_status="started",
             force_persist=True,
         )
         self._persist_terminal_state(status=status)
         snapshot = self._snapshot_factory(
             "run_finished",
-            "completed",
             True,
         )
         if self._callback is not None:
@@ -210,7 +195,6 @@ class IngestionProgressEngine:
         self._persist_terminal_state(status="failed")
         snapshot = self._snapshot_factory(
             "run_failed",
-            "failed",
             True,
         )
         if self._callback is not None:

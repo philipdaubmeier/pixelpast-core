@@ -97,8 +97,8 @@ def test_cli_ingest_photos_persists_assets(monkeypatch) -> None:
             assert import_runs[0].phase == "finalization"
             assert import_runs[0].last_heartbeat_at is not None
             assert import_runs[0].progress_json is not None
-            assert import_runs[0].progress_json["discovered_file_count"] == 1
-            assert import_runs[0].progress_json["inserted_item_count"] == 1
+            assert import_runs[0].progress_json["inserted"] == 1
+            assert import_runs[0].progress_json["failed"] == 0
         finally:
             engine.dispose()
     finally:
@@ -132,7 +132,6 @@ def test_cli_ingest_photos_subprocess_completes_with_fixture_assets() -> None:
         assert database_path.exists()
         assert "phase=filesystem discovery" in result.stdout
         assert "phase=metadata extraction" in result.stdout
-        assert "batch_submitted=1/2" in result.stdout
         assert "phase=canonical persistence" in result.stdout
         assert "summary status=completed" in result.stdout
 
@@ -160,12 +159,9 @@ def test_cli_ingest_photos_subprocess_completes_with_fixture_assets() -> None:
         assert import_runs[0].phase == "finalization"
         assert import_runs[0].last_heartbeat_at is not None
         assert import_runs[0].progress_json is not None
-        assert import_runs[0].progress_json["discovered_file_count"] == 3
-        assert import_runs[0].progress_json["analyzed_file_count"] == 3
-        assert import_runs[0].progress_json["metadata_batches_submitted"] == 2
-        assert import_runs[0].progress_json["metadata_batches_completed"] == 2
-        assert import_runs[0].progress_json["inserted_item_count"] == 3
-        assert import_runs[0].progress_json["missing_from_source_count"] == 0
+        assert import_runs[0].progress_json["inserted"] == 3
+        assert import_runs[0].progress_json["failed"] == 0
+        assert import_runs[0].progress_json["missing_from_source"] == 0
     finally:
         if database_path.exists():
             database_path.unlink()

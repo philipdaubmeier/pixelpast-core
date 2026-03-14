@@ -70,41 +70,33 @@ class IngestionCliProgressReporter:
     """Render phase-aware ingest progress as robust terminal lines."""
 
     def __init__(self) -> None:
-        self._last_discovered_file_count = -1
-        self._last_analyzed_total = -1
-        self._last_items_persisted = -1
+        self._last_progress_key: tuple[
+            str,
+            int | None,
+            int,
+            int,
+            int,
+            int,
+            int,
+            int,
+            int,
+        ] | None = None
 
     def __call__(self, snapshot: IngestionProgressSnapshot) -> None:
         """Print meaningful progress and terminal summary lines."""
 
         if snapshot.event == "phase_started":
             typer.echo(
-                f"[{snapshot.source}] phase={snapshot.phase} status=started"
-                f"{_format_total_suffix(snapshot.phase_total)}"
+                f"[{snapshot.source}] phase={snapshot.phase} status={snapshot.status}"
+                f"{_format_total_suffix(snapshot.total)}"
             )
             return
 
         if snapshot.event == "phase_completed":
             typer.echo(
-                f"[{snapshot.source}] phase={snapshot.phase} status=completed"
-                f" completed={snapshot.phase_completed}"
-                f"{_format_total_suffix(snapshot.phase_total)}"
-            )
-            return
-
-        if snapshot.event == "metadata_batch_submitted":
-            typer.echo(
-                f"[{snapshot.source}] phase=metadata extraction"
-                f" batch_submitted={snapshot.current_batch_index}/{snapshot.current_batch_total}"
-                f" batch_size={snapshot.current_batch_size}"
-            )
-            return
-
-        if snapshot.event == "metadata_batch_completed":
-            typer.echo(
-                f"[{snapshot.source}] phase=metadata extraction"
-                f" batch_completed={snapshot.current_batch_index}/{snapshot.current_batch_total}"
-                f" batch_size={snapshot.current_batch_size}"
+                f"[{snapshot.source}] phase={snapshot.phase} status={snapshot.status}"
+                f" completed={snapshot.completed}"
+                f"{_format_total_suffix(snapshot.total)}"
             )
             return
 
@@ -113,14 +105,12 @@ class IngestionCliProgressReporter:
                 f"[{snapshot.source}] summary"
                 f" status={snapshot.status}"
                 f" import_run_id={snapshot.import_run_id}"
-                f" discovered={snapshot.discovered_file_count}"
-                f" analyzed={snapshot.analyzed_file_count}"
-                f" analysis_failed={snapshot.analysis_failed_file_count}"
-                f" inserted={snapshot.inserted_item_count}"
-                f" updated={snapshot.updated_item_count}"
-                f" unchanged={snapshot.unchanged_item_count}"
-                f" skipped={snapshot.skipped_item_count}"
-                f" missing_from_source={snapshot.missing_from_source_count}"
+                f" inserted={snapshot.inserted}"
+                f" updated={snapshot.updated}"
+                f" unchanged={snapshot.unchanged}"
+                f" skipped={snapshot.skipped}"
+                f" failed={snapshot.failed}"
+                f" missing_from_source={snapshot.missing_from_source}"
             )
             return
 
@@ -130,50 +120,40 @@ class IngestionCliProgressReporter:
                 f" status={snapshot.status}"
                 f" import_run_id={snapshot.import_run_id}"
                 f" phase={snapshot.phase}"
-                f" discovered={snapshot.discovered_file_count}"
-                f" analyzed={snapshot.analyzed_file_count}"
-                f" analysis_failed={snapshot.analysis_failed_file_count}"
-                f" persisted={snapshot.items_persisted}"
+                f" completed={snapshot.completed}"
+                f"{_format_total_suffix(snapshot.total)}"
+                f" inserted={snapshot.inserted}"
+                f" updated={snapshot.updated}"
+                f" unchanged={snapshot.unchanged}"
+                f" skipped={snapshot.skipped}"
+                f" failed={snapshot.failed}"
             )
             return
 
-        if snapshot.phase == "filesystem discovery":
-            if snapshot.discovered_file_count != self._last_discovered_file_count:
-                self._last_discovered_file_count = snapshot.discovered_file_count
-                typer.echo(
-                    f"[{snapshot.source}] phase=filesystem discovery"
-                    f" discovered={snapshot.discovered_file_count}"
-                )
-            return
-
-        if snapshot.phase == "metadata extraction":
-            analyzed_total = (
-                snapshot.analyzed_file_count + snapshot.analysis_failed_file_count
+        progress_key = (
+            snapshot.phase,
+            snapshot.total,
+            snapshot.completed,
+            snapshot.inserted,
+            snapshot.updated,
+            snapshot.unchanged,
+            snapshot.skipped,
+            snapshot.failed,
+            snapshot.missing_from_source,
+        )
+        if progress_key != self._last_progress_key:
+            self._last_progress_key = progress_key
+            typer.echo(
+                f"[{snapshot.source}] phase={snapshot.phase}"
+                f" completed={snapshot.completed}"
+                f"{_format_total_suffix(snapshot.total)}"
+                f" inserted={snapshot.inserted}"
+                f" updated={snapshot.updated}"
+                f" unchanged={snapshot.unchanged}"
+                f" skipped={snapshot.skipped}"
+                f" failed={snapshot.failed}"
+                f" missing_from_source={snapshot.missing_from_source}"
             )
-            if analyzed_total != self._last_analyzed_total:
-                self._last_analyzed_total = analyzed_total
-                typer.echo(
-                    f"[{snapshot.source}] phase=metadata extraction"
-                    f" completed={analyzed_total}/{snapshot.phase_total or 0}"
-                    f" analyzed={snapshot.analyzed_file_count}"
-                    f" analysis_failed={snapshot.analysis_failed_file_count}"
-                    f" batches={snapshot.metadata_batches_completed}/{snapshot.metadata_batches_submitted}"
-                )
-            return
-
-        if snapshot.phase == "canonical persistence":
-            if snapshot.items_persisted != self._last_items_persisted:
-                self._last_items_persisted = snapshot.items_persisted
-                typer.echo(
-                    f"[{snapshot.source}] phase=canonical persistence"
-                    f" completed={snapshot.phase_completed}/{snapshot.phase_total or 0}"
-                    f" persisted={snapshot.items_persisted}"
-                    f" inserted={snapshot.inserted_item_count}"
-                    f" updated={snapshot.updated_item_count}"
-                    f" unchanged={snapshot.unchanged_item_count}"
-                    f" skipped={snapshot.skipped_item_count}"
-                    f" missing_from_source={snapshot.missing_from_source_count}"
-                )
 
 
 app = typer.Typer(
