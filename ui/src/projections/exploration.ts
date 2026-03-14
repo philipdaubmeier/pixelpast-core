@@ -1,4 +1,4 @@
-import type { PixelPastUiState, ViewMode } from "../state/ui-state";
+import type { PixelPastUiState } from "../state/ui-state";
 import type {
   DayContextProjection,
   HeatmapDayProjection,
@@ -64,86 +64,6 @@ function uniqueBy<T>(items: T[], getKey: (item: T) => string): T[] {
     seen.add(key);
     return true;
   });
-}
-
-function matchesTagSelection(dayTagPath: string, selectedTagPath: string): boolean {
-  return (
-    dayTagPath === selectedTagPath ||
-    dayTagPath.startsWith(`${selectedTagPath}/`) ||
-    selectedTagPath.startsWith(`${dayTagPath}/`)
-  );
-}
-
-function matchesPersistentFilters(
-  day: HeatmapDayProjection,
-  selectedPersons: string[],
-  selectedTags: string[],
-): boolean {
-  const personMatch =
-    selectedPersons.length === 0 ||
-    selectedPersons.some((personId) => day.personIds.includes(personId));
-  const tagMatch =
-    selectedTags.length === 0 ||
-    selectedTags.some((selectedTag) =>
-      day.tagPaths.some((tagPath) => matchesTagSelection(tagPath, selectedTag)),
-    );
-
-  return personMatch && tagMatch;
-}
-
-function getViewModeColorValue(
-  day: HeatmapDayProjection,
-  viewMode: ViewMode,
-): HeatmapColorValue {
-  switch (viewMode) {
-    case "activity":
-      return day.colorValue;
-    case "travel":
-      if (day.tagPaths.some((tagPath) => tagPath.startsWith("travel/"))) {
-        return "high";
-      }
-
-      if (day.personIds.length > 0) {
-        return "medium";
-      }
-
-      return day.activityScore >= 55 ? "low" : "empty";
-    case "sports":
-      if (day.tagPaths.some((tagPath) => tagPath.startsWith("activity/"))) {
-        return "high";
-      }
-
-      if (day.activityScore >= 78) {
-        return "medium";
-      }
-
-      return day.activityScore >= 60 ? "low" : "empty";
-    case "party_probability":
-      if (day.personIds.length >= 2) {
-        return "high";
-      }
-
-      if (day.personIds.length === 1) {
-        return "medium";
-      }
-
-      return day.tagPaths.some((tagPath) => tagPath.startsWith("people/"))
-        ? "low"
-        : "empty";
-  }
-}
-
-function promoteColorValue(colorValue: HeatmapColorValue): HeatmapColorValue {
-  switch (colorValue) {
-    case "empty":
-      return "low";
-    case "low":
-      return "medium";
-    case "medium":
-      return "high";
-    case "high":
-      return "high";
-  }
 }
 
 function createFallbackPerson(id: string): PersonProjection {
@@ -223,7 +143,6 @@ function buildVisibleTags(
 
 function buildGridDays(
   heatmapDays: HeatmapDayProjection[],
-  viewMode: ViewMode,
   selectedPersons: string[],
   selectedTags: string[],
 ): HeatmapDayRenderProjection[] {
@@ -231,31 +150,12 @@ function buildGridDays(
     selectedPersons.length > 0 || selectedTags.length > 0;
 
   return heatmapDays.map((day) => {
-    const baseColorValue = getViewModeColorValue(day, viewMode);
-    const matchesFilters = hasPersistentFilters
-      ? matchesPersistentFilters(day, selectedPersons, selectedTags)
-      : true;
-
-    if (!hasPersistentFilters) {
-      return {
-        ...day,
-        renderColorValue: baseColorValue,
-        isDimmed: false,
-        hasPersistentFilters: false,
-        matchesPersistentFilters: true,
-      };
-    }
-
     return {
       ...day,
-      renderColorValue: matchesFilters
-        ? promoteColorValue(baseColorValue)
-        : day.hasData
-          ? "low"
-          : "empty",
-      isDimmed: !matchesFilters,
-      hasPersistentFilters: true,
-      matchesPersistentFilters: matchesFilters,
+      renderColorValue: day.colorValue,
+      isDimmed: false,
+      hasPersistentFilters,
+      matchesPersistentFilters: hasPersistentFilters ? day.hasData : true,
     };
   });
 }
@@ -277,7 +177,7 @@ function buildMapProjection(
   }
 
   const matchingContexts = gridDays
-    .filter((day) => day.hasPersistentFilters && day.matchesPersistentFilters)
+    .filter((day) => day.hasPersistentFilters && day.hasData)
     .map((day) => dayContextsByDate[day.date])
     .filter((context): context is DayContextProjection => context !== undefined);
 
@@ -330,13 +230,10 @@ export function buildExplorationProjection({
     state.hoveredDate !== null ? activeDayContext?.tags ?? [] : [];
   const gridDays = buildGridDays(
     heatmapDays,
-    state.viewMode,
     state.selectedPersons,
     state.selectedTags,
   );
-  const matchingDayCount = gridDays.filter(
-    (day) => day.matchesPersistentFilters && day.hasData,
-  ).length;
+  const matchingDayCount = gridDays.filter((day) => day.hasData).length;
   const { mapPoints, mapSummary } = buildMapProjection(
     state.hoveredDate,
     activeDayContext,

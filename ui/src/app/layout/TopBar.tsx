@@ -16,6 +16,8 @@ type TopBarProps = {
   selectedTags: TagProjection[];
   matchingDayCount: number;
   hasPersistentFilters: boolean;
+  gridState: "loading" | "ready" | "error";
+  gridError: string | null;
   hoveredDate: string | null;
   onSelectViewMode: (viewMode: ViewMode) => void;
   onTogglePerson: (personId: string) => void;
@@ -31,6 +33,8 @@ export function TopBar({
   selectedTags,
   matchingDayCount,
   hasPersistentFilters,
+  gridState,
+  gridError,
   hoveredDate,
   onSelectViewMode,
   onTogglePerson,
@@ -57,6 +61,8 @@ export function TopBar({
             selectedTags={selectedTags}
             matchingDayCount={matchingDayCount}
             hasPersistentFilters={hasPersistentFilters}
+            gridState={gridState}
+            gridError={gridError}
             hoveredDate={hoveredDate}
             onRemovePerson={onTogglePerson}
             onRemoveTag={onToggleTag}

@@ -17,12 +17,15 @@ import type {
 import { useUiState } from "../state/UiStateContext";
 
 type HoverContextStatus = "idle" | "loading" | "ready" | "error";
+type GridLoadState = "loading" | "ready" | "error";
 
 type AppShellProps = {
   heatmapDays: HeatmapDayProjection[];
   viewModes: ViewModeOption[];
   persons: PersonProjection[];
   tags: TagProjection[];
+  gridState: GridLoadState;
+  gridError: string | null;
   dayContextsByDate: Record<string, DayContextProjection>;
   activeDayContext: DayContextProjection | null;
   hoverContextStatus: HoverContextStatus;
@@ -35,6 +38,8 @@ export function AppShell({
   viewModes,
   persons,
   tags,
+  gridState,
+  gridError,
   dayContextsByDate,
   activeDayContext,
   hoverContextStatus,
@@ -71,6 +76,8 @@ export function AppShell({
         selectedTags={exploration.selectedTags}
         matchingDayCount={exploration.matchingDayCount}
         hasPersistentFilters={exploration.hasPersistentFilters}
+        gridState={gridState}
+        gridError={gridError}
         hoveredDate={state.hoveredDate}
         onSelectViewMode={setViewMode}
         onTogglePerson={togglePerson}

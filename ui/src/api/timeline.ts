@@ -6,6 +6,7 @@ import type {
   TagProjection,
   ViewModeOption,
 } from "../projections/timeline";
+import type { PixelPastUiState } from "../state/ui-state";
 import {
   timelineTransport,
   type ApiDayContextResponse,
@@ -15,11 +16,20 @@ import {
 
 export type ExplorationBootstrapProjection = {
   range: DateRange;
-  heatmapDays: HeatmapDayProjection[];
   viewModes: ViewModeOption[];
   persons: PersonProjection[];
   tags: TagProjection[];
 };
+
+export type ExplorationGridProjection = {
+  range: DateRange;
+  heatmapDays: HeatmapDayProjection[];
+};
+
+export type ExplorationGridFilters = Pick<
+  PixelPastUiState,
+  "viewMode" | "selectedPersons" | "selectedTags"
+>;
 
 let explorationBootstrapPromise: Promise<ExplorationBootstrapProjection> | null =
   null;
@@ -59,8 +69,8 @@ function mapExplorationDay(
     activityScore: day.activity_score,
     colorValue: day.color_value,
     hasData: day.has_data,
-    // The backend grid contract is now intentionally minimal. These legacy
-    // client-only fields stay zeroed until the UI switches to server filtering.
+    // The backend grid contract intentionally omits these legacy client-only
+    // detail fields, so they remain zeroed in the render projection.
     eventCount: 0,
     assetCount: 0,
     personIds: [],
@@ -113,21 +123,37 @@ function mapDayContextDay(
 }
 
 export const timelineApi = {
-  async getExploration(): Promise<ExplorationBootstrapProjection> {
+  async getExplorationBootstrap(): Promise<ExplorationBootstrapProjection> {
     if (explorationBootstrapPromise === null) {
-      explorationBootstrapPromise = Promise.all([
-        timelineTransport.getExplorationBootstrap(),
-        timelineTransport.getExplorationGrid(),
-      ]).then(([bootstrap, grid]) => ({
-        range: bootstrap.range,
-        heatmapDays: grid.days.map(mapExplorationDay),
-        viewModes: bootstrap.view_modes,
-        persons: bootstrap.persons.map(mapPerson),
-        tags: bootstrap.tags.map(mapTag),
-      }));
+      explorationBootstrapPromise = timelineTransport
+        .getExplorationBootstrap()
+        .then((bootstrap) => ({
+          range: bootstrap.range,
+          viewModes: bootstrap.view_modes,
+          persons: bootstrap.persons.map(mapPerson),
+          tags: bootstrap.tags.map(mapTag),
+        }));
     }
 
     return explorationBootstrapPromise;
+  },
+
+  async getExplorationGrid(
+    range: DateRange,
+    filters: ExplorationGridFilters,
+  ): Promise<ExplorationGridProjection> {
+    const response = await timelineTransport.getExplorationGrid({
+      start: range.start,
+      end: range.end,
+      viewMode: filters.viewMode,
+      personIds: filters.selectedPersons,
+      tagPaths: filters.selectedTags,
+    });
+
+    return {
+      range: response.range,
+      heatmapDays: response.days.map(mapExplorationDay),
+    };
   },
 
   async getDayContextRange(

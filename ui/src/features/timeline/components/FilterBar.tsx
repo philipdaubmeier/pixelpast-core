@@ -9,6 +9,8 @@ type FilterBarProps = {
   selectedTags: TagProjection[];
   matchingDayCount: number;
   hasPersistentFilters: boolean;
+  gridState: "loading" | "ready" | "error";
+  gridError: string | null;
   hoveredDate: string | null;
   onRemovePerson: (personId: string) => void;
   onRemoveTag: (tagPath: string) => void;
@@ -21,6 +23,8 @@ export function FilterBar({
   selectedTags,
   matchingDayCount,
   hasPersistentFilters,
+  gridState,
+  gridError,
   hoveredDate,
   onRemovePerson,
   onRemoveTag,
@@ -35,6 +39,13 @@ export function FilterBar({
         {hasPersistentFilters
           ? `${matchingDayCount} matching day${matchingDayCount === 1 ? "" : "s"}`
           : "No persistent filters active"}
+      </div>
+      <div className="rounded-full bg-white/70 px-3 py-1.5 text-[12px] text-slate-700">
+        {gridState === "loading"
+          ? "Grid: updating"
+          : gridState === "error"
+            ? gridError ?? "Grid: request failed"
+            : "Grid: synced"}
       </div>
       <div className="rounded-full bg-white/70 px-3 py-1.5 text-[12px] text-slate-700">
         Hover: {hoveredDate ?? "none"}
