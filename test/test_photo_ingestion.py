@@ -340,7 +340,7 @@ def test_photo_ingestion_fails_fast_when_exiftool_is_missing(
         )
 
         monkeypatch.setattr(
-            "pixelpast.ingestion.photos.connector.shutil.which",
+            "pixelpast.ingestion.photos.fetch.shutil.which",
             lambda executable: None,
         )
 
@@ -387,7 +387,7 @@ def test_photo_connector_splits_timed_out_metadata_batches_until_single_files(
             return [{"SourceFile": path.as_posix(), "XMP:Title": path.stem} for path in paths]
 
         monkeypatch.setattr(
-            "pixelpast.ingestion.photos.connector._run_exiftool_json",
+            "pixelpast.ingestion.photos.fetch._run_exiftool_json",
             fake_run_exiftool_json,
         )
 

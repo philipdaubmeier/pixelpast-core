@@ -1,13 +1,8 @@
-"""Filesystem-based discovery and metadata extraction for photo assets."""
+"""Filesystem-based discovery and canonical mapping for photo assets."""
 
 from __future__ import annotations
 
-import json
-import logging
 import re
-import shutil
-import subprocess
-from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -21,6 +16,10 @@ from pixelpast.ingestion.photos.contracts import (
     PhotoMetadataBatchProgress,
     PhotoPersonCandidate,
 )
+from pixelpast.ingestion.photos.fetch import (
+    PhotoMetadataFetcher,
+    count_photo_metadata_batches,
+)
 
 _SUPPORTED_EXTENSIONS = frozenset({".jpg", ".jpeg", ".png", ".heic"})
 _FILENAME_TIMESTAMP_PATTERN = re.compile(r"(?P<stamp>\d{8}_\d{6})")
@@ -28,8 +27,6 @@ _EXIF_DATETIME_TAG = 36867
 _EXIF_FALLBACK_DATETIME_TAG = 306
 _EXIF_GPS_TAG = 34853
 _HIERARCHY_SEPARATOR = "|"
-_EXIFTOOL_BATCH_SIZE = 85
-_EXIFTOOL_METADATA_PARAMS = ("-n", "-a", "-G1", "-s")
 _TITLE_METADATA_PRIORITY = ("XMP:Title", "XMP-dc:Title", "IPTC:ObjectName")
 _CREATOR_METADATA_PRIORITY = (
     "XMP:Creator",
@@ -51,9 +48,6 @@ _HIERARCHICAL_TAG_METADATA_PRIORITY = (
 )
 _REGION_NAME_KEYS = ("XMP:RegionName", "XMP-mwg-rs:RegionName")
 _REGION_TYPE_KEYS = ("XMP:RegionType", "XMP-mwg-rs:RegionType")
-_EXIFTOOL_BATCH_TIMEOUT_SECONDS = 120
-
-logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True, frozen=True)
@@ -67,6 +61,11 @@ class PhotoExifMetadata:
 
 class PhotoConnector:
     """Discover photo assets recursively from a configured root directory."""
+
+    def __init__(self, *, metadata_fetcher: PhotoMetadataFetcher | None = None) -> None:
+        self._metadata_fetcher = (
+            metadata_fetcher if metadata_fetcher is not None else PhotoMetadataFetcher()
+        )
 
     def discover_paths(
         self,
@@ -98,7 +97,7 @@ class PhotoConnector:
         assets: list[PhotoAssetCandidate] = []
         errors: list[PhotoDiscoveryError] = []
         supported_paths = self.discover_paths(resolved_root)
-        metadata_batch_count = _count_batches(len(supported_paths))
+        metadata_batch_count = count_photo_metadata_batches(len(supported_paths))
         metadata_by_path = self.extract_metadata_by_path(paths=supported_paths)
 
         for path in supported_paths:
@@ -208,89 +207,12 @@ class PhotoConnector:
         paths: list[Path],
         on_batch_progress: Callable[[PhotoMetadataBatchProgress], None] | None = None,
     ) -> dict[str, dict[str, Any]]:
-        """Read grouped metadata for many files with a persistent exiftool process."""
+        """Read grouped metadata for many files through the fetch layer."""
 
-        if not paths:
-            return {}
-
-        resolved_paths = [path.expanduser().resolve() for path in paths]
-        metadata_by_path: dict[str, dict[str, Any]] = {}
-        all_batches = _metadata_batches_for_paths(resolved_paths)
-        batch_total = len(all_batches)
-
-        try:
-            for batch_index, batch_paths in enumerate(all_batches, start=1):
-                if on_batch_progress is not None:
-                    on_batch_progress(
-                        PhotoMetadataBatchProgress(
-                            event="submitted",
-                            batch_index=batch_index,
-                            batch_total=batch_total,
-                            batch_size=len(batch_paths),
-                        )
-                    )
-                batch_metadata = self._extract_batch_metadata_with_fallback(
-                    batch_paths=batch_paths,
-                )
-                metadata_by_path.update(
-                    _index_metadata_results(
-                        metadata=batch_metadata,
-                        expected_paths=batch_paths,
-                    )
-                )
-                if on_batch_progress is not None:
-                    on_batch_progress(
-                        PhotoMetadataBatchProgress(
-                            event="completed",
-                            batch_index=batch_index,
-                            batch_total=batch_total,
-                            batch_size=len(batch_paths),
-                        )
-                    )
-        except (FileNotFoundError, OSError) as error:
-            raise RuntimeError(
-                "Photo ingestion requires exiftool to be installed and callable."
-            ) from error
-
-        return metadata_by_path
-
-    def _extract_batch_metadata_with_fallback(
-        self,
-        *,
-        batch_paths: list[Path],
-    ) -> list[dict[str, Any]]:
-        """Extract one exiftool batch, splitting recursively on timeouts."""
-
-        try:
-            return _run_exiftool_json(paths=batch_paths)
-        except subprocess.TimeoutExpired as error:
-            if len(batch_paths) == 1:
-                timed_out_path = batch_paths[0].as_posix()
-                logger.warning(
-                    "photo ingest metadata extraction timed out for file",
-                    extra={
-                        "path": timed_out_path,
-                        "timeout_seconds": _EXIFTOOL_BATCH_TIMEOUT_SECONDS,
-                    },
-                )
-                return [{"SourceFile": timed_out_path}]
-
-            midpoint = len(batch_paths) // 2
-            left_paths = batch_paths[:midpoint]
-            right_paths = batch_paths[midpoint:]
-            logger.warning(
-                "photo ingest metadata batch timed out, splitting batch",
-                extra={
-                    "batch_size": len(batch_paths),
-                    "left_batch_size": len(left_paths),
-                    "right_batch_size": len(right_paths),
-                    "timeout_seconds": _EXIFTOOL_BATCH_TIMEOUT_SECONDS,
-                },
-            )
-            return [
-                *self._extract_batch_metadata_with_fallback(batch_paths=left_paths),
-                *self._extract_batch_metadata_with_fallback(batch_paths=right_paths),
-            ]
+        return self._metadata_fetcher.extract_metadata_by_path(
+            paths=paths,
+            on_batch_progress=on_batch_progress,
+        )
 
 
 def extract_photo_tool_metadata(path: Path) -> dict[str, Any]:
@@ -621,94 +543,6 @@ def _coerce_float(value: object) -> float | None:
     if isinstance(value, int | float):
         return float(value)
     return None
-
-
-def _index_metadata_results(
-    *,
-    metadata: list[Any],
-    expected_paths: list[Path],
-) -> dict[str, dict[str, Any]]:
-    """Index exiftool metadata results by absolute source path."""
-
-    indexed: dict[str, dict[str, Any]] = {
-        path.as_posix(): {} for path in expected_paths
-    }
-    for entry in metadata:
-        if not isinstance(entry, dict):
-            continue
-        source_file = entry.get("SourceFile")
-        if not isinstance(source_file, str):
-            continue
-        indexed[Path(source_file).expanduser().resolve().as_posix()] = entry
-    return indexed
-
-
-def _chunked(paths: Iterable[Path], chunk_size: int) -> Iterator[list[Path]]:
-    """Yield stable fixed-size path chunks."""
-
-    batch: list[Path] = []
-    for path in paths:
-        batch.append(path)
-        if len(batch) == chunk_size:
-            yield batch
-            batch = []
-    if batch:
-        yield batch
-
-
-def _metadata_batches_for_paths(paths: list[Path]) -> list[list[Path]]:
-    """Return the exiftool metadata batches for a resolved path list."""
-
-    if not paths:
-        return []
-    if len(paths) == 1:
-        return [[paths[0]]]
-    return [[paths[0]], *_chunked(paths[1:], _EXIFTOOL_BATCH_SIZE)]
-
-
-def _count_batches(path_count: int) -> int:
-    """Return the deterministic metadata batch count for a discovered path total."""
-
-    if path_count <= 0:
-        return 0
-    if path_count == 1:
-        return 1
-    return 1 + ((path_count - 1 + _EXIFTOOL_BATCH_SIZE - 1) // _EXIFTOOL_BATCH_SIZE)
-
-
-def _run_exiftool_json(*, paths: list[Path]) -> list[dict[str, Any]]:
-    """Execute one exiftool metadata batch with a bounded timeout."""
-
-    executable = shutil.which("exiftool")
-    if executable is None:
-        raise FileNotFoundError("exiftool")
-
-    command = [
-        executable,
-        "-j",
-        *list(_EXIFTOOL_METADATA_PARAMS),
-        *[path.as_posix() for path in paths],
-    ]
-    completed = subprocess.run(
-        command,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        timeout=_EXIFTOOL_BATCH_TIMEOUT_SECONDS,
-        check=False,
-    )
-    if completed.stdout == "":
-        raise RuntimeError(
-            f"Exiftool returned no metadata output for batch of {len(paths)} file(s)."
-        )
-
-    try:
-        parsed = json.loads(completed.stdout)
-    except json.JSONDecodeError as error:
-        raise RuntimeError("Exiftool returned invalid JSON metadata output.") from error
-    if not isinstance(parsed, list):
-        raise RuntimeError("Exiftool returned an unexpected metadata payload shape.")
-    return [entry for entry in parsed if isinstance(entry, dict)]
 
 
 def _parse_filename_timestamp(stem: str) -> datetime | None:
