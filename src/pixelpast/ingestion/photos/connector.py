@@ -1,4 +1,4 @@
-"""Filesystem-based discovery and metadata fetch facade for photo assets."""
+"""Composition facade for photo file discovery, metadata fetch, and transform."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ from pixelpast.ingestion.photos.contracts import (
     PhotoMetadataBatchProgress,
     PhotoPersonCandidate,
 )
+from pixelpast.ingestion.photos.discovery import PhotoFileDiscoverer
 from pixelpast.ingestion.photos.fetch import (
     PhotoMetadataFetcher,
     count_photo_metadata_batches,
@@ -22,17 +23,28 @@ from pixelpast.ingestion.photos.transform import (
     extract_photo_exif_metadata,
 )
 
-_SUPPORTED_EXTENSIONS = frozenset({".jpg", ".jpeg", ".png", ".heic"})
-
 
 class PhotoConnector:
-    """Discover photo assets recursively from a configured root directory."""
+    """Facade that composes photo discovery, fetch, and transform stages."""
 
-    def __init__(self, *, metadata_fetcher: PhotoMetadataFetcher | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        file_discoverer: PhotoFileDiscoverer | None = None,
+        metadata_fetcher: PhotoMetadataFetcher | None = None,
+        metadata_transformer: PhotoMetadataTransformer | None = None,
+    ) -> None:
+        self._file_discoverer = (
+            file_discoverer if file_discoverer is not None else PhotoFileDiscoverer()
+        )
         self._metadata_fetcher = (
             metadata_fetcher if metadata_fetcher is not None else PhotoMetadataFetcher()
         )
-        self._metadata_transformer = PhotoMetadataTransformer()
+        self._metadata_transformer = (
+            metadata_transformer
+            if metadata_transformer is not None
+            else PhotoMetadataTransformer()
+        )
 
     def discover_paths(
         self,
@@ -40,25 +52,15 @@ class PhotoConnector:
         *,
         on_path_discovered: Callable[[Path, int], None] | None = None,
     ) -> list[Path]:
-        """Return supported file paths beneath a configured root directory."""
+        """Delegate filesystem discovery to the dedicated discoverer component."""
 
-        resolved_root = root.expanduser().resolve()
-        if not resolved_root.exists():
-            raise ValueError(f"Photo root does not exist: {resolved_root}")
-        if not resolved_root.is_dir():
-            raise ValueError(f"Photo root is not a directory: {resolved_root}")
-
-        supported_paths: list[Path] = []
-        for path in sorted(resolved_root.rglob("*")):
-            if not path.is_file() or path.suffix.lower() not in _SUPPORTED_EXTENSIONS:
-                continue
-            supported_paths.append(path)
-            if on_path_discovered is not None:
-                on_path_discovered(path, len(supported_paths))
-        return supported_paths
+        return self._file_discoverer.discover_paths(
+            root,
+            on_path_discovered=on_path_discovered,
+        )
 
     def discover(self, root: Path) -> PhotoDiscoveryResult:
-        """Return canonical asset candidates discovered under a directory tree."""
+        """Convenience wrapper that runs discover, fetch, and transform together."""
 
         resolved_root = root.expanduser().resolve()
         assets: list[PhotoAssetCandidate] = []

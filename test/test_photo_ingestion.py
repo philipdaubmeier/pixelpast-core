@@ -21,6 +21,7 @@ from pixelpast.ingestion.photos import (
     PhotoIngestionService,
     PhotoPersonCandidate,
 )
+from pixelpast.ingestion.photos.discovery import PhotoFileDiscoverer
 from pixelpast.persistence.models import (
     Asset,
     AssetPerson,
@@ -281,6 +282,59 @@ def test_photo_connector_applies_deterministic_metadata_precedence(
             candidate.metadata_json["resolution"]["timestamp"]
             == "ExifIFD:DateTimeOriginal"
         )
+    finally:
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_photo_file_discoverer_filters_supported_extensions_and_reports_stable_progress() -> None:
+    workspace_root = _create_workspace_dir(prefix="photo-discovery")
+    try:
+        photos_root = workspace_root / "photos"
+        nested_root = photos_root / "nested"
+        photos_root.mkdir()
+        nested_root.mkdir()
+        (photos_root / "z-last.png").write_bytes(b"photo")
+        (nested_root / "a-first.jpeg").write_bytes(b"photo")
+        (nested_root / "skip.txt").write_text("ignore", encoding="utf-8")
+        (photos_root / "also-skip.mp4").write_bytes(b"video")
+
+        observed_progress: list[tuple[str, int]] = []
+
+        paths = PhotoFileDiscoverer().discover_paths(
+            photos_root,
+            on_path_discovered=lambda path, count: observed_progress.append(
+                (path.name, count)
+            ),
+        )
+
+        assert [path.name for path in paths] == ["a-first.jpeg", "z-last.png"]
+        assert observed_progress == [("a-first.jpeg", 1), ("z-last.png", 2)]
+    finally:
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_photo_connector_discover_convenience_method_delegates_to_override_points() -> None:
+    workspace_root = _create_workspace_dir(prefix="photo-discover-facade")
+    try:
+        photos_root = workspace_root / "photos"
+        photos_root.mkdir()
+        resolved_root = photos_root.resolve()
+
+        result = _ConvenienceDiscoverConnector().discover(photos_root)
+
+        assert [asset.summary for asset in result.assets] == ["first", "second"]
+        assert result.errors == [
+            PhotoDiscoveryError(
+                path=resolved_root / "broken.jpg",
+                message="bad metadata",
+            )
+        ]
+        assert result.discovered_paths == (
+            resolved_root / "first.jpg",
+            resolved_root / "broken.jpg",
+            resolved_root / "second.jpg",
+        )
+        assert result.metadata_batch_count == 2
     finally:
         shutil.rmtree(workspace_root, ignore_errors=True)
 
@@ -779,6 +833,47 @@ def test_sources_can_share_type_when_name_differs() -> None:
         if runtime is not None:
             runtime.engine.dispose()
         shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+class _ConvenienceDiscoverConnector(PhotoConnector):
+    """Test connector that freezes discover() delegation behavior."""
+
+    def discover_paths(
+        self,
+        root: Path,
+        *,
+        on_path_discovered=None,
+    ) -> list[Path]:
+        del on_path_discovered
+        return [root / "first.jpg", root / "broken.jpg", root / "second.jpg"]
+
+    def extract_metadata_by_path(self, *, paths: list[Path], on_batch_progress=None):
+        del on_batch_progress
+        return {path.resolve().as_posix(): {"summary": path.stem} for path in paths}
+
+    def build_asset_candidate(
+        self,
+        *,
+        root: Path,
+        path: Path,
+        metadata=None,
+    ) -> PhotoAssetCandidate:
+        del root
+        if path.name == "broken.jpg":
+            raise RuntimeError("bad metadata")
+        return PhotoAssetCandidate(
+            external_id=path.resolve().as_posix(),
+            media_type="photo",
+            timestamp=datetime(2024, 1, 1, 0, 0, tzinfo=UTC),
+            summary=metadata["summary"] if metadata is not None else None,
+            latitude=None,
+            longitude=None,
+            creator_name=None,
+            tag_paths=(),
+            asset_tag_paths=(),
+            persons=(),
+            metadata_json={},
+        )
 
 
 class _PartialFailureConnector(PhotoConnector):
