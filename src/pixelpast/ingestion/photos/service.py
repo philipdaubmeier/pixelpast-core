@@ -12,10 +12,12 @@ from pixelpast.ingestion.progress import (
     IngestionProgressCallback,
     IngestionProgressSnapshot,
 )
-from pixelpast.ingestion.photos.connector import (
+from pixelpast.ingestion.photos.connector import PhotoConnector
+from pixelpast.ingestion.photos.contracts import (
     PhotoAssetCandidate,
-    PhotoConnector,
     PhotoDiscoveryError,
+    PhotoIngestionProgressSnapshot,
+    PhotoIngestionResult,
     PhotoMetadataBatchProgress,
 )
 from pixelpast.persistence.repositories import (
@@ -31,27 +33,6 @@ from pixelpast.shared.runtime import RuntimeContext
 logger = logging.getLogger(__name__)
 
 _HEARTBEAT_INTERVAL_SECONDS = 10.0
-
-
-@dataclass(slots=True, frozen=True)
-class PhotoIngestionResult:
-    """Summary of a completed photo ingestion run."""
-
-    import_run_id: int
-    processed_asset_count: int
-    error_count: int
-    status: str
-    discovered_file_count: int
-    analyzed_file_count: int
-    analysis_failed_file_count: int
-    assets_persisted: int
-    inserted_asset_count: int
-    updated_asset_count: int
-    unchanged_asset_count: int
-    skipped_asset_count: int
-    missing_from_source_count: int
-    metadata_batches_submitted: int
-    metadata_batches_completed: int
 
 
 @dataclass(slots=True)
@@ -718,6 +699,3 @@ def _utc_now() -> datetime:
     """Return the current aware UTC time."""
 
     return datetime.now(UTC)
-
-
-PhotoIngestionProgressSnapshot = IngestionProgressSnapshot

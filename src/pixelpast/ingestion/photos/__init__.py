@@ -1,19 +1,16 @@
 """Photo ingestion connector package."""
 
-from pixelpast.ingestion.photos.connector import (
+from pixelpast.ingestion.photos.connector import PhotoConnector, PhotoExifMetadata
+from pixelpast.ingestion.photos.contracts import (
     PhotoAssetCandidate,
-    PhotoConnector,
     PhotoDiscoveryError,
     PhotoDiscoveryResult,
-    PhotoExifMetadata,
+    PhotoIngestionProgressSnapshot,
+    PhotoIngestionResult,
     PhotoMetadataBatchProgress,
     PhotoPersonCandidate,
 )
-from pixelpast.ingestion.photos.service import (
-    PhotoIngestionProgressSnapshot,
-    PhotoIngestionResult,
-    PhotoIngestionService,
-)
+from pixelpast.ingestion.photos.service import PhotoIngestionService
 
 __all__ = [
     "PhotoAssetCandidate",
