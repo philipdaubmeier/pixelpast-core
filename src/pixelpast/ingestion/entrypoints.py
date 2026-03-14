@@ -1,10 +1,13 @@
 """Ingestion command entrypoints."""
 
-from collections.abc import Callable
 import logging
+from collections.abc import Callable
 
+from pixelpast.ingestion.photos.service import (
+    PhotoIngestionResult,
+    PhotoIngestionService,
+)
 from pixelpast.ingestion.progress import IngestionProgressSnapshot
-from pixelpast.ingestion.photos.service import PhotoIngestionResult, PhotoIngestionService
 from pixelpast.shared.runtime import RuntimeContext
 
 logger = logging.getLogger(__name__)

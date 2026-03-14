@@ -201,4 +201,8 @@ def _run_exiftool_json(*, paths: list[Path]) -> list[dict[str, Any]]:
     return [entry for entry in parsed if isinstance(entry, dict)]
 
 
-__all__ = ["PhotoMetadataBatchProgress", "PhotoMetadataFetcher", "count_photo_metadata_batches"]
+__all__ = [
+    "PhotoMetadataBatchProgress",
+    "PhotoMetadataFetcher",
+    "count_photo_metadata_batches",
+]
