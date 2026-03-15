@@ -19,12 +19,12 @@ from pixelpast.analytics.entrypoints import (
     list_supported_derive_jobs,
     run_derive_job,
 )
-from pixelpast.ingestion.progress import IngestionProgressSnapshot
 from pixelpast.ingestion.entrypoints import (
     list_supported_ingest_sources,
     run_ingest_source,
 )
 from pixelpast.shared.logging import configure_logging
+from pixelpast.shared.progress import JobProgressSnapshot
 from pixelpast.shared.runtime import (
     RuntimeContext,
     create_runtime_context,
@@ -90,19 +90,19 @@ class IngestionCliProgressReporter:
             int,
         ] | None = None
 
-    def __call__(self, snapshot: IngestionProgressSnapshot) -> None:
+    def __call__(self, snapshot: JobProgressSnapshot) -> None:
         """Print meaningful progress and terminal summary lines."""
 
         if snapshot.event == "phase_started":
             typer.echo(
-                f"[{snapshot.source}] phase={snapshot.phase} status={snapshot.status}"
+                f"[{snapshot.job}] phase={snapshot.phase} status={snapshot.status}"
                 f"{_format_total_suffix(snapshot.total)}"
             )
             return
 
         if snapshot.event == "phase_completed":
             typer.echo(
-                f"[{snapshot.source}] phase={snapshot.phase} status={snapshot.status}"
+                f"[{snapshot.job}] phase={snapshot.phase} status={snapshot.status}"
                 f" completed={snapshot.completed}"
                 f"{_format_total_suffix(snapshot.total)}"
             )
@@ -110,9 +110,9 @@ class IngestionCliProgressReporter:
 
         if snapshot.event == "run_finished":
             typer.echo(
-                f"[{snapshot.source}] summary"
+                f"[{snapshot.job}] summary"
                 f" status={snapshot.status}"
-                f" import_run_id={snapshot.import_run_id}"
+                f" run_id={snapshot.run_id}"
                 f" inserted={snapshot.inserted}"
                 f" updated={snapshot.updated}"
                 f" unchanged={snapshot.unchanged}"
@@ -124,9 +124,9 @@ class IngestionCliProgressReporter:
 
         if snapshot.event == "run_failed":
             typer.echo(
-                f"[{snapshot.source}] summary"
+                f"[{snapshot.job}] summary"
                 f" status={snapshot.status}"
-                f" import_run_id={snapshot.import_run_id}"
+                f" run_id={snapshot.run_id}"
                 f" phase={snapshot.phase}"
                 f" completed={snapshot.completed}"
                 f"{_format_total_suffix(snapshot.total)}"
@@ -152,7 +152,7 @@ class IngestionCliProgressReporter:
         if progress_key != self._last_progress_key:
             self._last_progress_key = progress_key
             typer.echo(
-                f"[{snapshot.source}] phase={snapshot.phase}"
+                f"[{snapshot.job}] phase={snapshot.phase}"
                 f" completed={snapshot.completed}"
                 f"{_format_total_suffix(snapshot.total)}"
                 f" inserted={snapshot.inserted}"

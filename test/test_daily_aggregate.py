@@ -24,10 +24,12 @@ from pixelpast.persistence.models import (
     Event,
     EventPerson,
     EventTag,
+    JobRun,
     Person,
     Source,
     Tag,
 )
+from pixelpast.shared.progress import JobProgressSnapshot
 from pixelpast.persistence.repositories.daily_aggregates import (
     CanonicalAssetAggregateInput,
     CanonicalEventAggregateInput,
@@ -693,6 +695,91 @@ def test_daily_aggregate_job_recomputes_range_idempotently_for_v2_rows() -> None
                 "score_version": "v2",
             },
         ]
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_daily_aggregate_job_persists_derive_run_lifecycle_and_progress() -> None:
+    workspace_root = _create_workspace_dir(prefix="daily-aggregate-run-lifecycle")
+    runtime = None
+    try:
+        runtime = _create_runtime(workspace_root=workspace_root)
+
+        with runtime.session_factory() as session:
+            source = Source(name="Calendar", type="calendar", config={})
+            session.add(source)
+            session.flush()
+            session.add_all(
+                [
+                    Event(
+                        source_id=source.id,
+                        type="calendar",
+                        timestamp_start=datetime(2024, 1, 2, 8, 0, tzinfo=UTC),
+                        timestamp_end=None,
+                        title="Morning plan",
+                        summary=None,
+                        latitude=None,
+                        longitude=None,
+                        raw_payload={},
+                        derived_payload={},
+                    ),
+                    Asset(
+                        external_id="photo-1",
+                        media_type="photo",
+                        timestamp=datetime(2024, 1, 2, 9, 0, tzinfo=UTC),
+                        summary=None,
+                        latitude=None,
+                        longitude=None,
+                        metadata_json={},
+                    ),
+                ]
+            )
+            session.commit()
+
+        snapshots: list[JobProgressSnapshot] = []
+        result = DailyAggregateJob().run(
+            runtime=runtime,
+            start_date=date(2024, 1, 2),
+            end_date=date(2024, 1, 2),
+            progress_callback=snapshots.append,
+        )
+
+        with runtime.session_factory() as session:
+            job_run = session.execute(select(JobRun)).scalar_one()
+
+        assert result.run_id == job_run.id
+        assert job_run.type == "derive"
+        assert job_run.job == "daily-aggregate"
+        assert job_run.mode == "range"
+        assert job_run.status == "completed"
+        assert job_run.phase == "finalization"
+        assert job_run.last_heartbeat_at is not None
+        assert job_run.progress_json == {
+            "total": 1,
+            "completed": 1,
+            "inserted": 3,
+            "updated": 0,
+            "unchanged": 0,
+            "skipped": 0,
+            "failed": 0,
+            "missing_from_source": 0,
+        }
+
+        assert [
+            snapshot.phase for snapshot in snapshots if snapshot.event == "phase_started"
+        ] == [
+            "loading canonical inputs",
+            "building daily aggregates",
+            "persisting daily aggregates",
+            "finalization",
+        ]
+        assert snapshots[-1].event == "run_finished"
+        assert snapshots[-1].job_type == "derive"
+        assert snapshots[-1].job == "daily-aggregate"
+        assert snapshots[-1].run_id == result.run_id
+        assert snapshots[-1].inserted == 3
     finally:
         if runtime is not None:
             runtime.engine.dispose()

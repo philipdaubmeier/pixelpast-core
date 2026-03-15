@@ -9,7 +9,7 @@ from pixelpast.persistence.models import (
     EventAsset,
     EventPerson,
     EventTag,
-    ImportRun,
+    JobRun,
     Person,
     PersonGroup,
     PersonGroupMember,
@@ -25,7 +25,7 @@ from pixelpast.persistence.session import (
 __all__ = [
     "Base",
     "Source",
-    "ImportRun",
+    "JobRun",
     "Event",
     "Asset",
     "EventAsset",

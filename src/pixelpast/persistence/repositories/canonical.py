@@ -1,4 +1,4 @@
-"""Minimal canonical repositories for ingestion workflows."""
+"""Canonical repositories for source state and operational job runs."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from pixelpast.persistence.models import (
     Asset,
     AssetPerson,
     AssetTag,
-    ImportRun,
+    JobRun,
     Person,
     Source,
     Tag,
@@ -64,8 +64,8 @@ class SourceRepository:
         return source
 
 
-class ImportRunRepository:
-    """Repository for ingestion run tracking."""
+class JobRunRepository:
+    """Repository for shared ingest/derive job run tracking."""
 
     def __init__(self, session: Session) -> None:
         self._session = session
@@ -73,17 +73,19 @@ class ImportRunRepository:
     def create(
         self,
         *,
-        source_id: int,
+        job_type: str,
+        job: str,
         mode: str,
         status: str = "running",
         started_at: datetime | None = None,
         phase: str | None = None,
         progress_json: dict[str, Any] | None = None,
-    ) -> ImportRun:
-        """Create and persist a running import record."""
+    ) -> JobRun:
+        """Create and persist a running job record."""
 
-        import_run = ImportRun(
-            source_id=source_id,
+        job_run = JobRun(
+            type=job_type,
+            job=job,
             started_at=started_at or utc_now(),
             finished_at=None,
             status=status,
@@ -94,77 +96,77 @@ class ImportRunRepository:
                 dict(progress_json) if progress_json is not None else None
             ),
         )
-        self._session.add(import_run)
+        self._session.add(job_run)
         self._session.flush()
-        return import_run
+        return job_run
 
-    def get_by_id(self, *, import_run_id: int) -> ImportRun | None:
-        """Return an import run by identifier."""
+    def get_by_id(self, *, run_id: int) -> JobRun | None:
+        """Return a job run by identifier."""
 
-        statement = select(ImportRun).where(ImportRun.id == import_run_id)
+        statement = select(JobRun).where(JobRun.id == run_id)
         return self._session.execute(statement).scalar_one_or_none()
 
     def mark_finished(
         self,
-        import_run: ImportRun,
+        job_run: JobRun,
         *,
         status: str,
         finished_at: datetime | None = None,
         phase: str | None = None,
         last_heartbeat_at: datetime | None = None,
         progress_json: dict[str, Any] | None = None,
-    ) -> ImportRun:
-        """Mark an import run as finished with a terminal status."""
+    ) -> JobRun:
+        """Mark a job run as finished with a terminal status."""
 
-        import_run.status = status
-        import_run.finished_at = finished_at or utc_now()
-        import_run.phase = phase
-        import_run.last_heartbeat_at = last_heartbeat_at or import_run.last_heartbeat_at
+        job_run.status = status
+        job_run.finished_at = finished_at or utc_now()
+        job_run.phase = phase
+        job_run.last_heartbeat_at = last_heartbeat_at or job_run.last_heartbeat_at
         if progress_json is not None:
-            import_run.progress_json = dict(progress_json)
+            job_run.progress_json = dict(progress_json)
         self._session.flush()
-        return import_run
+        return job_run
 
     def update_progress(
         self,
         *,
-        import_run_id: int,
+        run_id: int,
         phase: str,
         progress_json: dict[str, Any],
         last_heartbeat_at: datetime | None = None,
         status: str | None = None,
-    ) -> ImportRun | None:
-        """Persist a non-terminal progress heartbeat for a running import."""
+    ) -> JobRun | None:
+        """Persist a non-terminal progress heartbeat for a running job."""
 
-        import_run = self.get_by_id(import_run_id=import_run_id)
-        if import_run is None:
+        job_run = self.get_by_id(run_id=run_id)
+        if job_run is None:
             return None
 
-        import_run.phase = phase
-        import_run.progress_json = dict(progress_json)
-        import_run.last_heartbeat_at = last_heartbeat_at or utc_now()
+        job_run.phase = phase
+        job_run.progress_json = dict(progress_json)
+        job_run.last_heartbeat_at = last_heartbeat_at or utc_now()
         if status is not None:
-            import_run.status = status
+            job_run.status = status
         self._session.flush()
-        return import_run
+        return job_run
 
     def mark_finished_by_id(
         self,
         *,
-        import_run_id: int,
+        run_id: int,
         status: str,
         finished_at: datetime | None = None,
         phase: str | None = None,
         last_heartbeat_at: datetime | None = None,
         progress_json: dict[str, Any] | None = None,
-    ) -> ImportRun | None:
-        """Mark an import run as finished when only the identifier is available."""
+    ) -> JobRun | None:
+        """Mark a job run as finished when only the identifier is available."""
 
-        import_run = self.get_by_id(import_run_id=import_run_id)
-        if import_run is None:
+        job_run = self.get_by_id(run_id=run_id)
+        if job_run is None:
             return None
         return self.mark_finished(
-            import_run,
+            job_run,
             status=status,
             finished_at=finished_at,
             phase=phase,

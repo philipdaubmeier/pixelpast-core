@@ -18,23 +18,23 @@ from pixelpast.ingestion.photos import (
     PhotoConnector,
     PhotoDiscoveryError,
     PhotoExifMetadata,
-    PhotoImportRunCoordinator,
+    PhotoIngestionRunCoordinator,
     PhotoIngestionService,
     PhotoMetadataBatchProgress,
     PhotoPersonCandidate,
-    build_initial_photo_import_progress_payload,
 )
 from pixelpast.ingestion.photos.discovery import PhotoFileDiscoverer
 from pixelpast.persistence.models import (
     Asset,
     AssetPerson,
     AssetTag,
-    ImportRun,
+    JobRun,
     Person,
     Source,
     Tag,
 )
 from pixelpast.persistence.repositories.canonical import AssetRepository
+from pixelpast.shared.progress import build_initial_job_progress_payload
 from pixelpast.shared.runtime import create_runtime_context, initialize_database
 from pixelpast.shared.settings import Settings
 
@@ -216,8 +216,8 @@ def test_photo_ingestion_with_fixtures_is_idempotent() -> None:
 
         with runtime.session_factory() as session:
             assets = list(session.execute(select(Asset)).scalars())
-            import_runs = list(
-                session.execute(select(ImportRun).order_by(ImportRun.id)).scalars()
+            job_runs = list(
+                session.execute(select(JobRun).order_by(JobRun.id)).scalars()
             )
             people = list(session.execute(select(Person)).scalars())
             tags = list(session.execute(select(Tag)).scalars())
@@ -226,8 +226,10 @@ def test_photo_ingestion_with_fixtures_is_idempotent() -> None:
             sources = list(session.execute(select(Source)).scalars())
 
         assert len(assets) == 3
-        assert len(import_runs) == 2
-        assert [run.status for run in import_runs] == ["completed", "completed"]
+        assert len(job_runs) == 2
+        assert [run.type for run in job_runs] == ["ingest", "ingest"]
+        assert [run.job for run in job_runs] == ["photos", "photos"]
+        assert [run.status for run in job_runs] == ["completed", "completed"]
         assert len(people) == 3
         assert len(tags) == 10
         assert len(asset_tags) == 11
@@ -370,11 +372,13 @@ def test_photo_ingestion_handles_empty_directories() -> None:
 
         with runtime.session_factory() as session:
             assets = list(session.execute(select(Asset)).scalars())
-            import_runs = list(session.execute(select(ImportRun)).scalars())
+            job_runs = list(session.execute(select(JobRun)).scalars())
 
         assert assets == []
-        assert len(import_runs) == 1
-        assert import_runs[0].status == "completed"
+        assert len(job_runs) == 1
+        assert job_runs[0].type == "ingest"
+        assert job_runs[0].job == "photos"
+        assert job_runs[0].status == "completed"
     finally:
         if runtime is not None:
             runtime.engine.dispose()
@@ -409,13 +413,15 @@ def test_photo_ingestion_fails_fast_when_exiftool_is_missing(
 
         with runtime.session_factory() as session:
             assets = list(session.execute(select(Asset)).scalars())
-            import_runs = list(session.execute(select(ImportRun)).scalars())
+            job_runs = list(session.execute(select(JobRun)).scalars())
 
         assert assets == []
-        assert len(import_runs) == 1
-        assert import_runs[0].status == "failed"
-        assert import_runs[0].phase == "metadata extraction"
-        assert import_runs[0].last_heartbeat_at is not None
+        assert len(job_runs) == 1
+        assert job_runs[0].type == "ingest"
+        assert job_runs[0].job == "photos"
+        assert job_runs[0].status == "failed"
+        assert job_runs[0].phase == "metadata extraction"
+        assert job_runs[0].last_heartbeat_at is not None
     finally:
         if runtime is not None:
             runtime.engine.dispose()
@@ -495,14 +501,16 @@ def test_photo_connector_partial_failure_is_reported_and_persisted() -> None:
 
         with runtime.session_factory() as session:
             assets = list(session.execute(select(Asset)).scalars())
-            import_run = session.execute(select(ImportRun)).scalar_one()
+            job_run = session.execute(select(JobRun)).scalar_one()
 
         assert len(assets) == 1
-        assert import_run.status == "partial_failure"
-        assert import_run.phase == "finalization"
-        assert import_run.progress_json is not None
-        assert import_run.progress_json["failed"] == 1
-        assert import_run.progress_json["inserted"] == 1
+        assert job_run.type == "ingest"
+        assert job_run.job == "photos"
+        assert job_run.status == "partial_failure"
+        assert job_run.phase == "finalization"
+        assert job_run.progress_json is not None
+        assert job_run.progress_json["failed"] == 1
+        assert job_run.progress_json["inserted"] == 1
     finally:
         if runtime is not None:
             runtime.engine.dispose()
@@ -546,16 +554,18 @@ def test_photo_ingestion_marks_run_failed_and_rolls_back_assets(
 
         with runtime.session_factory() as session:
             assets = list(session.execute(select(Asset)).scalars())
-            import_runs = list(
-                session.execute(select(ImportRun).order_by(ImportRun.id)).scalars()
+            job_runs = list(
+                session.execute(select(JobRun).order_by(JobRun.id)).scalars()
             )
 
         assert assets == []
-        assert len(import_runs) == 1
-        assert import_runs[0].status == "failed"
-        assert import_runs[0].finished_at is not None
-        assert import_runs[0].phase == "canonical persistence"
-        assert import_runs[0].last_heartbeat_at is not None
+        assert len(job_runs) == 1
+        assert job_runs[0].type == "ingest"
+        assert job_runs[0].job == "photos"
+        assert job_runs[0].status == "failed"
+        assert job_runs[0].finished_at is not None
+        assert job_runs[0].phase == "canonical persistence"
+        assert job_runs[0].last_heartbeat_at is not None
     finally:
         if runtime is not None:
             runtime.engine.dispose()
@@ -658,12 +668,12 @@ def test_photo_ingestion_persists_heartbeat_updates_during_a_long_running_run() 
             if snapshot.completed < 2:
                 return
             with runtime.session_factory() as session:
-                import_run = session.execute(select(ImportRun)).scalar_one()
+                job_run = session.execute(select(JobRun)).scalar_one()
             observed_heartbeats.append(
                 (
-                    import_run.phase or "",
-                    import_run.progress_json["completed"],
-                    import_run.last_heartbeat_at,
+                    job_run.phase or "",
+                    job_run.progress_json["completed"],
+                    job_run.last_heartbeat_at,
                 )
             )
 
@@ -684,11 +694,13 @@ def test_photo_ingestion_persists_heartbeat_updates_during_a_long_running_run() 
         assert observed_heartbeats[-1][2] == clock.now()
 
         with runtime.session_factory() as session:
-            import_run = session.execute(select(ImportRun)).scalar_one()
+            job_run = session.execute(select(JobRun)).scalar_one()
 
-        assert import_run.status == "completed"
-        assert import_run.last_heartbeat_at == clock.now()
-        assert import_run.progress_json["completed"] == 1
+        assert job_run.type == "ingest"
+        assert job_run.job == "photos"
+        assert job_run.status == "completed"
+        assert job_run.last_heartbeat_at == clock.now()
+        assert job_run.progress_json["completed"] == 1
     finally:
         if runtime is not None:
             runtime.engine.dispose()
@@ -730,7 +742,7 @@ def test_photo_ingestion_reports_metadata_phase_progress_after_completed_batches
         shutil.rmtree(workspace_root, ignore_errors=True)
 
 
-def test_photo_import_run_lifecycle_uses_authoritative_initial_progress_shape() -> None:
+def test_photo_ingestion_run_lifecycle_uses_authoritative_initial_progress_shape() -> None:
     workspace_root = _create_workspace_dir(prefix="photo-lifecycle-bootstrap")
     runtime = None
     try:
@@ -741,20 +753,22 @@ def test_photo_import_run_lifecycle_uses_authoritative_initial_progress_shape() 
             photos_root=photos_root,
         )
 
-        import_run_id = PhotoImportRunCoordinator().create_import_run(
+        run_id = PhotoIngestionRunCoordinator().create_run(
             runtime=runtime,
             resolved_root=photos_root.resolve(),
         )
 
         with runtime.session_factory() as session:
-            import_run = session.execute(select(ImportRun)).scalar_one()
+            job_run = session.execute(select(JobRun)).scalar_one()
             source = session.execute(select(Source)).scalar_one()
 
-        assert import_run.id == import_run_id
-        assert import_run.status == "running"
-        assert import_run.mode == "full"
-        assert import_run.phase == "initializing"
-        assert import_run.progress_json == build_initial_photo_import_progress_payload()
+        assert job_run.id == run_id
+        assert job_run.type == "ingest"
+        assert job_run.job == "photos"
+        assert job_run.status == "running"
+        assert job_run.mode == "full"
+        assert job_run.phase == "initializing"
+        assert job_run.progress_json == build_initial_job_progress_payload()
         assert source.name == "Photos"
         assert source.type == "photos"
         assert source.config == {"root_path": photos_root.resolve().as_posix()}
@@ -764,7 +778,7 @@ def test_photo_import_run_lifecycle_uses_authoritative_initial_progress_shape() 
         shutil.rmtree(workspace_root, ignore_errors=True)
 
 
-def test_photo_import_run_lifecycle_counts_missing_from_source_without_mutation() -> None:
+def test_photo_ingestion_run_lifecycle_counts_missing_from_source_without_mutation() -> None:
     workspace_root = _create_workspace_dir(prefix="photo-lifecycle-missing")
     runtime = None
     try:
@@ -796,7 +810,7 @@ def test_photo_import_run_lifecycle_counts_missing_from_source_without_mutation(
 
         with runtime.session_factory() as session:
             repository = AssetRepository(session)
-            missing_count = PhotoImportRunCoordinator().count_missing_from_source(
+            missing_count = PhotoIngestionRunCoordinator().count_missing_from_source(
                 asset_repository=repository,
                 resolved_root=photos_root.resolve(),
                 discovered_paths=[kept_path.resolve()],

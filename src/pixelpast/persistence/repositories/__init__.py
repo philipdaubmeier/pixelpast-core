@@ -3,7 +3,7 @@
 from pixelpast.persistence.repositories.canonical import (
     AssetRepository,
     AssetUpsertResult,
-    ImportRunRepository,
+    JobRunRepository,
     PersonRepository,
     SourceRepository,
     TagRepository,
@@ -41,7 +41,7 @@ __all__ = [
     "DayTimelineItemSnapshot",
     "DayTimelineRepository",
     "ExplorationReadRepository",
-    "ImportRunRepository",
+    "JobRunRepository",
     "PersonRepository",
     "SourceRepository",
     "TagRepository",

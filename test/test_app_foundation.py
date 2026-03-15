@@ -18,6 +18,7 @@ from pixelpast.persistence.models import (
     DAILY_AGGREGATE_SCOPE_OVERALL,
     DailyAggregate,
     Event,
+    JobRun,
     Source,
 )
 from pixelpast.persistence.session import session_scope
@@ -114,7 +115,13 @@ def test_alembic_upgrade_head_runs() -> None:
                 index["name"] for index in inspector.get_indexes("daily_aggregate")
             }
             daily_aggregate_pk = inspector.get_pk_constraint("daily_aggregate")
-            assert {"phase", "last_heartbeat_at", "progress"} <= import_run_columns
+            assert {
+                "type",
+                "job",
+                "phase",
+                "last_heartbeat_at",
+                "progress",
+            } <= import_run_columns
             assert {
                 "date",
                 "aggregate_scope",
@@ -300,6 +307,81 @@ def test_daily_aggregate_schema_v2_upgrade_backfills_legacy_rows() -> None:
             database_path.unlink()
 
 
+def test_job_run_generalization_upgrade_backfills_existing_ingest_rows() -> None:
+    database_dir = Path("var")
+    database_dir.mkdir(exist_ok=True)
+    database_path = database_dir / f"test-job-run-generalization-{uuid4().hex}.db"
+    config = Config("alembic.ini")
+    config.attributes["database_url"] = f"sqlite:///{database_path.as_posix()}"
+
+    try:
+        command.upgrade(config, "20260314_0006")
+        engine = create_engine(f"sqlite:///{database_path.as_posix()}")
+        try:
+            with engine.begin() as connection:
+                connection.execute(
+                    text(
+                        """
+                        INSERT INTO source (id, name, type, config, created_at)
+                        VALUES (
+                            1,
+                            'Photos',
+                            'photos',
+                            '{}',
+                            '2026-03-14 10:00:00'
+                        )
+                        """
+                    )
+                )
+                connection.execute(
+                    text(
+                        """
+                        INSERT INTO import_run (
+                            source_id,
+                            started_at,
+                            finished_at,
+                            status,
+                            mode,
+                            phase,
+                            last_heartbeat_at,
+                            progress
+                        )
+                        VALUES (
+                            1,
+                            '2026-03-14 10:00:00',
+                            '2026-03-14 10:05:00',
+                            'completed',
+                            'full',
+                            'finalization',
+                            '2026-03-14 10:05:00',
+                            '{"total": 1, "completed": 1, "inserted": 3, "updated": 0, "unchanged": 0, "skipped": 0, "failed": 0, "missing_from_source": 0}'
+                        )
+                        """
+                    )
+                )
+        finally:
+            engine.dispose()
+
+        command.upgrade(config, "head")
+        upgraded_engine = create_engine(f"sqlite:///{database_path.as_posix()}")
+        try:
+            with Session(upgraded_engine) as session:
+                job_run = session.query(JobRun).one()
+
+            assert job_run.type == "ingest"
+            assert job_run.job == "photos"
+            assert job_run.status == "completed"
+            assert job_run.mode == "full"
+            assert job_run.phase == "finalization"
+            assert job_run.progress_json is not None
+            assert job_run.progress_json["inserted"] == 3
+        finally:
+            upgraded_engine.dispose()
+    finally:
+        if database_path.exists():
+            database_path.unlink()
+
+
 def test_initialize_database_runs_alembic_for_file_database() -> None:
     database_dir = Path("var")
     database_dir.mkdir(exist_ok=True)
@@ -324,7 +406,13 @@ def test_initialize_database_runs_alembic_for_file_database() -> None:
         finally:
             upgraded_engine.dispose()
 
-        assert {"phase", "last_heartbeat_at", "progress"} <= import_run_columns
+        assert {
+            "type",
+            "job",
+            "phase",
+            "last_heartbeat_at",
+            "progress",
+        } <= import_run_columns
     finally:
         if database_path.exists():
             database_path.unlink()

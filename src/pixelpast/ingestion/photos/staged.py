@@ -12,7 +12,7 @@ from pixelpast.ingestion.photos.contracts import (
     PhotoDiscoveryError,
     PhotoIngestionResult,
 )
-from pixelpast.ingestion.photos.lifecycle import PhotoImportRunCoordinator
+from pixelpast.ingestion.photos.lifecycle import PhotoIngestionRunCoordinator
 from pixelpast.ingestion.photos.persist import PhotoAssetPersister
 from pixelpast.ingestion.photos.progress import PhotoIngestionProgressTracker
 from pixelpast.persistence.repositories import (
@@ -30,7 +30,7 @@ class PhotoIngestionPersistenceScope:
         self,
         *,
         runtime: RuntimeContext,
-        lifecycle: PhotoImportRunCoordinator,
+        lifecycle: PhotoIngestionRunCoordinator,
     ) -> None:
         session = runtime.session_factory()
         self._session = session
@@ -142,7 +142,7 @@ class PhotoStagedIngestionStrategy:
     def build_result(
         self,
         *,
-        import_run_id: int,
+        run_id: int,
         progress: PhotoIngestionProgressTracker,
         transform_errors: Sequence[PhotoDiscoveryError],
     ) -> PhotoIngestionResult:
@@ -151,7 +151,7 @@ class PhotoStagedIngestionStrategy:
         counters = progress.counters
         status = "partial_failure" if transform_errors else "completed"
         return PhotoIngestionResult(
-            import_run_id=import_run_id,
+            run_id=run_id,
             processed_asset_count=counters.items_persisted,
             error_count=counters.failed,
             status=status,

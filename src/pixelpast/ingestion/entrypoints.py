@@ -7,7 +7,7 @@ from pixelpast.ingestion.photos.service import (
     PhotoIngestionResult,
     PhotoIngestionService,
 )
-from pixelpast.ingestion.progress import IngestionProgressSnapshot
+from pixelpast.shared.progress import JobProgressSnapshot
 from pixelpast.shared.runtime import RuntimeContext
 
 logger = logging.getLogger(__name__)
@@ -25,7 +25,7 @@ def run_ingest_source(
     *,
     source: str,
     runtime: RuntimeContext,
-    progress_callback: Callable[[IngestionProgressSnapshot], None] | None = None,
+    progress_callback: Callable[[JobProgressSnapshot], None] | None = None,
 ) -> PhotoIngestionResult:
     """Run an ingestion entrypoint for a configured source."""
 
@@ -48,7 +48,7 @@ def run_ingest_source(
                 "processed_asset_count": result.processed_asset_count,
                 "error_count": result.error_count,
                 "status": result.status,
-                "import_run_id": result.import_run_id,
+                "run_id": result.run_id,
                 "discovered_file_count": result.discovered_file_count,
                 "analyzed_file_count": result.analyzed_file_count,
                 "analysis_failed_file_count": result.analysis_failed_file_count,

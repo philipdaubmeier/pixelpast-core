@@ -8,7 +8,7 @@ from time import monotonic
 
 from pixelpast.ingestion.photos.connector import PhotoConnector
 from pixelpast.ingestion.photos.contracts import PhotoIngestionResult
-from pixelpast.ingestion.photos.lifecycle import PhotoImportRunCoordinator
+from pixelpast.ingestion.photos.lifecycle import PhotoIngestionRunCoordinator
 from pixelpast.ingestion.photos.progress import (
     PhotoIngestionProgressSnapshot,
     PhotoIngestionProgressTracker,
@@ -17,8 +17,8 @@ from pixelpast.ingestion.photos.staged import (
     PhotoIngestionPersistenceScope,
     PhotoStagedIngestionStrategy,
 )
-from pixelpast.ingestion.progress import IngestionProgressCallback
 from pixelpast.ingestion.staged import StagedIngestionRunner
+from pixelpast.shared.progress import JobProgressCallback
 from pixelpast.shared.runtime import RuntimeContext
 
 _HEARTBEAT_INTERVAL_SECONDS = 10.0
@@ -30,14 +30,14 @@ class PhotoIngestionService:
     def __init__(
         self,
         connector: PhotoConnector | None = None,
-        lifecycle: PhotoImportRunCoordinator | None = None,
+        lifecycle: PhotoIngestionRunCoordinator | None = None,
         *,
         heartbeat_interval_seconds: float = _HEARTBEAT_INTERVAL_SECONDS,
         now_factory: Callable[[], datetime] | None = None,
         monotonic_factory: Callable[[], float] | None = None,
     ) -> None:
         self._connector = connector or PhotoConnector()
-        self._lifecycle = lifecycle or PhotoImportRunCoordinator()
+        self._lifecycle = lifecycle or PhotoIngestionRunCoordinator()
         self._heartbeat_interval_seconds = heartbeat_interval_seconds
         self._now_factory = now_factory
         self._monotonic_factory = monotonic_factory or monotonic
@@ -49,7 +49,7 @@ class PhotoIngestionService:
         self,
         *,
         runtime: RuntimeContext,
-        progress_callback: IngestionProgressCallback | None = None,
+        progress_callback: JobProgressCallback | None = None,
     ) -> PhotoIngestionResult:
         """Run staged photo ingestion and return the stable public result."""
 
@@ -60,12 +60,12 @@ class PhotoIngestionService:
             )
 
         resolved_root = photos_root.expanduser().resolve()
-        import_run_id = self._lifecycle.create_import_run(
+        run_id = self._lifecycle.create_run(
             runtime=runtime,
             resolved_root=resolved_root,
         )
         progress = PhotoIngestionProgressTracker(
-            import_run_id=import_run_id,
+            run_id=run_id,
             runtime=runtime,
             callback=progress_callback,
             heartbeat_interval_seconds=self._heartbeat_interval_seconds,
@@ -78,7 +78,7 @@ class PhotoIngestionService:
         )
         return self._runner.run(
             resolved_root=resolved_root,
-            import_run_id=import_run_id,
+            run_id=run_id,
             progress=progress,
             persistence=persistence,
         )

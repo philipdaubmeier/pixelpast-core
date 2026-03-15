@@ -6,60 +6,48 @@ from pathlib import Path
 
 from pixelpast.persistence.repositories import (
     AssetRepository,
-    ImportRunRepository,
+    JobRunRepository,
     SourceRepository,
 )
+from pixelpast.shared.progress import build_initial_job_progress_payload
 from pixelpast.shared.runtime import RuntimeContext
 
 PHOTO_SOURCE_NAME = "Photos"
-PHOTO_SOURCE_TYPE = "photos"
-PHOTO_IMPORT_MODE = "full"
+PHOTO_JOB_NAME = "photos"
+PHOTO_JOB_TYPE = "ingest"
+PHOTO_MODE = "full"
 PHOTO_INITIAL_PHASE = "initializing"
 
 
-def build_initial_photo_import_progress_payload() -> dict[str, int | None]:
-    """Return the authoritative zeroed progress payload for a new photo run."""
+class PhotoIngestionRunCoordinator:
+    """Coordinate source state and run bootstrap for photo ingestion."""
 
-    return {
-        "total": None,
-        "completed": 0,
-        "inserted": 0,
-        "updated": 0,
-        "unchanged": 0,
-        "skipped": 0,
-        "failed": 0,
-        "missing_from_source": 0,
-    }
-
-
-class PhotoImportRunCoordinator:
-    """Coordinate source state and import-run bootstrap for photo ingestion."""
-
-    def create_import_run(
+    def create_run(
         self,
         *,
         runtime: RuntimeContext,
         resolved_root: Path,
     ) -> int:
-        """Create or update the photo source and persist a new import run."""
+        """Create or update the photo source and persist a new run."""
 
         session = runtime.session_factory()
         try:
             source_repository = SourceRepository(session)
-            import_run_repository = ImportRunRepository(session)
-            source = source_repository.get_or_create(
+            job_run_repository = JobRunRepository(session)
+            source_repository.get_or_create(
                 name=PHOTO_SOURCE_NAME,
-                source_type=PHOTO_SOURCE_TYPE,
+                source_type=PHOTO_JOB_NAME,
                 config={"root_path": resolved_root.as_posix()},
             )
-            import_run = import_run_repository.create(
-                source_id=source.id,
-                mode=PHOTO_IMPORT_MODE,
+            job_run = job_run_repository.create(
+                job_type=PHOTO_JOB_TYPE,
+                job=PHOTO_JOB_NAME,
+                mode=PHOTO_MODE,
                 phase=PHOTO_INITIAL_PHASE,
-                progress_json=build_initial_photo_import_progress_payload(),
+                progress_json=build_initial_job_progress_payload(),
             )
             session.commit()
-            return import_run.id
+            return job_run.id
         finally:
             session.close()
 
@@ -85,10 +73,10 @@ class PhotoImportRunCoordinator:
 
 
 __all__ = [
-    "PHOTO_IMPORT_MODE",
+    "PHOTO_JOB_NAME",
+    "PHOTO_JOB_TYPE",
     "PHOTO_INITIAL_PHASE",
     "PHOTO_SOURCE_NAME",
-    "PHOTO_SOURCE_TYPE",
-    "PhotoImportRunCoordinator",
-    "build_initial_photo_import_progress_payload",
+    "PHOTO_MODE",
+    "PhotoIngestionRunCoordinator",
 ]

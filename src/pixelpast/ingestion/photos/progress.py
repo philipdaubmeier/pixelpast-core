@@ -11,16 +11,16 @@ from pixelpast.ingestion.photos.contracts import (
     PhotoDiscoveryError,
     PhotoMetadataBatchProgress,
 )
-from pixelpast.ingestion.progress import (
-    IngestionProgressCallback,
-    IngestionProgressEngine,
-    IngestionProgressSnapshot,
+from pixelpast.shared.progress import (
+    JobProgressCallback,
+    JobProgressEngine,
+    JobProgressSnapshot,
 )
 from pixelpast.shared.runtime import RuntimeContext
 
 logger = logging.getLogger(__name__)
 
-PhotoIngestionProgressSnapshot = IngestionProgressSnapshot
+PhotoIngestionProgressSnapshot = JobProgressSnapshot
 
 
 @dataclass(slots=True)
@@ -132,17 +132,18 @@ class PhotoIngestionProgressTracker:
     def __init__(
         self,
         *,
-        import_run_id: int,
+        run_id: int,
         runtime: RuntimeContext,
-        callback: IngestionProgressCallback | None = None,
+        callback: JobProgressCallback | None = None,
         heartbeat_interval_seconds: float = 10.0,
         now_factory: Callable[[], datetime] | None = None,
         monotonic_factory: Callable[[], float] | None = None,
     ) -> None:
         self._state = PhotoIngestionProgressState()
-        self._engine = IngestionProgressEngine(
-            source="photos",
-            import_run_id=import_run_id,
+        self._engine = JobProgressEngine(
+            job_type="ingest",
+            job="photos",
+            run_id=run_id,
             runtime=runtime,
             payload_factory=self._progress_payload,
             snapshot_factory=self._build_snapshot,
@@ -164,12 +165,14 @@ class PhotoIngestionProgressTracker:
         logger.info(
             "photo ingest phase started",
             extra={
-                "import_run_id": self._engine.state.import_run_id,
+                "run_id": self._engine.state.run_id,
                 "phase": phase,
                 "total": total,
             },
         )
-        self._log_heartbeat_if_written(self._engine.start_phase(phase=phase, total=total))
+        self._log_heartbeat_if_written(
+            self._engine.start_phase(phase=phase, total=total)
+        )
 
     def mark_discovered(self, *, path: str, discovered_file_count: int) -> None:
         """Update discovery counts as supported files are found."""
@@ -182,7 +185,7 @@ class PhotoIngestionProgressTracker:
         logger.info(
             "photo ingest discovery progress",
             extra={
-                "import_run_id": self._engine.state.import_run_id,
+                "run_id": self._engine.state.run_id,
                 "phase": self._engine.state.phase,
                 "path": path,
                 "completed": discovered_file_count,
@@ -196,7 +199,7 @@ class PhotoIngestionProgressTracker:
         logger.info(
             "photo ingest phase completed",
             extra={
-                "import_run_id": self._engine.state.import_run_id,
+                "run_id": self._engine.state.run_id,
                 "phase": self._engine.state.phase,
                 "total": self._engine.state.total,
                 "completed": self._engine.state.completed,
@@ -213,7 +216,7 @@ class PhotoIngestionProgressTracker:
         logger.info(
             "photo ingest missing-from-source count",
             extra={
-                "import_run_id": self._engine.state.import_run_id,
+                "run_id": self._engine.state.run_id,
                 "missing_from_source": missing_from_source_count,
             },
         )
@@ -233,7 +236,7 @@ class PhotoIngestionProgressTracker:
         logger.info(
             "photo ingest metadata batch progress",
             extra={
-                "import_run_id": self._engine.state.import_run_id,
+                "run_id": self._engine.state.run_id,
                 "phase": self._engine.state.phase,
                 "batch_event": progress.event,
                 "batch_index": progress.batch_index,
@@ -268,7 +271,7 @@ class PhotoIngestionProgressTracker:
         logger.warning(
             "photo ingestion skipped file",
             extra={
-                "import_run_id": self._engine.state.import_run_id,
+                "run_id": self._engine.state.run_id,
                 "phase": self._engine.state.phase,
                 "path": error.path.as_posix(),
                 "reason": error.message,
@@ -284,7 +287,7 @@ class PhotoIngestionProgressTracker:
         logger.info(
             "photo ingest persistence progress",
             extra={
-                "import_run_id": self._engine.state.import_run_id,
+                "run_id": self._engine.state.run_id,
                 "phase": self._engine.state.phase,
                 "total": self._engine.state.total,
                 "completed": self._engine.state.completed,
@@ -296,13 +299,13 @@ class PhotoIngestionProgressTracker:
         )
         self._emit(event="progress")
 
-    def finish_run(self, *, status: str) -> IngestionProgressSnapshot:
+    def finish_run(self, *, status: str) -> JobProgressSnapshot:
         """Persist the terminal success or partial-failure state."""
 
         logger.info(
             "photo ingest finalization started",
             extra={
-                "import_run_id": self._engine.state.import_run_id,
+                "run_id": self._engine.state.run_id,
                 "status": status,
             },
         )
@@ -310,21 +313,21 @@ class PhotoIngestionProgressTracker:
         logger.info(
             "photo ingest completed",
             extra={
-                "import_run_id": self._engine.state.import_run_id,
+                "run_id": self._engine.state.run_id,
                 "status": status,
                 **self._progress_payload(),
             },
         )
         return snapshot
 
-    def fail_run(self) -> IngestionProgressSnapshot:
+    def fail_run(self) -> JobProgressSnapshot:
         """Persist the terminal failed state using the current counters."""
 
         snapshot = self._engine.fail_run()
         logger.error(
             "photo ingest failed",
             extra={
-                "import_run_id": self._engine.state.import_run_id,
+                "run_id": self._engine.state.run_id,
                 "phase": self._engine.state.phase,
                 **self._progress_payload(),
             },
@@ -336,7 +339,7 @@ class PhotoIngestionProgressTracker:
         *,
         event: str,
         force_persist: bool = False,
-    ) -> IngestionProgressSnapshot:
+    ) -> JobProgressSnapshot:
         snapshot = self._engine.emit(
             event=event,
             force_persist=force_persist,
@@ -354,11 +357,12 @@ class PhotoIngestionProgressTracker:
         self,
         event: str,
         heartbeat_written: bool,
-    ) -> IngestionProgressSnapshot:
-        return IngestionProgressSnapshot(
+    ) -> JobProgressSnapshot:
+        return JobProgressSnapshot(
             event=event,
-            source=self._engine.state.source,
-            import_run_id=self._engine.state.import_run_id,
+            job_type=self._engine.state.job_type,
+            job=self._engine.state.job,
+            run_id=self._engine.state.run_id,
             phase=self._engine.state.phase,
             status=self._engine.state.status,
             total=self._engine.state.total,
@@ -372,14 +376,14 @@ class PhotoIngestionProgressTracker:
             heartbeat_written=heartbeat_written,
         )
 
-    def _log_heartbeat_if_written(self, snapshot: IngestionProgressSnapshot) -> None:
+    def _log_heartbeat_if_written(self, snapshot: JobProgressSnapshot) -> None:
         if not snapshot.heartbeat_written:
             return
         heartbeat_at = self._engine.last_heartbeat_at
         logger.info(
             "photo ingest heartbeat written",
             extra={
-                "import_run_id": self._engine.state.import_run_id,
+                "run_id": self._engine.state.run_id,
                 "phase": self._engine.state.phase,
                 "last_heartbeat_at": (
                     heartbeat_at.isoformat() if heartbeat_at is not None else None

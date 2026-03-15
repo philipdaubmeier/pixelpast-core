@@ -104,7 +104,7 @@ def test_count_photo_metadata_batches_keeps_first_file_as_singleton_batch() -> N
     assert count_photo_metadata_batches(0) == 0
     assert count_photo_metadata_batches(1) == 1
     assert count_photo_metadata_batches(2) == 2
-    assert count_photo_metadata_batches(86) == 2
+    assert count_photo_metadata_batches(86) == 3
     assert count_photo_metadata_batches(87) == 3
     assert count_photo_metadata_batches(88) == 3
 

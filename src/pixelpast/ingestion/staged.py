@@ -121,7 +121,7 @@ class StagedIngestionStrategy(
     def build_result(
         self,
         *,
-        import_run_id: int,
+        run_id: int,
         progress: ProgressT,
         transform_errors: Sequence[TransformErrorT],
     ) -> ResultT: ...
@@ -162,7 +162,7 @@ class StagedIngestionRunner(
         self,
         *,
         resolved_root: Path,
-        import_run_id: int,
+        run_id: int,
         progress: ProgressT,
         persistence: PersistenceScopeT,
     ) -> ResultT:
@@ -217,7 +217,7 @@ class StagedIngestionRunner(
             status = "partial_failure" if transform_errors else "completed"
             progress.finish_run(status=status)
             return self._strategy.build_result(
-                import_run_id=import_run_id,
+                run_id=run_id,
                 progress=progress,
                 transform_errors=transform_errors,
             )

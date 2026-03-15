@@ -23,8 +23,8 @@ from pixelpast.cli.main import (
     app,
 )
 from pixelpast.ingestion.entrypoints import list_supported_ingest_sources
-from pixelpast.ingestion.progress import IngestionProgressSnapshot
-from pixelpast.persistence.models import Asset, DailyAggregate, Event, ImportRun, Source
+from pixelpast.persistence.models import Asset, DailyAggregate, Event, JobRun, Source
+from pixelpast.shared.progress import JobProgressSnapshot
 from pixelpast.shared.logging import KeyValueFormatter
 from pixelpast.shared.runtime import create_runtime_context, initialize_database
 from pixelpast.shared.settings import get_settings
@@ -113,16 +113,18 @@ def test_cli_ingest_photos_persists_assets(monkeypatch) -> None:
         try:
             with Session(engine) as session:
                 assets = list(session.execute(select(Asset)).scalars())
-                import_runs = list(session.execute(select(ImportRun)).scalars())
+                job_runs = list(session.execute(select(JobRun)).scalars())
 
             assert len(assets) == 1
-            assert len(import_runs) == 1
-            assert import_runs[0].status == "completed"
-            assert import_runs[0].phase == "finalization"
-            assert import_runs[0].last_heartbeat_at is not None
-            assert import_runs[0].progress_json is not None
-            assert import_runs[0].progress_json["inserted"] == 1
-            assert import_runs[0].progress_json["failed"] == 0
+            assert len(job_runs) == 1
+            assert job_runs[0].type == "ingest"
+            assert job_runs[0].job == "photos"
+            assert job_runs[0].status == "completed"
+            assert job_runs[0].phase == "finalization"
+            assert job_runs[0].last_heartbeat_at is not None
+            assert job_runs[0].progress_json is not None
+            assert job_runs[0].progress_json["inserted"] == 1
+            assert job_runs[0].progress_json["failed"] == 0
         finally:
             engine.dispose()
     finally:
@@ -165,8 +167,8 @@ def test_cli_ingest_photos_subprocess_completes_with_fixture_assets() -> None:
                 assets = list(
                     session.execute(select(Asset).order_by(Asset.external_id)).scalars()
                 )
-                import_runs = list(
-                    session.execute(select(ImportRun).order_by(ImportRun.id)).scalars()
+                job_runs = list(
+                    session.execute(select(JobRun).order_by(JobRun.id)).scalars()
                 )
         finally:
             engine.dispose()
@@ -178,14 +180,16 @@ def test_cli_ingest_photos_subprocess_completes_with_fixture_assets() -> None:
             "monalisa-3.jpg",
         ]
         assert assets[2].summary == "Title 3 äöüßÄÖÜ"
-        assert len(import_runs) == 1
-        assert import_runs[0].status == "completed"
-        assert import_runs[0].phase == "finalization"
-        assert import_runs[0].last_heartbeat_at is not None
-        assert import_runs[0].progress_json is not None
-        assert import_runs[0].progress_json["inserted"] == 3
-        assert import_runs[0].progress_json["failed"] == 0
-        assert import_runs[0].progress_json["missing_from_source"] == 0
+        assert len(job_runs) == 1
+        assert job_runs[0].type == "ingest"
+        assert job_runs[0].job == "photos"
+        assert job_runs[0].status == "completed"
+        assert job_runs[0].phase == "finalization"
+        assert job_runs[0].last_heartbeat_at is not None
+        assert job_runs[0].progress_json is not None
+        assert job_runs[0].progress_json["inserted"] == 3
+        assert job_runs[0].progress_json["failed"] == 0
+        assert job_runs[0].progress_json["missing_from_source"] == 0
     finally:
         if database_path.exists():
             database_path.unlink()
@@ -195,10 +199,11 @@ def test_ingestion_cli_progress_reporter_prints_metadata_batch_progress(capsys) 
     reporter = IngestionCliProgressReporter()
 
     reporter(
-        IngestionProgressSnapshot(
+        JobProgressSnapshot(
             event="progress",
-            source="photos",
-            import_run_id=1,
+            job_type="ingest",
+            job="photos",
+            run_id=1,
             phase="metadata extraction",
             status="running",
             total=3,
@@ -213,10 +218,11 @@ def test_ingestion_cli_progress_reporter_prints_metadata_batch_progress(capsys) 
         )
     )
     reporter(
-        IngestionProgressSnapshot(
+        JobProgressSnapshot(
             event="progress",
-            source="photos",
-            import_run_id=1,
+            job_type="ingest",
+            job="photos",
+            run_id=1,
             phase="metadata extraction",
             status="running",
             total=3,
@@ -316,6 +322,7 @@ def test_cli_derive_daily_aggregate_rebuilds_rows(monkeypatch) -> None:
                         )
                     ).scalars()
                 )
+                job_runs = list(session.execute(select(JobRun).order_by(JobRun.id)).scalars())
         finally:
             engine.dispose()
 
@@ -336,6 +343,14 @@ def test_cli_derive_daily_aggregate_rebuilds_rows(monkeypatch) -> None:
             ("2024-01-03", "overall", "__all__", 0, 1, 1),
             ("2024-01-03", "source_type", "photo", 0, 1, 1),
         ]
+        assert len(job_runs) == 1
+        assert job_runs[0].type == "derive"
+        assert job_runs[0].job == "daily-aggregate"
+        assert job_runs[0].mode == "full"
+        assert job_runs[0].status == "completed"
+        assert job_runs[0].phase == "finalization"
+        assert job_runs[0].progress_json is not None
+        assert job_runs[0].progress_json["inserted"] == 5
     finally:
         get_settings.cache_clear()
         if database_path.exists():

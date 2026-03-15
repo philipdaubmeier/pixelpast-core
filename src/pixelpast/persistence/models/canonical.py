@@ -25,6 +25,8 @@ from pixelpast.persistence.types import UTCDateTime
 DAILY_AGGREGATE_SCOPE_OVERALL = "overall"
 DAILY_AGGREGATE_SCOPE_SOURCE_TYPE = "source_type"
 DAILY_AGGREGATE_OVERALL_SOURCE_TYPE = "__all__"
+JOB_RUN_TYPE_DERIVE = "derive"
+JOB_RUN_TYPE_INGEST = "ingest"
 
 
 def utc_now() -> datetime:
@@ -53,13 +55,20 @@ class Source(Base):
     )
 
 
-class ImportRun(Base):
-    """Tracks the execution of an ingestion run."""
+class JobRun(Base):
+    """Tracks the execution of one ingest or derive job run."""
 
     __tablename__ = "import_run"
+    __table_args__ = (
+        CheckConstraint(
+            "type IN ('ingest', 'derive')",
+            name="ck_import_run_type",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    source_id: Mapped[int] = mapped_column(ForeignKey("source.id"), nullable=False)
+    type: Mapped[str] = mapped_column(String(20), nullable=False)
+    job: Mapped[str] = mapped_column(String(255), nullable=False)
     started_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
     finished_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
     status: Mapped[str] = mapped_column(String(50), nullable=False)

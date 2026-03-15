@@ -1,9 +1,12 @@
 """Derived job command entrypoints."""
 
 import logging
+from collections.abc import Callable
 from datetime import date
 
 from pixelpast.analytics.daily_aggregate import DailyAggregateJob
+from pixelpast.analytics.daily_aggregate.job import DailyAggregateJobResult
+from pixelpast.shared.progress import JobProgressSnapshot
 from pixelpast.shared.runtime import RuntimeContext
 
 logger = logging.getLogger(__name__)
@@ -23,7 +26,8 @@ def run_derive_job(
     runtime: RuntimeContext,
     start_date: date | None = None,
     end_date: date | None = None,
-) -> None:
+    progress_callback: Callable[[JobProgressSnapshot], None] | None = None,
+) -> DailyAggregateJobResult:
     """Run a derived-data job entrypoint."""
 
     if job not in _SUPPORTED_JOBS:
@@ -37,12 +41,14 @@ def run_derive_job(
             runtime=runtime,
             start_date=start_date,
             end_date=end_date,
+            progress_callback=progress_callback,
         )
         logger.info(
             "derive completed",
             extra={
                 "job": job,
                 "database_url": runtime.settings.database_url,
+                "run_id": result.run_id,
                 "mode": result.mode,
                 "start_date": result.start_date.isoformat()
                 if result.start_date is not None
@@ -55,6 +61,6 @@ def run_derive_job(
                 "media_count": result.media_count,
             },
         )
-        return
+        return result
 
     raise AssertionError(f"Unhandled derive job: {job}")

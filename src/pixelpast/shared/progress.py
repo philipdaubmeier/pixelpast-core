@@ -1,4 +1,4 @@
-"""Generic runtime progress models and engine for ingestion jobs."""
+"""Shared phase-aware progress models and persistence runtime for job runs."""
 
 from __future__ import annotations
 
@@ -7,17 +7,33 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from time import monotonic
 
-from pixelpast.persistence.repositories import ImportRunRepository
+from pixelpast.persistence.repositories import JobRunRepository
 from pixelpast.shared.runtime import RuntimeContext
 
 
+def build_initial_job_progress_payload() -> dict[str, int | None]:
+    """Return the authoritative zeroed payload for a new job run."""
+
+    return {
+        "total": None,
+        "completed": 0,
+        "inserted": 0,
+        "updated": 0,
+        "unchanged": 0,
+        "skipped": 0,
+        "failed": 0,
+        "missing_from_source": 0,
+    }
+
+
 @dataclass(slots=True, frozen=True)
-class IngestionProgressSnapshot:
-    """Phase-aware, source-agnostic progress snapshot for one ingest run."""
+class JobProgressSnapshot:
+    """Phase-aware progress snapshot for one ingest or derive run."""
 
     event: str
-    source: str
-    import_run_id: int
+    job_type: str
+    job: str
+    run_id: int
     phase: str
     status: str
     total: int | None
@@ -31,22 +47,20 @@ class IngestionProgressSnapshot:
     heartbeat_written: bool
 
 
-IngestionProgressCallback = Callable[[IngestionProgressSnapshot], None]
-IngestionProgressPayloadFactory = Callable[[], dict[str, int | None]]
-IngestionProgressSnapshotFactory = Callable[
-    [str, bool],
-    IngestionProgressSnapshot,
-]
+JobProgressCallback = Callable[[JobProgressSnapshot], None]
+JobProgressPayloadFactory = Callable[[], dict[str, int | None]]
+JobProgressSnapshotFactory = Callable[[str, bool], JobProgressSnapshot]
 
 _UNSET = object()
 
 
 @dataclass(slots=True)
-class IngestionProgressState:
-    """Mutable phase and lifecycle state for one ingest run."""
+class JobProgressState:
+    """Mutable phase and lifecycle state for one operational job run."""
 
-    source: str
-    import_run_id: int
+    job_type: str
+    job: str
+    run_id: int
     phase: str = "initializing"
     total: int | None = None
     completed: int = 0
@@ -96,25 +110,27 @@ class IngestionProgressState:
         self.status = "failed"
 
 
-class IngestionProgressEngine:
-    """Own the generic heartbeat, persistence, and callback mechanics."""
+class JobProgressEngine:
+    """Own the shared heartbeat, persistence, and callback mechanics."""
 
     def __init__(
         self,
         *,
-        source: str,
-        import_run_id: int,
+        job_type: str,
+        job: str,
+        run_id: int,
         runtime: RuntimeContext,
-        payload_factory: IngestionProgressPayloadFactory,
-        snapshot_factory: IngestionProgressSnapshotFactory,
-        callback: IngestionProgressCallback | None = None,
+        payload_factory: JobProgressPayloadFactory,
+        snapshot_factory: JobProgressSnapshotFactory,
+        callback: JobProgressCallback | None = None,
         heartbeat_interval_seconds: float = 10.0,
         now_factory: Callable[[], datetime] | None = None,
         monotonic_factory: Callable[[], float] | None = None,
     ) -> None:
-        self.state = IngestionProgressState(
-            source=source,
-            import_run_id=import_run_id,
+        self.state = JobProgressState(
+            job_type=job_type,
+            job=job,
+            run_id=run_id,
         )
         self._runtime = runtime
         self._payload_factory = payload_factory
@@ -131,7 +147,7 @@ class IngestionProgressEngine:
         *,
         phase: str,
         total: int | None,
-    ) -> IngestionProgressSnapshot:
+    ) -> JobProgressSnapshot:
         """Enter a new phase and persist the transition immediately."""
 
         self.state.start_phase(phase=phase, total=total)
@@ -140,7 +156,7 @@ class IngestionProgressEngine:
             force_persist=True,
         )
 
-    def finish_phase(self) -> IngestionProgressSnapshot:
+    def finish_phase(self) -> JobProgressSnapshot:
         """Persist completion of the current phase."""
 
         self.state.finish_phase()
@@ -154,7 +170,7 @@ class IngestionProgressEngine:
         *,
         event: str,
         force_persist: bool = False,
-    ) -> IngestionProgressSnapshot:
+    ) -> JobProgressSnapshot:
         """Persist a heartbeat if due and emit a snapshot."""
 
         heartbeat_written = self._persist_progress(force=force_persist)
@@ -171,7 +187,7 @@ class IngestionProgressEngine:
         *,
         status: str,
         final_phase: str = "finalization",
-    ) -> IngestionProgressSnapshot:
+    ) -> JobProgressSnapshot:
         """Persist a terminal success or partial-failure state."""
 
         self.state.start_terminal_phase(phase=final_phase, status=status)
@@ -188,7 +204,7 @@ class IngestionProgressEngine:
             self._callback(snapshot)
         return snapshot
 
-    def fail_run(self) -> IngestionProgressSnapshot:
+    def fail_run(self) -> JobProgressSnapshot:
         """Persist a terminal failed state using the current counters."""
 
         self.state.mark_failed()
@@ -205,9 +221,9 @@ class IngestionProgressEngine:
         if not force and not self._heartbeat_due():
             return False
 
-        self._persist_import_run(
+        self._persist_job_run(
             persist=lambda repository, heartbeat_at: repository.update_progress(
-                import_run_id=self.state.import_run_id,
+                run_id=self.state.run_id,
                 phase=self.state.phase,
                 progress_json=self._payload_factory(),
                 last_heartbeat_at=heartbeat_at,
@@ -217,9 +233,9 @@ class IngestionProgressEngine:
         return True
 
     def _persist_terminal_state(self, *, status: str) -> datetime:
-        return self._persist_import_run(
+        return self._persist_job_run(
             persist=lambda repository, heartbeat_at: repository.mark_finished_by_id(
-                import_run_id=self.state.import_run_id,
+                run_id=self.state.run_id,
                 status=status,
                 phase=self.state.phase,
                 last_heartbeat_at=heartbeat_at,
@@ -227,18 +243,18 @@ class IngestionProgressEngine:
             )
         )
 
-    def _persist_import_run(
+    def _persist_job_run(
         self,
         *,
-        persist: Callable[[ImportRunRepository, datetime], object | None],
+        persist: Callable[[JobRunRepository, datetime], object | None],
     ) -> datetime:
         heartbeat_at = self._now_factory()
         with self._runtime.session_factory() as session:
-            repository = ImportRunRepository(session)
-            import_run = persist(repository, heartbeat_at)
-            if import_run is None:
+            repository = JobRunRepository(session)
+            job_run = persist(repository, heartbeat_at)
+            if job_run is None:
                 raise RuntimeError(
-                    f"ImportRun {self.state.import_run_id} is missing from persistence."
+                    f"JobRun {self.state.run_id} is missing from persistence."
                 )
             session.commit()
 
@@ -259,3 +275,12 @@ def _utc_now() -> datetime:
     """Return the current aware UTC time."""
 
     return datetime.now(UTC)
+
+
+__all__ = [
+    "JobProgressCallback",
+    "JobProgressEngine",
+    "JobProgressSnapshot",
+    "JobProgressState",
+    "build_initial_job_progress_payload",
+]

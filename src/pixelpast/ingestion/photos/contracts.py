@@ -7,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from pixelpast.ingestion.progress import IngestionProgressSnapshot
+from pixelpast.shared.progress import JobProgressSnapshot
 
 
 @dataclass(slots=True, frozen=True)
@@ -67,7 +67,7 @@ class PhotoMetadataBatchProgress:
 class PhotoIngestionResult:
     """Summary of a completed photo ingestion run."""
 
-    import_run_id: int
+    run_id: int
     processed_asset_count: int
     error_count: int
     status: str
@@ -84,7 +84,7 @@ class PhotoIngestionResult:
     metadata_batches_completed: int
 
 
-PhotoIngestionProgressSnapshot = IngestionProgressSnapshot
+PhotoIngestionProgressSnapshot = JobProgressSnapshot
 
 
 __all__ = [

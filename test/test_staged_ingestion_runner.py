@@ -17,13 +17,13 @@ def test_staged_runner_handles_partial_transform_failures_and_completes() -> Non
 
     result = runner.run(
         resolved_root=Path("/timeline/photos"),
-        import_run_id=41,
+        run_id=41,
         progress=progress,
         persistence=persistence,
     )
 
     assert result == {
-        "import_run_id": 41,
+        "run_id": 41,
         "status": "partial_failure",
         "processed": 2,
         "errors": ["bad.jpg: broken metadata"],
@@ -63,7 +63,7 @@ def test_staged_runner_rolls_back_and_marks_failure_on_persist_error() -> None:
     with pytest.raises(RuntimeError, match="persist boom"):
         runner.run(
             resolved_root=Path("/timeline/photos"),
-            import_run_id=99,
+            run_id=99,
             progress=progress,
             persistence=persistence,
         )
@@ -190,12 +190,12 @@ class _FakeStrategy:
     def build_result(
         self,
         *,
-        import_run_id: int,
+        run_id: int,
         progress: _FakeProgress,
         transform_errors,
     ):
         return {
-            "import_run_id": import_run_id,
+            "run_id": run_id,
             "status": "partial_failure" if transform_errors else "completed",
             "processed": progress.counters.items_persisted,
             "errors": list(transform_errors),
