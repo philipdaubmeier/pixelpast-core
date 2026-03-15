@@ -9,7 +9,11 @@ from uuid import uuid4
 
 from sqlalchemy import select
 
-from pixelpast.analytics.daily_aggregate import DailyAggregateJob
+from pixelpast.analytics.daily_aggregate import (
+    DailyAggregateCanonicalInputs,
+    DailyAggregateJob,
+    build_daily_aggregate_snapshots,
+)
 from pixelpast.persistence.models import (
     DAILY_AGGREGATE_OVERALL_SOURCE_TYPE,
     DAILY_AGGREGATE_SCOPE_SOURCE_TYPE,
@@ -24,8 +28,177 @@ from pixelpast.persistence.models import (
     Source,
     Tag,
 )
+from pixelpast.persistence.repositories.daily_aggregates import (
+    CanonicalAssetAggregateInput,
+    CanonicalEventAggregateInput,
+    CanonicalPersonAggregateInput,
+    CanonicalTagAggregateInput,
+)
 from pixelpast.shared.runtime import create_runtime_context, initialize_database
 from pixelpast.shared.settings import Settings
+
+
+def test_build_daily_aggregate_snapshots_is_deterministic_without_database() -> None:
+    base_inputs = DailyAggregateCanonicalInputs(
+        event_inputs=[
+            CanonicalEventAggregateInput(
+                day=date(2024, 1, 2),
+                source_type="calendar",
+                event_type="calendar",
+                title="Planning",
+                latitude=52.52,
+                longitude=13.405,
+            )
+        ],
+        asset_inputs=[
+            CanonicalAssetAggregateInput(
+                day=date(2024, 1, 2),
+                source_type="photo",
+                external_id="photos/trip/day-2.jpg",
+                media_type="photo",
+                summary=None,
+                metadata_json={"title": "Museum"},
+                latitude=48.8566,
+                longitude=2.3522,
+            ),
+            CanonicalAssetAggregateInput(
+                day=date(2024, 1, 2),
+                source_type="photo",
+                external_id="photos/trip/day-2-b.jpg",
+                media_type="photo",
+                summary="Museum",
+                metadata_json={},
+                latitude=48.8566,
+                longitude=2.3522,
+            ),
+        ],
+        tag_inputs=[
+            CanonicalTagAggregateInput(
+                day=date(2024, 1, 2),
+                source_type="photo",
+                path="travel",
+                label="Travel",
+            ),
+            CanonicalTagAggregateInput(
+                day=date(2024, 1, 2),
+                source_type="calendar",
+                path="projects/apollo",
+                label="Project Apollo",
+            ),
+        ],
+        person_inputs=[
+            CanonicalPersonAggregateInput(
+                day=date(2024, 1, 2),
+                source_type="photo",
+                person_id=2,
+                name="Ben",
+                role="Friend",
+            ),
+            CanonicalPersonAggregateInput(
+                day=date(2024, 1, 2),
+                source_type="calendar",
+                person_id=1,
+                name="Anna",
+                role="Family",
+            ),
+        ],
+    )
+    reordered_inputs = DailyAggregateCanonicalInputs(
+        event_inputs=list(reversed(base_inputs.event_inputs)),
+        asset_inputs=list(reversed(base_inputs.asset_inputs)),
+        tag_inputs=list(reversed(base_inputs.tag_inputs)),
+        person_inputs=list(reversed(base_inputs.person_inputs)),
+    )
+
+    first_pass = [
+        _serialize_snapshot(snapshot)
+        for snapshot in build_daily_aggregate_snapshots(base_inputs)
+    ]
+    second_pass = [
+        _serialize_snapshot(snapshot)
+        for snapshot in build_daily_aggregate_snapshots(reordered_inputs)
+    ]
+
+    assert first_pass == second_pass
+    assert first_pass == [
+        {
+            "date": "2024-01-02",
+            "scope": "overall",
+            "source_type": "__all__",
+            "total_events": 1,
+            "media_count": 2,
+            "activity_score": 3,
+            "tag_summary": [
+                {"path": "projects/apollo", "label": "Project Apollo", "count": 1},
+                {"path": "travel", "label": "Travel", "count": 1},
+            ],
+            "person_summary": [
+                {"person_id": 1, "name": "Anna", "role": "Family", "count": 1},
+                {"person_id": 2, "name": "Ben", "role": "Friend", "count": 1},
+            ],
+            "location_summary": [
+                {
+                    "label": "Museum",
+                    "latitude": 48.8566,
+                    "longitude": 2.3522,
+                    "count": 2,
+                },
+                {
+                    "label": "Planning",
+                    "latitude": 52.52,
+                    "longitude": 13.405,
+                    "count": 1,
+                },
+            ],
+            "score_version": "v2",
+        },
+        {
+            "date": "2024-01-02",
+            "scope": "source_type",
+            "source_type": "calendar",
+            "total_events": 1,
+            "media_count": 0,
+            "activity_score": 1,
+            "tag_summary": [
+                {"path": "projects/apollo", "label": "Project Apollo", "count": 1}
+            ],
+            "person_summary": [
+                {"person_id": 1, "name": "Anna", "role": "Family", "count": 1}
+            ],
+            "location_summary": [
+                {
+                    "label": "Planning",
+                    "latitude": 52.52,
+                    "longitude": 13.405,
+                    "count": 1,
+                }
+            ],
+            "score_version": "v2",
+        },
+        {
+            "date": "2024-01-02",
+            "scope": "source_type",
+            "source_type": "photo",
+            "total_events": 0,
+            "media_count": 2,
+            "activity_score": 2,
+            "tag_summary": [
+                {"path": "travel", "label": "Travel", "count": 1}
+            ],
+            "person_summary": [
+                {"person_id": 2, "name": "Ben", "role": "Friend", "count": 1}
+            ],
+            "location_summary": [
+                {
+                    "label": "Museum",
+                    "latitude": 48.8566,
+                    "longitude": 2.3522,
+                    "count": 2,
+                }
+            ],
+            "score_version": "v2",
+        },
+    ]
 
 
 def test_daily_aggregate_job_clears_rows_for_empty_canonical_dataset() -> None:
@@ -540,6 +713,23 @@ def _serialize_aggregate(aggregate: DailyAggregate) -> dict[str, object]:
         "person_summary": aggregate.person_summary_json,
         "location_summary": aggregate.location_summary_json,
         "score_version": aggregate.metadata_json["score_version"],
+    }
+
+
+def _serialize_snapshot(snapshot) -> dict[str, object]:
+    """Return a compact, assertion-friendly snapshot representation."""
+
+    return {
+        "date": snapshot.date.isoformat(),
+        "scope": snapshot.aggregate_scope,
+        "source_type": snapshot.source_type,
+        "total_events": snapshot.total_events,
+        "media_count": snapshot.media_count,
+        "activity_score": snapshot.activity_score,
+        "tag_summary": snapshot.tag_summary_json,
+        "person_summary": snapshot.person_summary_json,
+        "location_summary": snapshot.location_summary_json,
+        "score_version": snapshot.metadata_json["score_version"],
     }
 
 

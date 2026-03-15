@@ -1,12 +1,4 @@
-"""Daily aggregate derivation job.
-
-The scoring formula intentionally stays simple and transparent:
-
-    activity_score = total_events + media_count
-
-Connector-aware v2 rows still use the same score, but partition canonical input
-by source identity before also materializing an explicit overall rollup.
-"""
+"""Pure snapshot construction for daily aggregate derivation."""
 
 from __future__ import annotations
 
@@ -16,6 +8,9 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
+from pixelpast.analytics.daily_aggregate.loading import (
+    DailyAggregateCanonicalInputs,
+)
 from pixelpast.persistence.models import (
     DAILY_AGGREGATE_OVERALL_SOURCE_TYPE,
     DAILY_AGGREGATE_SCOPE_OVERALL,
@@ -24,13 +19,8 @@ from pixelpast.persistence.models import (
 from pixelpast.persistence.repositories.daily_aggregates import (
     CanonicalAssetAggregateInput,
     CanonicalEventAggregateInput,
-    CanonicalPersonAggregateInput,
-    CanonicalTagAggregateInput,
-    CanonicalTimelineRepository,
-    DailyAggregateRepository,
     DailyAggregateSnapshot,
 )
-from pixelpast.shared.runtime import RuntimeContext
 
 _SCORE_METADATA = {
     "score_version": "v2",
@@ -38,18 +28,6 @@ _SCORE_METADATA = {
     "summary_version": "v1",
     "source_partitioning": "events use source.type; assets use media_type",
 }
-
-
-@dataclass(slots=True, frozen=True)
-class DailyAggregateJobResult:
-    """Summary returned by the daily aggregate derivation job."""
-
-    mode: str
-    start_date: date | None
-    end_date: date | None
-    aggregate_count: int
-    total_events: int
-    media_count: int
 
 
 @dataclass(slots=True)
@@ -71,109 +49,14 @@ class _AggregateState:
             self.locations = Counter()
 
 
-class DailyAggregateJob:
-    """Rebuild daily aggregate rows from canonical events and assets."""
-
-    def run(
-        self,
-        *,
-        runtime: RuntimeContext,
-        start_date: date | None = None,
-        end_date: date | None = None,
-    ) -> DailyAggregateJobResult:
-        """Recompute daily aggregates for a full rebuild or an inclusive range."""
-
-        _validate_date_range(start_date=start_date, end_date=end_date)
-
-        session = runtime.session_factory()
-        canonical_repository = CanonicalTimelineRepository(session)
-        aggregate_repository = DailyAggregateRepository(session)
-
-        try:
-            event_inputs = canonical_repository.list_event_inputs(
-                start_date=start_date,
-                end_date=end_date,
-            )
-            asset_inputs = canonical_repository.list_asset_inputs(
-                start_date=start_date,
-                end_date=end_date,
-            )
-            tag_inputs = [
-                *canonical_repository.list_event_tag_inputs(
-                    start_date=start_date,
-                    end_date=end_date,
-                ),
-                *canonical_repository.list_asset_tag_inputs(
-                    start_date=start_date,
-                    end_date=end_date,
-                ),
-            ]
-            person_inputs = [
-                *canonical_repository.list_event_person_inputs(
-                    start_date=start_date,
-                    end_date=end_date,
-                ),
-                *canonical_repository.list_asset_person_inputs(
-                    start_date=start_date,
-                    end_date=end_date,
-                ),
-            ]
-            aggregates = _build_snapshots(
-                event_inputs=event_inputs,
-                asset_inputs=asset_inputs,
-                tag_inputs=tag_inputs,
-                person_inputs=person_inputs,
-            )
-
-            if start_date is None and end_date is None:
-                aggregate_repository.replace_all(aggregates=aggregates)
-                mode = "full"
-                resolved_start_date = min(
-                    (aggregate.date for aggregate in aggregates),
-                    default=None,
-                )
-                resolved_end_date = max(
-                    (aggregate.date for aggregate in aggregates),
-                    default=None,
-                )
-            else:
-                aggregate_repository.replace_range(
-                    start_date=start_date,
-                    end_date=end_date,
-                    aggregates=aggregates,
-                )
-                mode = "range"
-                resolved_start_date = start_date
-                resolved_end_date = end_date
-
-            session.commit()
-            return DailyAggregateJobResult(
-                mode=mode,
-                start_date=resolved_start_date,
-                end_date=resolved_end_date,
-                aggregate_count=len(aggregates),
-                total_events=len(event_inputs),
-                media_count=len(asset_inputs),
-            )
-        except Exception:
-            session.rollback()
-            raise
-        finally:
-            session.close()
-
-
-def _build_snapshots(
-    *,
-    event_inputs: list[CanonicalEventAggregateInput],
-    asset_inputs: list[CanonicalAssetAggregateInput],
-    tag_inputs: list[CanonicalTagAggregateInput],
-    person_inputs: list[CanonicalPersonAggregateInput],
+def build_daily_aggregate_snapshots(
+    inputs: DailyAggregateCanonicalInputs,
 ) -> list[DailyAggregateSnapshot]:
     """Build sorted repository snapshots from canonical UTC day contributions."""
 
     states: dict[tuple[date, str], _AggregateState] = {}
 
-    for event_input in event_inputs:
+    for event_input in inputs.event_inputs:
         for aggregate_key in _iter_aggregate_keys(
             day=event_input.day,
             source_type=event_input.source_type,
@@ -184,7 +67,7 @@ def _build_snapshots(
             if location_key is not None:
                 state.locations[location_key] += 1
 
-    for asset_input in asset_inputs:
+    for asset_input in inputs.asset_inputs:
         for aggregate_key in _iter_aggregate_keys(
             day=asset_input.day,
             source_type=asset_input.source_type,
@@ -195,7 +78,7 @@ def _build_snapshots(
             if location_key is not None:
                 state.locations[location_key] += 1
 
-    for tag_input in tag_inputs:
+    for tag_input in inputs.tag_inputs:
         for aggregate_key in _iter_aggregate_keys(
             day=tag_input.day,
             source_type=tag_input.source_type,
@@ -203,7 +86,7 @@ def _build_snapshots(
             state = states.setdefault(aggregate_key, _AggregateState())
             state.tags[(tag_input.path, tag_input.label)] += 1
 
-    for person_input in person_inputs:
+    for person_input in inputs.person_inputs:
         for aggregate_key in _iter_aggregate_keys(
             day=person_input.day,
             source_type=person_input.source_type,
@@ -248,19 +131,6 @@ def _calculate_activity_score(*, total_events: int, media_count: int) -> int:
     """Return the documented activity score for a single aggregate row."""
 
     return total_events + media_count
-
-
-def _validate_date_range(*, start_date: date | None, end_date: date | None) -> None:
-    """Ensure the job runs either in full rebuild mode or with a closed range."""
-
-    if (start_date is None) != (end_date is None):
-        raise ValueError(
-            "Daily aggregate derivation requires both start_date and end_date "
-            "when running a range recomputation."
-        )
-
-    if start_date is not None and end_date is not None and start_date > end_date:
-        raise ValueError("Daily aggregate derivation requires start_date <= end_date.")
 
 
 def _iter_aggregate_keys(
