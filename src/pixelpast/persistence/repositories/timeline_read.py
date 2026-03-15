@@ -52,6 +52,15 @@ class TimelineBoundsSnapshot:
 
 
 @dataclass(slots=True, frozen=True)
+class DailyViewCatalogSnapshot:
+    """Serializable exploration-view catalog entry."""
+
+    view_id: str
+    label: str
+    description: str
+
+
+@dataclass(slots=True, frozen=True)
 class DayActivityItemSnapshot:
     """Serializable per-item UTC day placement."""
 
@@ -183,6 +192,24 @@ class ExplorationReadRepository:
 
     def __init__(self, session: Session) -> None:
         self._session = session
+
+    def list_daily_views(self) -> list[DailyViewCatalogSnapshot]:
+        """Return persisted daily-view metadata in a stable UI-facing order."""
+
+        statement = select(DailyView).order_by(
+            DailyView.aggregate_scope,
+            DailyView.source_type,
+            DailyView.id,
+        )
+        views = self._session.execute(statement).scalars()
+        return [
+            DailyViewCatalogSnapshot(
+                view_id=_to_daily_view_catalog_id(view),
+                label=view.label,
+                description=view.description,
+            )
+            for view in views
+        ]
 
     def list_event_days(
         self,
@@ -627,3 +654,16 @@ def _extract_asset_label(metadata_json: object) -> str | None:
             return value.strip()
 
     return None
+
+
+def _to_daily_view_catalog_id(view: DailyView) -> str:
+    """Return the stable API identifier for one persisted daily view."""
+
+    if view.aggregate_scope == DAILY_AGGREGATE_SCOPE_OVERALL:
+        return "activity"
+
+    if view.aggregate_scope == DAILY_AGGREGATE_SCOPE_SOURCE_TYPE:
+        assert view.source_type is not None
+        return view.source_type
+
+    raise ValueError(f"unsupported daily view scope: {view.aggregate_scope}")

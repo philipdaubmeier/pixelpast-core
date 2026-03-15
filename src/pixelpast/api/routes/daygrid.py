@@ -36,6 +36,7 @@ def get_exploration(
     validate_optional_range(start=start, end=end)
     filters = build_exploration_grid_filters(
         view_mode=view_mode,
+        provider=provider,
         person_ids=person_ids,
         tag_paths=tag_paths,
         location_geometry=location_geometry,

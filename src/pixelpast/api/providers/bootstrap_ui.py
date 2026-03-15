@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import date
-from typing import Final
 
 from pixelpast.api.schemas import (
     ExplorationBootstrapResponse,
@@ -12,39 +11,10 @@ from pixelpast.api.schemas import (
     ExplorationTag,
     ExplorationViewMode,
 )
-from pixelpast.persistence.repositories import DayPersonLinkSnapshot, DayTagLinkSnapshot
-
-_VIEW_MODE_DEFINITIONS: Final[tuple[tuple[str, str, str], ...]] = (
-    (
-        "activity",
-        "Activity",
-        "Default heat intensity across all timeline sources.",
-    ),
-    (
-        "photos",
-        "Photos",
-        "Highlights days with a large number of photos.",
-    ),
-    (
-        "videos",
-        "Videos",
-        "Highlights days with a large number of videos.",
-    ),
-    (
-        "music",
-        "Music",
-        "Highlights days with a large number of music tracks.",
-    ),
-    (
-        "calendar",
-        "Calendar",
-        "Highlights days with calendar events.",
-    ),
-    (
-        "sports",
-        "Sports",
-        "Highlights days with sports activities.",
-    ),
+from pixelpast.persistence.repositories import (
+    DayPersonLinkSnapshot,
+    DayTagLinkSnapshot,
+    DailyViewCatalogSnapshot,
 )
 
 
@@ -52,6 +22,7 @@ def build_bootstrap_response(
     *,
     start: date,
     end: date,
+    view_modes: list[ExplorationViewMode],
     person_links: list[DayPersonLinkSnapshot],
     tag_links: list[DayTagLinkSnapshot],
 ) -> ExplorationBootstrapResponse:
@@ -59,22 +30,24 @@ def build_bootstrap_response(
 
     return ExplorationBootstrapResponse(
         range=ExplorationRange(start=start, end=end),
-        view_modes=get_default_view_modes(),
+        view_modes=view_modes,
         persons=build_person_catalog(person_links),
         tags=build_tag_catalog(tag_links),
     )
 
 
-def get_default_view_modes() -> list[ExplorationViewMode]:
-    """Return the backend-defined exploration view modes."""
+def build_view_mode_catalog(
+    views: list[DailyViewCatalogSnapshot],
+) -> list[ExplorationViewMode]:
+    """Map persisted daily-view metadata to the bootstrap response contract."""
 
     return [
         ExplorationViewMode(
-            id=mode_id,
-            label=label,
-            description=description,
+            id=view.view_id,
+            label=view.label,
+            description=view.description,
         )
-        for mode_id, label, description in _VIEW_MODE_DEFINITIONS
+        for view in views
     ]
 
 

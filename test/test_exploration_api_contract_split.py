@@ -45,7 +45,7 @@ def test_exploration_bootstrap_endpoint_returns_current_year_shell_when_empty() 
                 "start": f"{current_year}-01-01",
                 "end": f"{current_year}-12-31",
             },
-            "view_modes": _default_view_modes_payload(),
+            "view_modes": _fallback_view_modes_payload(),
             "persons": [],
             "tags": [],
         }
@@ -99,7 +99,18 @@ def test_exploration_contract_split_returns_bootstrap_and_grid_separately() -> N
         assert bootstrap_response.status_code == 200
         assert bootstrap_response.json() == {
             "range": {"start": "2024-01-01", "end": "2024-01-03"},
-            "view_modes": _default_view_modes_payload(),
+            "view_modes": [
+                {
+                    "id": "activity",
+                    "label": "Activity",
+                    "description": "Default heat intensity across all timeline sources.",
+                },
+                {
+                    "id": "calendar",
+                    "label": "Calendar",
+                    "description": "Highlights days with calendar activity.",
+                },
+            ],
             "persons": [
                 {"id": 1, "name": "Anna", "role": "Family"},
                 {"id": 2, "name": "Milo", "role": "Travel buddy"},
@@ -204,7 +215,7 @@ def test_exploration_grid_endpoint_accepts_server_side_filter_parameters() -> No
         with TestClient(app) as client:
             response = client.get(
                 "/api/exploration?start=2024-01-01&end=2024-01-03"
-                "&view_mode=photos"
+                "&view_mode=photo"
                 "&person_ids=1"
                 "&tag_paths=travel"
             )
@@ -223,6 +234,76 @@ def test_exploration_grid_endpoint_accepts_server_side_filter_parameters() -> No
                 _empty_grid_day_payload("2024-01-03"),
             ],
         }
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_exploration_bootstrap_endpoint_orders_daily_views_deterministically() -> None:
+    workspace_root = _create_workspace_dir(prefix="exploration-bootstrap-view-order")
+    runtime = None
+    try:
+        runtime = _create_runtime(workspace_root=workspace_root)
+
+        with runtime.session_factory() as session:
+            _create_daily_view(
+                session=session,
+                aggregate_scope=DAILY_AGGREGATE_SCOPE_SOURCE_TYPE,
+                source_type="video",
+            )
+            _create_daily_view(session=session)
+            _create_daily_view(
+                session=session,
+                aggregate_scope=DAILY_AGGREGATE_SCOPE_SOURCE_TYPE,
+                source_type="calendar",
+            )
+            session.commit()
+
+        app = create_app(settings=runtime.settings)
+        with TestClient(app) as client:
+            response = client.get("/api/exploration/bootstrap")
+
+        assert response.status_code == 200
+        assert response.json()["view_modes"] == [
+            {
+                "id": "activity",
+                "label": "Activity",
+                "description": "Default heat intensity across all timeline sources.",
+            },
+            {
+                "id": "calendar",
+                "label": "Calendar",
+                "description": "Highlights days with calendar activity.",
+            },
+            {
+                "id": "video",
+                "label": "Video",
+                "description": "Highlights days with video activity.",
+            },
+        ]
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_exploration_grid_endpoint_rejects_view_mode_missing_from_daily_view_catalog() -> None:
+    workspace_root = _create_workspace_dir(prefix="exploration-grid-invalid-view")
+    runtime = None
+    try:
+        runtime = _create_runtime(workspace_root=workspace_root)
+
+        with runtime.session_factory() as session:
+            _create_daily_view(session=session)
+            session.commit()
+
+        app = create_app(settings=runtime.settings)
+        with TestClient(app) as client:
+            response = client.get("/api/exploration?view_mode=calendar")
+
+        assert response.status_code == 400
+        assert response.json() == {"detail": "unsupported view_mode: calendar"}
     finally:
         if runtime is not None:
             runtime.engine.dispose()
@@ -512,6 +593,11 @@ def _seed_filter_scenario(*, runtime) -> None:
         session.add_all([source, anna, ben, travel_tag, family_tag])
         session.flush()
         overall_view = _create_daily_view(session=session)
+        _create_daily_view(
+            session=session,
+            aggregate_scope=DAILY_AGGREGATE_SCOPE_SOURCE_TYPE,
+            source_type="photo",
+        )
 
         first_event = Event(
             source_id=source.id,
@@ -580,7 +666,7 @@ def _seed_filter_scenario(*, runtime) -> None:
         session.commit()
 
 
-def _default_view_modes_payload() -> list[dict[str, str]]:
+def _fallback_view_modes_payload() -> list[dict[str, str]]:
     return [
         {
             "id": "activity",
@@ -590,27 +676,27 @@ def _default_view_modes_payload() -> list[dict[str, str]]:
         {
             "id": "photos",
             "label": "Photos",
-            "description": "Highlights days with a large number of photos.",
+            "description": "Highlights days with photos activity.",
         },
         {
             "id": "videos",
             "label": "Videos",
-            "description": "Highlights days with a large number of videos.",
+            "description": "Highlights days with videos activity.",
         },
         {
             "id": "music",
             "label": "Music",
-            "description": "Highlights days with a large number of music tracks.",
+            "description": "Highlights days with music activity.",
         },
         {
             "id": "calendar",
             "label": "Calendar",
-            "description": "Highlights days with calendar events.",
+            "description": "Highlights days with calendar activity.",
         },
         {
             "id": "sports",
             "label": "Sports",
-            "description": "Highlights days with sports activities.",
+            "description": "Highlights days with sports activity.",
         },
     ]
 

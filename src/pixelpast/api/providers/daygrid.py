@@ -182,14 +182,14 @@ def get_view_mode_color_value(
     if view_mode == "activity":
         return get_activity_color_value(activity_score)
 
-    if view_mode == "photos":
+    if view_mode in {"photo", "photos"}:
         if any(tag_path.startswith("travel/") for tag_path in tag_paths):
             return "high"
         if person_ids:
             return "medium"
         return "low" if activity_score >= 55 else "empty"
 
-    if view_mode == "videos":
+    if view_mode in {"video", "videos"}:
         if any(tag_path.startswith("activity/") for tag_path in tag_paths):
             return "high"
         if activity_score >= 78:

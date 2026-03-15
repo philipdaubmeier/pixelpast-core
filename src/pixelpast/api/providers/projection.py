@@ -6,7 +6,10 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Final, Protocol
 
-from pixelpast.api.providers.bootstrap_ui import build_bootstrap_response, get_default_view_modes
+from pixelpast.api.providers.bootstrap_ui import (
+    build_bootstrap_response,
+    build_view_mode_catalog,
+)
 from pixelpast.api.providers.daygrid import (
     ExplorationGridFilters,
     build_grid_day_from_snapshot,
@@ -26,6 +29,7 @@ from pixelpast.api.schemas import (
 )
 from pixelpast.persistence.repositories import (
     DailyAggregateReadRepository,
+    DailyViewCatalogSnapshot,
     ExplorationReadRepository,
 )
 
@@ -34,6 +38,38 @@ _DEMO_DEFAULT_RANGE: Final[tuple[date, date]] = (
     date(2026, 12, 31),
 )
 _DEMO_REFERENCE_DATE: Final[date] = date(2021, 1, 1)
+_DEMO_FALLBACK_VIEW_MODES: Final[tuple[DailyViewCatalogSnapshot, ...]] = (
+    DailyViewCatalogSnapshot(
+        view_id="activity",
+        label="Activity",
+        description="Default heat intensity across all timeline sources.",
+    ),
+    DailyViewCatalogSnapshot(
+        view_id="photos",
+        label="Photos",
+        description="Highlights days with photos activity.",
+    ),
+    DailyViewCatalogSnapshot(
+        view_id="videos",
+        label="Videos",
+        description="Highlights days with videos activity.",
+    ),
+    DailyViewCatalogSnapshot(
+        view_id="music",
+        label="Music",
+        description="Highlights days with music activity.",
+    ),
+    DailyViewCatalogSnapshot(
+        view_id="calendar",
+        label="Calendar",
+        description="Highlights days with calendar activity.",
+    ),
+    DailyViewCatalogSnapshot(
+        view_id="sports",
+        label="Sports",
+        description="Highlights days with sports activity.",
+    ),
+)
 
 
 @dataclass(slots=True, frozen=True)
@@ -95,6 +131,10 @@ class TimelineProjectionProvider(Protocol):
         """Return derived-only dense day activity for the resolved exploration range."""
         ...
 
+    def list_available_view_modes(self) -> list[str]:
+        """Return valid view identifiers for request validation."""
+        ...
+
 
 class DatabaseTimelineProjectionProvider:
     """Build exploration projections from canonical and derived repositories."""
@@ -154,6 +194,9 @@ class DatabaseTimelineProjectionProvider:
         return build_bootstrap_response(
             start=range_start,
             end=range_end,
+            view_modes=build_view_mode_catalog(
+                self._resolve_daily_view_catalog(),
+            ),
             person_links=self._exploration_repository.list_person_links(
                 start_date=range_start,
                 end_date=range_end,
@@ -163,6 +206,11 @@ class DatabaseTimelineProjectionProvider:
                 end_date=range_end,
             ),
         )
+
+    def list_available_view_modes(self) -> list[str]:
+        """Return the valid exploration view identifiers for server-side checks."""
+
+        return [view.view_id for view in self._resolve_daily_view_catalog()]
 
     def get_exploration_grid(
         self,
@@ -215,6 +263,16 @@ class DatabaseTimelineProjectionProvider:
             date(bounds.end_date.year, 12, 31),
         )
 
+    def _resolve_daily_view_catalog(self) -> list[DailyViewCatalogSnapshot]:
+        """Return persisted views or a bounded empty-database fallback."""
+
+        catalog = self._exploration_repository.list_daily_views()
+        if catalog:
+            return catalog
+
+        # Transitional fallback for empty databases until derive bootstrap is guaranteed.
+        return list(_DEMO_FALLBACK_VIEW_MODES)
+
 
 class DemoTimelineProjectionProvider:
     """Generate deterministic demo projections without reading production data."""
@@ -266,7 +324,7 @@ class DemoTimelineProjectionProvider:
 
         return ExplorationBootstrapResponse(
             range=ExplorationRange(start=range_start, end=range_end),
-            view_modes=get_default_view_modes(),
+            view_modes=build_view_mode_catalog(list(_DEMO_FALLBACK_VIEW_MODES)),
             persons=sorted(
                 persons_by_id.values(),
                 key=lambda person: (person.name.casefold(), person.id),
@@ -308,6 +366,11 @@ class DemoTimelineProjectionProvider:
                 for current_day in iter_inclusive_dates(range_start, range_end)
             ],
         )
+
+    def list_available_view_modes(self) -> list[str]:
+        """Return the demo view identifiers exposed by the bootstrap payload."""
+
+        return [view.view_id for view in _DEMO_FALLBACK_VIEW_MODES]
 
     def _resolve_exploration_range(
         self,

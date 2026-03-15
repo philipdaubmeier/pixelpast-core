@@ -14,7 +14,6 @@ from pixelpast.api.providers import (
     DemoTimelineProjectionProvider,
     ExplorationGridFilters,
     TimelineProjectionProvider,
-    get_default_view_modes,
 )
 from pixelpast.api.services import TimelineQueryService
 from pixelpast.persistence.repositories import (
@@ -74,6 +73,7 @@ def validate_optional_range(*, start: date | None, end: date | None) -> None:
 def build_exploration_grid_filters(
     *,
     view_mode: str,
+    provider: TimelineProjectionProvider,
     person_ids: list[int],
     tag_paths: list[str],
     location_geometry: str | None,
@@ -84,7 +84,7 @@ def build_exploration_grid_filters(
 ) -> ExplorationGridFilters:
     """Normalize server-side persistent filter inputs for grid requests."""
 
-    valid_view_modes = {mode.id for mode in get_default_view_modes()}
+    valid_view_modes = set(provider.list_available_view_modes())
     if view_mode not in valid_view_modes:
         raise HTTPException(
             status_code=400,
