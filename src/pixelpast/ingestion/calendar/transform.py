@@ -74,10 +74,11 @@ def build_calendar_source_candidate(
     """Build the canonical source candidate represented by one calendar document."""
 
     resolved_document_path = document.descriptor.path.expanduser().resolve().as_posix()
+    external_id = _require_calendar_external_id(document)
     return CalendarSourceCandidate(
         type="calendar",
         name=document.calendar_name,
-        external_id=document.calendar_external_id,
+        external_id=external_id,
         config_json={
             "origin_path": resolved_document_path,
             "archive_member_path": document.descriptor.archive_member_path,
@@ -169,6 +170,18 @@ def _find_first_property(
         if property_value.name.upper() in normalized_names:
             return property_value
     return None
+
+
+def _require_calendar_external_id(document: ParsedCalendarDocument) -> str:
+    if document.calendar_external_id is not None:
+        return document.calendar_external_id
+
+    supported_headers = ", ".join(_CALENDAR_EXTERNAL_ID_HEADERS)
+    raise ValueError(
+        "Calendar document "
+        f"'{document.descriptor.origin_label}' is missing a required external id "
+        f"header ({supported_headers})."
+    )
 
 
 def _build_parsed_property(*, name: str, value: object) -> CalendarParsedProperty:

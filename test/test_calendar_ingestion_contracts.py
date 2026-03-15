@@ -142,6 +142,34 @@ def test_calendar_source_candidate_uses_archive_origin_without_fake_extraction_p
     }
 
 
+def test_calendar_source_candidate_fails_without_external_id_header() -> None:
+    parsed = parse_calendar_document(
+        descriptor=CalendarDocumentDescriptor(path=Path("calendar.ics")),
+        text=(
+            "BEGIN:VCALENDAR\n"
+            "VERSION:2.0\n"
+            "X-WR-CALNAME:Trips\n"
+            "BEGIN:VEVENT\n"
+            "UID:event-1\n"
+            "DTSTART:20240102T090000Z\n"
+            "SUMMARY:Departure\n"
+            "END:VEVENT\n"
+            "END:VCALENDAR\n"
+        ),
+    )
+
+    try:
+        build_calendar_source_candidate(parsed)
+    except ValueError as error:
+        assert str(error) == (
+            "Calendar document "
+            f"'{Path('calendar.ics').resolve().as_posix()}' is missing a required "
+            "external id header (X-WR-RELCALID, X-WR-RECALID)."
+        )
+    else:
+        raise AssertionError("Expected missing calendar external id to fail.")
+
+
 def test_calendar_event_title_truncation_keeps_220_characters_then_ellipsis() -> None:
     long_summary = "A" * 221
     parsed = parse_calendar_document(
@@ -266,3 +294,26 @@ def test_calendar_timezones_are_normalized_to_utc_before_persistence() -> None:
 
     assert candidate.timestamp_start == datetime(2024, 1, 2, 14, 15, tzinfo=UTC)
     assert candidate.timestamp_end == datetime(2024, 1, 2, 15, 45, tzinfo=UTC)
+
+
+def test_calendar_date_only_events_are_normalized_to_utc_midnight() -> None:
+    parsed = parse_calendar_document(
+        descriptor=CalendarDocumentDescriptor(path=Path("calendar.ics")),
+        text=(
+            "BEGIN:VCALENDAR\n"
+            "VERSION:2.0\n"
+            "X-WR-RELCALID:cal-123\n"
+            "BEGIN:VEVENT\n"
+            "UID:event-1\n"
+            "DTSTART;VALUE=DATE:20240102\n"
+            "DTEND;VALUE=DATE:20240103\n"
+            "SUMMARY:All day\n"
+            "END:VEVENT\n"
+            "END:VCALENDAR\n"
+        ),
+    )
+
+    candidate = build_calendar_event_candidates(parsed)[0]
+
+    assert candidate.timestamp_start == datetime(2024, 1, 2, 0, 0, tzinfo=UTC)
+    assert candidate.timestamp_end == datetime(2024, 1, 3, 0, 0, tzinfo=UTC)
