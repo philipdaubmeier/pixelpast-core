@@ -17,6 +17,7 @@ from typer.testing import CliRunner
 
 from pixelpast.analytics.entrypoints import list_supported_derive_jobs
 from pixelpast.cli.main import (
+    CliProgressReporter,
     UI_WORKSPACE,
     IngestionCliProgressReporter,
     _build_dev_process_specs,
@@ -243,6 +244,34 @@ def test_ingestion_cli_progress_reporter_prints_metadata_batch_progress(capsys) 
     ]
 
 
+def test_cli_progress_reporter_prints_derive_terminal_summary(capsys) -> None:
+    reporter = CliProgressReporter()
+
+    reporter(
+        JobProgressSnapshot(
+            event="run_finished",
+            job_type="derive",
+            job="daily-aggregate",
+            run_id=7,
+            phase="finalization",
+            status="completed",
+            total=1,
+            completed=1,
+            inserted=5,
+            updated=0,
+            unchanged=0,
+            skipped=0,
+            failed=0,
+            missing_from_source=0,
+            heartbeat_written=True,
+        )
+    )
+
+    assert capsys.readouterr().out.splitlines() == [
+        "[daily-aggregate] summary status=completed run_id=7 inserted=5 updated=0 unchanged=0 skipped=0 failed=0 missing_from_source=0"
+    ]
+
+
 def test_cli_derive_daily_aggregate_rebuilds_rows(monkeypatch) -> None:
     database_path = _build_test_database_path("cli-derive")
     monkeypatch.setenv("PIXELPAST_DATABASE_URL", f"sqlite:///{database_path.as_posix()}")
@@ -309,6 +338,15 @@ def test_cli_derive_daily_aggregate_rebuilds_rows(monkeypatch) -> None:
         result = runner.invoke(app, ["derive", "daily-aggregate"])
         assert result.exit_code == 0
         assert database_path.exists()
+        assert "phase=loading canonical inputs status=running total=4" in result.stdout
+        assert "phase=building daily aggregates status=running total=4" in result.stdout
+        assert "phase=persisting daily aggregates status=running total=5" in result.stdout
+        assert "phase=finalization status=completed total=1" in result.stdout
+        assert (
+            "[daily-aggregate] summary status=completed run_id=1 inserted=5 "
+            "updated=0 unchanged=0 skipped=0 failed=0 missing_from_source=0"
+            in result.stdout
+        )
 
         engine = create_engine(f"sqlite:///{database_path.as_posix()}")
         try:
@@ -351,6 +389,106 @@ def test_cli_derive_daily_aggregate_rebuilds_rows(monkeypatch) -> None:
         assert job_runs[0].phase == "finalization"
         assert job_runs[0].progress_json is not None
         assert job_runs[0].progress_json["inserted"] == 5
+    finally:
+        get_settings.cache_clear()
+        if database_path.exists():
+            database_path.unlink()
+
+
+def test_cli_derive_daily_aggregate_range_reports_progress(monkeypatch) -> None:
+    database_path = _build_test_database_path("cli-derive-range")
+    monkeypatch.setenv("PIXELPAST_DATABASE_URL", f"sqlite:///{database_path.as_posix()}")
+    get_settings.cache_clear()
+
+    try:
+        runtime = create_runtime_context(settings=get_settings())
+        try:
+            initialize_database(runtime)
+            with runtime.session_factory() as session:
+                source = Source(name="Calendar", type="calendar", config={})
+                session.add(source)
+                session.flush()
+                session.add_all(
+                    [
+                        Event(
+                            source_id=source.id,
+                            type="calendar",
+                            timestamp_start=datetime(2024, 1, 1, 8, 0, tzinfo=UTC),
+                            timestamp_end=None,
+                            title="Day one",
+                            summary=None,
+                            latitude=None,
+                            longitude=None,
+                            raw_payload={},
+                            derived_payload={},
+                        ),
+                        Event(
+                            source_id=source.id,
+                            type="calendar",
+                            timestamp_start=datetime(2024, 1, 2, 9, 0, tzinfo=UTC),
+                            timestamp_end=None,
+                            title="Day two",
+                            summary=None,
+                            latitude=None,
+                            longitude=None,
+                            raw_payload={},
+                            derived_payload={},
+                        ),
+                        Asset(
+                            external_id="asset-1",
+                            media_type="photo",
+                            timestamp=datetime(2024, 1, 2, 10, 0, tzinfo=UTC),
+                            latitude=None,
+                            longitude=None,
+                            metadata_json={},
+                        ),
+                        Asset(
+                            external_id="asset-2",
+                            media_type="photo",
+                            timestamp=datetime(2024, 1, 3, 11, 0, tzinfo=UTC),
+                            latitude=None,
+                            longitude=None,
+                            metadata_json={},
+                        ),
+                    ]
+                )
+                session.commit()
+        finally:
+            runtime.engine.dispose()
+
+        result = runner.invoke(
+            app,
+            [
+                "derive",
+                "daily-aggregate",
+                "--start-date",
+                "2024-01-02",
+                "--end-date",
+                "2024-01-02",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert "phase=loading canonical inputs status=running total=4" in result.stdout
+        assert "phase=building daily aggregates status=running total=2" in result.stdout
+        assert "phase=persisting daily aggregates status=running total=3" in result.stdout
+        assert (
+            "[daily-aggregate] summary status=completed run_id=1 inserted=3 "
+            "updated=0 unchanged=0 skipped=0 failed=0 missing_from_source=0"
+            in result.stdout
+        )
+
+        engine = create_engine(f"sqlite:///{database_path.as_posix()}")
+        try:
+            with Session(engine) as session:
+                job_runs = list(session.execute(select(JobRun).order_by(JobRun.id)).scalars())
+        finally:
+            engine.dispose()
+
+        assert len(job_runs) == 1
+        assert job_runs[0].mode == "range"
+        assert job_runs[0].progress_json is not None
+        assert job_runs[0].progress_json["inserted"] == 3
     finally:
         get_settings.cache_clear()
         if database_path.exists():

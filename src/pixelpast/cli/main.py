@@ -74,8 +74,8 @@ class DevProcessExitedError(RuntimeError):
         self.exit_code = exit_code
 
 
-class IngestionCliProgressReporter:
-    """Render phase-aware ingest progress as robust terminal lines."""
+class CliProgressReporter:
+    """Render shared phase-aware job progress as robust terminal lines."""
 
     def __init__(self) -> None:
         self._last_progress_key: tuple[
@@ -162,6 +162,9 @@ class IngestionCliProgressReporter:
                 f" failed={snapshot.failed}"
                 f" missing_from_source={snapshot.missing_from_source}"
             )
+
+
+IngestionCliProgressReporter = CliProgressReporter
 
 
 app = typer.Typer(
@@ -258,7 +261,7 @@ def ingest_command(
 ) -> None:
     """Run an ingestion source entrypoint."""
 
-    progress_reporter = IngestionCliProgressReporter()
+    progress_reporter = CliProgressReporter()
     _execute_operation(
         command_name="ingest",
         target=source,
@@ -315,6 +318,7 @@ def derive_command(
             runtime=runtime,
             start_date=parsed_start_date,
             end_date=parsed_end_date,
+            progress_callback=CliProgressReporter(),
         ),
     )
 
