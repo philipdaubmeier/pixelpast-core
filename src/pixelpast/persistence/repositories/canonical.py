@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+import json
+from collections.abc import Iterable, Sequence
 from datetime import UTC, datetime
 from typing import Any
 
@@ -13,6 +14,7 @@ from pixelpast.persistence.models import (
     Asset,
     AssetPerson,
     AssetTag,
+    Event,
     JobRun,
     Person,
     Source,
@@ -84,6 +86,23 @@ class SourceRepository:
     ) -> Source:
         """Return an existing source by external identity or create one."""
 
+        return self.upsert_by_external_id(
+            external_id=external_id,
+            name=name,
+            source_type=source_type,
+            config=config,
+        ).source
+
+    def upsert_by_external_id(
+        self,
+        *,
+        external_id: str,
+        name: str,
+        source_type: str,
+        config: dict[str, Any],
+    ) -> "SourceUpsertResult":
+        """Insert or update one source by its stable external identity."""
+
         source = self.get_by_external_id(external_id=external_id)
         if source is None:
             source = Source(
@@ -94,14 +113,36 @@ class SourceRepository:
             )
             self._session.add(source)
             self._session.flush()
-            return source
+            return SourceUpsertResult(source=source, status="inserted")
 
+        next_config = dict(config)
+        changed = any(
+            [
+                source.name != name,
+                source.type != source_type,
+                source.external_id != external_id,
+                source.config != next_config,
+            ]
+        )
         source.name = name
         source.type = source_type
         source.external_id = external_id
-        source.config = dict(config)
+        source.config = next_config
         self._session.flush()
-        return source
+        return SourceUpsertResult(
+            source=source,
+            status="updated" if changed else "unchanged",
+        )
+
+
+class SourceUpsertResult:
+    """Represents the core-field upsert outcome for one source."""
+
+    __slots__ = ("source", "status")
+
+    def __init__(self, *, source: Source, status: str) -> None:
+        self.source = source
+        self.status = status
 
 
 class JobRunRepository:
@@ -243,7 +284,7 @@ class AssetRepository:
         media_type: str,
         external_id_prefix: str,
     ) -> list[str]:
-        """Return external identifiers matching one media type and source path prefix."""
+        """Return external identifiers for one media type and source path prefix."""
 
         normalized_prefix = external_id_prefix.rstrip("/") + "/"
         statement = (
@@ -373,6 +414,78 @@ class AssetRepository:
         return True
 
 
+class EventReplaceResult:
+    """Represents the source-scoped replacement outcome for one event set."""
+
+    __slots__ = ("persisted_event_count", "status")
+
+    def __init__(self, *, persisted_event_count: int, status: str) -> None:
+        self.persisted_event_count = persisted_event_count
+        self.status = status
+
+
+class EventRepository:
+    """Repository for source-scoped canonical event replacement."""
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def list_by_source_id(self, *, source_id: int) -> list[Event]:
+        """Return deterministic persisted events for one canonical source."""
+
+        statement = (
+            select(Event)
+            .where(Event.source_id == source_id)
+            .order_by(Event.timestamp_start, Event.timestamp_end, Event.id)
+        )
+        return list(self._session.execute(statement).scalars())
+
+    def replace_for_source(
+        self,
+        *,
+        source_id: int,
+        events: Sequence[dict[str, Any]],
+    ) -> EventReplaceResult:
+        """Replace one source's events unless the canonical payload is unchanged."""
+
+        persisted_events = self.list_by_source_id(source_id=source_id)
+        existing_signatures = sorted(
+            _serialize_event_signature_from_model(event) for event in persisted_events
+        )
+        next_signatures = sorted(
+            _serialize_event_signature_from_payload(source_id=source_id, event=event)
+            for event in events
+        )
+        if existing_signatures == next_signatures:
+            return EventReplaceResult(
+                persisted_event_count=len(events),
+                status="unchanged",
+            )
+
+        self._session.execute(delete(Event).where(Event.source_id == source_id))
+        self._session.add_all(
+            [
+                Event(
+                    source_id=source_id,
+                    type=str(event["type"]),
+                    timestamp_start=event["timestamp_start"],
+                    timestamp_end=event["timestamp_end"],
+                    title=str(event.get("title") or ""),
+                    summary=event["summary"],
+                    latitude=event["latitude"],
+                    longitude=event["longitude"],
+                    raw_payload=dict(event["raw_payload"]),
+                    derived_payload=dict(event["derived_payload"]),
+                )
+                for event in events
+            ]
+        )
+        self._session.flush()
+        return EventReplaceResult(
+            persisted_event_count=len(events),
+            status="inserted" if not persisted_events else "updated",
+        )
+
 class TagRepository:
     """Repository for canonical tag creation and lookup."""
 
@@ -466,3 +579,52 @@ class PersonRepository:
             person.metadata_json = dict(metadata_json)
         self._session.flush()
         return person
+
+
+def _serialize_event_signature_from_model(event: Event) -> str:
+    return json.dumps(
+        {
+            "source_id": event.source_id,
+            "type": event.type,
+            "timestamp_start": event.timestamp_start.isoformat(),
+            "timestamp_end": (
+                event.timestamp_end.isoformat()
+                if event.timestamp_end is not None
+                else None
+            ),
+            "title": event.title,
+            "summary": event.summary,
+            "latitude": event.latitude,
+            "longitude": event.longitude,
+            "raw_payload": event.raw_payload,
+            "derived_payload": event.derived_payload,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def _serialize_event_signature_from_payload(
+    *,
+    source_id: int,
+    event: dict[str, Any],
+) -> str:
+    timestamp_end = event["timestamp_end"]
+    return json.dumps(
+        {
+            "source_id": source_id,
+            "type": event["type"],
+            "timestamp_start": event["timestamp_start"].isoformat(),
+            "timestamp_end": (
+                timestamp_end.isoformat() if timestamp_end is not None else None
+            ),
+            "title": str(event.get("title") or ""),
+            "summary": event["summary"],
+            "latitude": event["latitude"],
+            "longitude": event["longitude"],
+            "raw_payload": dict(event["raw_payload"]),
+            "derived_payload": dict(event["derived_payload"]),
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )

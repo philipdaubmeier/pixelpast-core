@@ -108,6 +108,15 @@ class CalendarEventCandidate:
 
 
 @dataclass(slots=True, frozen=True)
+class CalendarDocumentCandidate:
+    """One persistable calendar document candidate for staged ingestion."""
+
+    document: CalendarDocumentDescriptor
+    source: CalendarSourceCandidate
+    events: tuple[CalendarEventCandidate, ...]
+
+
+@dataclass(slots=True, frozen=True)
 class CalendarTransformError:
     """Represents a non-fatal calendar document transform failure."""
 
@@ -129,6 +138,7 @@ class CalendarIngestionResult:
 
 __all__ = [
     "CalendarDocumentDescriptor",
+    "CalendarDocumentCandidate",
     "CalendarEventCandidate",
     "CalendarIngestionResult",
     "CalendarParsedProperty",

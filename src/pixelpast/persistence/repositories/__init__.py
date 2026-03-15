@@ -3,9 +3,12 @@
 from pixelpast.persistence.repositories.canonical import (
     AssetRepository,
     AssetUpsertResult,
+    EventReplaceResult,
+    EventRepository,
     JobRunRepository,
     PersonRepository,
     SourceRepository,
+    SourceUpsertResult,
     TagRepository,
 )
 from pixelpast.persistence.repositories.daily_aggregates import (
@@ -38,12 +41,15 @@ __all__ = [
     "DailyAggregateReadSnapshot",
     "DailyAggregateRepository",
     "DailyAggregateSnapshot",
+    "EventReplaceResult",
+    "EventRepository",
     "DayTimelineItemSnapshot",
     "DayTimelineRepository",
     "ExplorationReadRepository",
     "JobRunRepository",
     "PersonRepository",
     "SourceRepository",
+    "SourceUpsertResult",
     "TagRepository",
     "TimelineBoundsSnapshot",
 ]
