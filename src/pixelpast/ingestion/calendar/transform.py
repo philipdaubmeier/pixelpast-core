@@ -9,6 +9,7 @@ from html.parser import HTMLParser
 from typing import Any
 
 from icalendar import Calendar
+
 from pixelpast.ingestion.calendar.contracts import (
     CalendarDocumentDescriptor,
     CalendarEventCandidate,
@@ -222,7 +223,11 @@ def _normalize_title(summary: str | None) -> str | None:
     return f"{summary[:_TITLE_MAX_LENGTH]}..."
 
 
-def _normalize_alt_description(*, value: str | None, fmt_type: str | None) -> str | None:
+def _normalize_alt_description(
+    *,
+    value: str | None,
+    fmt_type: str | None,
+) -> str | None:
     if value is None:
         return None
     if fmt_type is None or fmt_type.lower() == "text/plain":

@@ -10,6 +10,11 @@ from pixelpast.ingestion.calendar.contracts import (
     ParsedCalendarDocument,
     ParsedCalendarEvent,
 )
+from pixelpast.ingestion.calendar.discovery import CalendarDocumentDiscoverer
+from pixelpast.ingestion.calendar.fetch import (
+    CalendarDocumentFetcher,
+    CalendarDocumentLoadProgress,
+)
 from pixelpast.ingestion.calendar.transform import (
     build_calendar_event_candidates,
     build_calendar_source_candidate,
@@ -18,6 +23,9 @@ from pixelpast.ingestion.calendar.transform import (
 
 __all__ = [
     "CalendarDocumentDescriptor",
+    "CalendarDocumentDiscoverer",
+    "CalendarDocumentFetcher",
+    "CalendarDocumentLoadProgress",
     "CalendarEventCandidate",
     "CalendarIngestionResult",
     "CalendarParsedProperty",

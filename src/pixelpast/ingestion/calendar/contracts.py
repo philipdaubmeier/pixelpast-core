@@ -15,6 +15,27 @@ class CalendarDocumentDescriptor:
     path: Path
     archive_member_path: str | None = None
 
+    @property
+    def origin_path(self) -> Path:
+        """Return the filesystem path that owns this calendar document."""
+
+        return self.path.expanduser().resolve()
+
+    @property
+    def origin_label(self) -> str:
+        """Return a deterministic human-readable origin label."""
+
+        origin_path = self.origin_path.as_posix()
+        if self.archive_member_path is None:
+            return origin_path
+        return f"{origin_path}::{self.archive_member_path}"
+
+    @property
+    def is_archive_member(self) -> bool:
+        """Return whether the document is backed by a zip archive member."""
+
+        return self.archive_member_path is not None
+
 
 @dataclass(slots=True, frozen=True)
 class CalendarParsedProperty:
