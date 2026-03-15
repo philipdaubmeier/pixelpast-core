@@ -10,10 +10,12 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import date
 from enum import IntEnum
+from typing import IO
 from pathlib import Path
 from typing import Annotated
 
 import typer
+from tqdm import tqdm
 
 from pixelpast.analytics.entrypoints import (
     list_supported_derive_jobs,
@@ -75,93 +77,139 @@ class DevProcessExitedError(RuntimeError):
 
 
 class CliProgressReporter:
-    """Render shared phase-aware job progress as robust terminal lines."""
+    """Render shared phase-aware job progress using one in-place tqdm bar."""
 
-    def __init__(self) -> None:
-        self._last_progress_key: tuple[
-            str,
-            int | None,
-            int,
-            int,
-            int,
-            int,
-            int,
-            int,
-            int,
-        ] | None = None
+    def __init__(
+        self,
+        *,
+        stream: IO[str] | None = None,
+    ) -> None:
+        self._stream = stream or typer.get_text_stream("stdout")
+        self._progress_bar: tqdm[object] | None = None
+        self._active_job: str | None = None
+        self._active_phase: str | None = None
+        self._active_completed: int | None = None
+        self._active_total: int | None = None
 
     def __call__(self, snapshot: JobProgressSnapshot) -> None:
-        """Print meaningful progress and terminal summary lines."""
-
-        if snapshot.event == "phase_started":
-            typer.echo(
-                f"[{snapshot.job}] phase={snapshot.phase} status={snapshot.status}"
-                f"{_format_total_suffix(snapshot.total)}"
-            )
-            return
-
-        if snapshot.event == "phase_completed":
-            typer.echo(
-                f"[{snapshot.job}] phase={snapshot.phase} status={snapshot.status}"
-                f" completed={snapshot.completed}"
-                f"{_format_total_suffix(snapshot.total)}"
-            )
-            return
+        """Refresh the current progress bar or print a terminal summary block."""
 
         if snapshot.event == "run_finished":
-            typer.echo(
-                f"[{snapshot.job}] summary"
-                f" status={snapshot.status}"
-                f" run_id={snapshot.run_id}"
-                f" inserted={snapshot.inserted}"
-                f" updated={snapshot.updated}"
-                f" unchanged={snapshot.unchanged}"
-                f" skipped={snapshot.skipped}"
-                f" failed={snapshot.failed}"
-                f" missing_from_source={snapshot.missing_from_source}"
-            )
+            self._sync_bar(snapshot)
+            self.close()
+            self._print_summary(snapshot)
             return
 
         if snapshot.event == "run_failed":
-            typer.echo(
-                f"[{snapshot.job}] summary"
-                f" status={snapshot.status}"
-                f" run_id={snapshot.run_id}"
-                f" phase={snapshot.phase}"
-                f" completed={snapshot.completed}"
-                f"{_format_total_suffix(snapshot.total)}"
-                f" inserted={snapshot.inserted}"
-                f" updated={snapshot.updated}"
-                f" unchanged={snapshot.unchanged}"
-                f" skipped={snapshot.skipped}"
-                f" failed={snapshot.failed}"
-            )
+            self._sync_bar(snapshot)
+            self.close()
+            self._print_failure_summary(snapshot)
             return
 
-        progress_key = (
-            snapshot.phase,
-            snapshot.total,
-            snapshot.completed,
-            snapshot.inserted,
-            snapshot.updated,
-            snapshot.unchanged,
-            snapshot.skipped,
-            snapshot.failed,
+        self._sync_bar(snapshot)
+
+    @property
+    def active_phase(self) -> str | None:
+        """Expose the active phase label for CLI-focused tests."""
+
+        return self._active_phase
+
+    @property
+    def active_completed(self) -> int | None:
+        """Expose the active completed count for CLI-focused tests."""
+
+        return self._active_completed
+
+    @property
+    def active_total(self) -> int | None:
+        """Expose the active total count for CLI-focused tests."""
+
+        return self._active_total
+
+    def close(self) -> None:
+        """Stop the active tqdm progress display if it was started."""
+
+        if self._progress_bar is not None:
+            self._progress_bar.close()
+            self._progress_bar = None
+
+    def _sync_bar(self, snapshot: JobProgressSnapshot) -> None:
+        total = snapshot.total
+        if (
+            self._progress_bar is None
+            or self._active_job != snapshot.job
+            or self._active_phase != snapshot.phase
+        ):
+            self.close()
+            self._progress_bar = tqdm(
+                total=total,
+                initial=snapshot.completed,
+                desc=self._build_description(snapshot),
+                file=self._stream,
+                leave=False,
+                dynamic_ncols=True,
+                unit="item",
+                colour="#00ffff",
+            )
+            if total is None:
+                self._progress_bar.bar_format = (
+                    "{desc}: {n_fmt} item [{elapsed}<?, ?item/s]"
+                )
+        else:
+            if self._progress_bar.total != total:
+                self._progress_bar.total = total
+            delta = snapshot.completed - int(self._progress_bar.n)
+            if delta != 0:
+                self._progress_bar.update(delta)
+            self._progress_bar.set_description_str(self._build_description(snapshot))
+            self._progress_bar.refresh()
+
+        self._active_job = snapshot.job
+        self._active_phase = snapshot.phase
+        self._active_completed = snapshot.completed
+        self._active_total = snapshot.total
+
+    def _build_description(self, snapshot: JobProgressSnapshot) -> str:
+        return f"[{snapshot.job}] {snapshot.phase}"
+
+    def _print_summary(self, snapshot: JobProgressSnapshot) -> None:
+        typer.echo(f"[{snapshot.job}] completed", file=self._stream)
+        self._echo_summary_value("run_id", snapshot.run_id)
+        self._echo_summary_value("status", snapshot.status)
+        self._echo_summary_value("inserted", snapshot.inserted)
+        self._echo_summary_value("updated", snapshot.updated)
+        self._echo_summary_value("unchanged", snapshot.unchanged)
+        self._echo_summary_value("skipped", snapshot.skipped)
+        self._echo_summary_value("failed", snapshot.failed)
+        self._echo_summary_value(
+            "missing_from_source",
             snapshot.missing_from_source,
         )
-        if progress_key != self._last_progress_key:
-            self._last_progress_key = progress_key
-            typer.echo(
-                f"[{snapshot.job}] phase={snapshot.phase}"
-                f" completed={snapshot.completed}"
-                f"{_format_total_suffix(snapshot.total)}"
-                f" inserted={snapshot.inserted}"
-                f" updated={snapshot.updated}"
-                f" unchanged={snapshot.unchanged}"
-                f" skipped={snapshot.skipped}"
-                f" failed={snapshot.failed}"
-                f" missing_from_source={snapshot.missing_from_source}"
-            )
+
+    def _print_failure_summary(self, snapshot: JobProgressSnapshot) -> None:
+        typer.echo(f"[{snapshot.job}] failed", file=self._stream)
+        self._echo_summary_value("run_id", snapshot.run_id)
+        self._echo_summary_value("status", snapshot.status)
+        self._echo_summary_value("phase", snapshot.phase)
+        self._echo_summary_value(
+            "progress",
+            f"{snapshot.completed}/{_format_total_value(snapshot.total)}",
+        )
+        self._echo_summary_value("inserted", snapshot.inserted)
+        self._echo_summary_value("updated", snapshot.updated)
+        self._echo_summary_value("unchanged", snapshot.unchanged)
+        self._echo_summary_value("skipped", snapshot.skipped)
+        self._echo_summary_value("failed", snapshot.failed)
+        self._echo_summary_value(
+            "missing_from_source",
+            snapshot.missing_from_source,
+        )
+
+    def _echo_summary_value(self, label: str, value: object) -> None:
+        """Print one summary line with a neutral label and cyan value."""
+
+        styled_value = typer.style(str(value), fg=typer.colors.BRIGHT_CYAN)
+        typer.echo(f"{label}: {styled_value}", file=self._stream, color=None)
 
 
 IngestionCliProgressReporter = CliProgressReporter
@@ -262,15 +310,18 @@ def ingest_command(
     """Run an ingestion source entrypoint."""
 
     progress_reporter = CliProgressReporter()
-    _execute_operation(
-        command_name="ingest",
-        target=source,
-        runner=lambda runtime: run_ingest_source(
-            source=source,
-            runtime=runtime,
-            progress_callback=progress_reporter,
-        ),
-    )
+    try:
+        _execute_operation(
+            command_name="ingest",
+            target=source,
+            runner=lambda runtime: run_ingest_source(
+                source=source,
+                runtime=runtime,
+                progress_callback=progress_reporter,
+            ),
+        )
+    finally:
+        progress_reporter.close()
 
 
 @app.command("derive")
@@ -310,17 +361,21 @@ def derive_command(
         raw_value=end_date,
     )
 
-    _execute_operation(
-        command_name="derive",
-        target=job,
-        runner=lambda runtime: run_derive_job(
-            job=job,
-            runtime=runtime,
-            start_date=parsed_start_date,
-            end_date=parsed_end_date,
-            progress_callback=CliProgressReporter(),
-        ),
-    )
+    progress_reporter = CliProgressReporter()
+    try:
+        _execute_operation(
+            command_name="derive",
+            target=job,
+            runner=lambda runtime: run_derive_job(
+                job=job,
+                runtime=runtime,
+                start_date=parsed_start_date,
+                end_date=parsed_end_date,
+                progress_callback=progress_reporter,
+            ),
+        )
+    finally:
+        progress_reporter.close()
 
 
 def main() -> None:
@@ -523,12 +578,12 @@ def _parse_cli_date_option(*, option_name: str, raw_value: str | None) -> date |
         ) from error
 
 
-def _format_total_suffix(total: int | None) -> str:
-    """Return a human-readable optional total suffix for CLI progress lines."""
+def _format_total_value(total: float | None) -> str:
+    """Return a human-readable total value for progress output."""
 
     if total is None:
-        return ""
-    return f" total={total}"
+        return "?"
+    return str(int(total))
 
 
 if __name__ == "__main__":

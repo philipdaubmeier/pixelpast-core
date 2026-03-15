@@ -1,6 +1,7 @@
 """CLI smoke tests."""
 
 import importlib
+import io
 import logging
 import os
 import shutil
@@ -105,10 +106,9 @@ def test_cli_ingest_photos_persists_assets(monkeypatch) -> None:
         result = runner.invoke(app, ["ingest", "photos"])
         assert result.exit_code == 0
         assert database_path.exists()
-        assert "phase=filesystem discovery" in result.stdout
-        assert "phase=metadata extraction" in result.stdout
-        assert "phase=canonical persistence" in result.stdout
-        assert "[photos] summary status=completed" in result.stdout
+        assert "[photos] completed" in result.stdout
+        assert "inserted: 1" in result.stdout
+        assert "failed: 0" in result.stdout
 
         engine = create_engine(f"sqlite:///{database_path.as_posix()}")
         try:
@@ -157,10 +157,9 @@ def test_cli_ingest_photos_subprocess_completes_with_fixture_assets() -> None:
 
         assert result.returncode == 0, result.stderr
         assert database_path.exists()
-        assert "phase=filesystem discovery" in result.stdout
-        assert "phase=metadata extraction" in result.stdout
-        assert "phase=canonical persistence" in result.stdout
-        assert "summary status=completed" in result.stdout
+        assert "[photos] completed" in result.stdout
+        assert "inserted: 3" in result.stdout
+        assert "missing_from_source: 0" in result.stdout
 
         engine = create_engine(f"sqlite:///{database_path.as_posix()}")
         try:
@@ -196,19 +195,20 @@ def test_cli_ingest_photos_subprocess_completes_with_fixture_assets() -> None:
             database_path.unlink()
 
 
-def test_ingestion_cli_progress_reporter_prints_metadata_batch_progress(capsys) -> None:
-    reporter = IngestionCliProgressReporter()
+def test_ingestion_cli_progress_reporter_tracks_phase_progress() -> None:
+    stream = io.StringIO()
+    reporter = IngestionCliProgressReporter(stream=stream)
 
     reporter(
         JobProgressSnapshot(
-            event="progress",
+            event="phase_started",
             job_type="ingest",
             job="photos",
             run_id=1,
             phase="metadata extraction",
             status="running",
             total=3,
-            completed=1,
+            completed=0,
             inserted=0,
             updated=0,
             unchanged=0,
@@ -238,14 +238,14 @@ def test_ingestion_cli_progress_reporter_prints_metadata_batch_progress(capsys) 
         )
     )
 
-    assert capsys.readouterr().out.splitlines() == [
-        "[photos] phase=metadata extraction completed=1 total=3 inserted=0 updated=0 unchanged=0 skipped=0 failed=0 missing_from_source=0",
-        "[photos] phase=metadata extraction completed=3 total=3 inserted=0 updated=0 unchanged=0 skipped=0 failed=0 missing_from_source=0",
-    ]
+    assert reporter.active_phase == "metadata extraction"
+    assert reporter.active_completed == 3
+    assert reporter.active_total == 3
 
 
-def test_cli_progress_reporter_prints_derive_terminal_summary(capsys) -> None:
-    reporter = CliProgressReporter()
+def test_cli_progress_reporter_prints_derive_terminal_summary() -> None:
+    stream = io.StringIO()
+    reporter = CliProgressReporter(stream=stream)
 
     reporter(
         JobProgressSnapshot(
@@ -267,9 +267,62 @@ def test_cli_progress_reporter_prints_derive_terminal_summary(capsys) -> None:
         )
     )
 
-    assert capsys.readouterr().out.splitlines() == [
-        "[daily-aggregate] summary status=completed run_id=7 inserted=5 updated=0 unchanged=0 skipped=0 failed=0 missing_from_source=0"
-    ]
+    _assert_lines_present(
+        stream.getvalue(),
+        [
+            "[daily-aggregate] completed",
+            "run_id: 7",
+            "status: completed",
+            "inserted: 5",
+            "updated: 0",
+            "unchanged: 0",
+            "skipped: 0",
+            "failed: 0",
+            "missing_from_source: 0",
+        ],
+    )
+
+
+def test_cli_progress_reporter_prints_failure_summary() -> None:
+    stream = io.StringIO()
+    reporter = CliProgressReporter(stream=stream)
+
+    reporter(
+        JobProgressSnapshot(
+            event="run_failed",
+            job_type="derive",
+            job="daily-aggregate",
+            run_id=11,
+            phase="persisting daily aggregates",
+            status="failed",
+            total=5,
+            completed=3,
+            inserted=2,
+            updated=0,
+            unchanged=0,
+            skipped=0,
+            failed=1,
+            missing_from_source=0,
+            heartbeat_written=True,
+        )
+    )
+
+    _assert_lines_present(
+        stream.getvalue(),
+        [
+            "[daily-aggregate] failed",
+            "run_id: 11",
+            "status: failed",
+            "phase: persisting daily aggregates",
+            "progress: 3/5",
+            "inserted: 2",
+            "updated: 0",
+            "unchanged: 0",
+            "skipped: 0",
+            "failed: 1",
+            "missing_from_source: 0",
+        ],
+    )
 
 
 def test_cli_derive_daily_aggregate_rebuilds_rows(monkeypatch) -> None:
@@ -338,15 +391,10 @@ def test_cli_derive_daily_aggregate_rebuilds_rows(monkeypatch) -> None:
         result = runner.invoke(app, ["derive", "daily-aggregate"])
         assert result.exit_code == 0
         assert database_path.exists()
-        assert "phase=loading canonical inputs status=running total=4" in result.stdout
-        assert "phase=building daily aggregates status=running total=4" in result.stdout
-        assert "phase=persisting daily aggregates status=running total=5" in result.stdout
-        assert "phase=finalization status=completed total=1" in result.stdout
-        assert (
-            "[daily-aggregate] summary status=completed run_id=1 inserted=5 "
-            "updated=0 unchanged=0 skipped=0 failed=0 missing_from_source=0"
-            in result.stdout
-        )
+        assert "[daily-aggregate] completed" in result.stdout
+        assert "run_id: 1" in result.stdout
+        assert "inserted: 5" in result.stdout
+        assert "failed: 0" in result.stdout
 
         engine = create_engine(f"sqlite:///{database_path.as_posix()}")
         try:
@@ -469,14 +517,10 @@ def test_cli_derive_daily_aggregate_range_reports_progress(monkeypatch) -> None:
         )
 
         assert result.exit_code == 0
-        assert "phase=loading canonical inputs status=running total=4" in result.stdout
-        assert "phase=building daily aggregates status=running total=2" in result.stdout
-        assert "phase=persisting daily aggregates status=running total=3" in result.stdout
-        assert (
-            "[daily-aggregate] summary status=completed run_id=1 inserted=3 "
-            "updated=0 unchanged=0 skipped=0 failed=0 missing_from_source=0"
-            in result.stdout
-        )
+        assert "[daily-aggregate] completed" in result.stdout
+        assert "run_id: 1" in result.stdout
+        assert "inserted: 3" in result.stdout
+        assert "missing_from_source: 0" in result.stdout
 
         engine = create_engine(f"sqlite:///{database_path.as_posix()}")
         try:
@@ -562,3 +606,15 @@ def _build_test_database_path(prefix: str) -> Path:
     database_dir = Path("var")
     database_dir.mkdir(exist_ok=True)
     return database_dir / f"{prefix}-{uuid4().hex}.db"
+def _non_empty_lines(value: str) -> list[str]:
+    """Return non-empty lines from captured CLI output."""
+
+    return [line for line in value.splitlines() if line.strip()]
+
+
+def _assert_lines_present(value: str, expected_lines: list[str]) -> None:
+    """Assert that each expected line appears in captured CLI output."""
+
+    lines = _non_empty_lines(value)
+    for expected_line in expected_lines:
+        assert expected_line in lines
