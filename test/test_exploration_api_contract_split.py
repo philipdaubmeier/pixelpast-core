@@ -16,6 +16,7 @@ from pixelpast.persistence.models import (
     AssetTag,
     DAILY_AGGREGATE_SCOPE_SOURCE_TYPE,
     DailyAggregate,
+    DailyView,
     Event,
     EventPerson,
     EventTag,
@@ -148,6 +149,7 @@ def test_exploration_grid_endpoint_uses_derived_bounds_without_canonical_fallbac
             source = Source(name="Calendar", type="calendar", config={})
             session.add(source)
             session.flush()
+            overall_view = _create_daily_view(session=session)
             session.add(
                 Event(
                     source_id=source.id,
@@ -165,6 +167,7 @@ def test_exploration_grid_endpoint_uses_derived_bounds_without_canonical_fallbac
             session.add(
                 DailyAggregate(
                     date=date(2025, 2, 3),
+                    daily_view_id=overall_view.id,
                     total_events=1,
                     media_count=0,
                     activity_score=5,
@@ -307,6 +310,7 @@ def test_day_context_endpoint_remains_separate_from_grid_activity_loading() -> N
             travel_tag = Tag(label="Travel", path="travel/europe", metadata_json=None)
             session.add_all([source, anna, travel_tag])
             session.flush()
+            overall_view = _create_daily_view(session=session)
 
             event = Event(
                 source_id=source.id,
@@ -339,6 +343,7 @@ def test_day_context_endpoint_remains_separate_from_grid_activity_loading() -> N
                     AssetTag(asset_id=asset.id, tag_id=travel_tag.id),
                     DailyAggregate(
                         date=date(2024, 1, 2),
+                        daily_view_id=overall_view.id,
                         total_events=1,
                         media_count=1,
                         activity_score=20,
@@ -416,6 +421,12 @@ def _seed_split_contract_scenario(*, runtime) -> None:
         mood_tag = Tag(label="Focused", path="mood/focused", metadata_json=None)
         session.add_all([source, anna, milo, project_tag, family_tag, mood_tag])
         session.flush()
+        overall_view = _create_daily_view(session=session)
+        calendar_view = _create_daily_view(
+            session=session,
+            aggregate_scope=DAILY_AGGREGATE_SCOPE_SOURCE_TYPE,
+            source_type="calendar",
+        )
 
         day_two_event = Event(
             source_id=source.id,
@@ -461,6 +472,7 @@ def _seed_split_contract_scenario(*, runtime) -> None:
                 EventTag(event_id=day_three_event.id, tag_id=mood_tag.id),
                 DailyAggregate(
                     date=date(2024, 1, 2),
+                    daily_view_id=overall_view.id,
                     total_events=1,
                     media_count=1,
                     activity_score=40,
@@ -479,6 +491,7 @@ def _seed_split_contract_scenario(*, runtime) -> None:
                     date=date(2024, 1, 2),
                     aggregate_scope=DAILY_AGGREGATE_SCOPE_SOURCE_TYPE,
                     source_type="calendar",
+                    daily_view_id=calendar_view.id,
                     total_events=1,
                     media_count=0,
                     activity_score=20,
@@ -498,6 +511,7 @@ def _seed_filter_scenario(*, runtime) -> None:
         family_tag = Tag(label="Family", path="people/family", metadata_json=None)
         session.add_all([source, anna, ben, travel_tag, family_tag])
         session.flush()
+        overall_view = _create_daily_view(session=session)
 
         first_event = Event(
             source_id=source.id,
@@ -533,6 +547,7 @@ def _seed_filter_scenario(*, runtime) -> None:
                 EventTag(event_id=second_event.id, tag_id=family_tag.id),
                 DailyAggregate(
                     date=date(2024, 1, 2),
+                    daily_view_id=overall_view.id,
                     total_events=1,
                     media_count=0,
                     activity_score=12,
@@ -547,6 +562,7 @@ def _seed_filter_scenario(*, runtime) -> None:
                 ),
                 DailyAggregate(
                     date=date(2024, 1, 3),
+                    daily_view_id=overall_view.id,
                     total_events=1,
                     media_count=0,
                     activity_score=30,
@@ -631,6 +647,34 @@ def _create_runtime(*, workspace_root: Path):
     runtime = create_runtime_context(settings=settings)
     initialize_database(runtime)
     return runtime
+
+
+def _create_daily_view(
+    *,
+    session,
+    aggregate_scope: str = "overall",
+    source_type: str | None = None,
+) -> DailyView:
+    if aggregate_scope == "overall":
+        daily_view = DailyView(
+            aggregate_scope=aggregate_scope,
+            source_type=None,
+            label="Activity",
+            description="Default heat intensity across all timeline sources.",
+        )
+    else:
+        assert source_type is not None
+        normalized_source_type = source_type.replace("_", " ")
+        daily_view = DailyView(
+            aggregate_scope=aggregate_scope,
+            source_type=source_type,
+            label=normalized_source_type.title(),
+            description=f"Highlights days with {normalized_source_type} activity.",
+        )
+
+    session.add(daily_view)
+    session.flush()
+    return daily_view
 
 
 def _create_demo_settings(*, workspace_root: Path) -> Settings:

@@ -18,6 +18,7 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import relationship
 
 from pixelpast.persistence.base import Base
 from pixelpast.persistence.types import UTCDateTime
@@ -151,6 +152,40 @@ class Asset(Base):
     )
 
 
+class DailyView(Base):
+    """Catalog entry describing one reusable derived daily view."""
+
+    __tablename__ = "daily_view"
+    __table_args__ = (
+        CheckConstraint(
+            "aggregate_scope IN ('overall', 'source_type')",
+            name="ck_daily_view_scope",
+        ),
+        CheckConstraint(
+            "("
+            "aggregate_scope = 'overall' AND source_type IS NULL"
+            ") OR ("
+            "aggregate_scope = 'source_type' AND source_type IS NOT NULL"
+            ")",
+            name="ck_daily_view_scope_source_type",
+        ),
+        UniqueConstraint(
+            "aggregate_scope",
+            "source_type",
+            name="uq_daily_view_scope_source_type",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    aggregate_scope: Mapped[str] = mapped_column(String(50), nullable=False)
+    source_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    label: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str] = mapped_column(Text(), nullable=False)
+    aggregates: Mapped[list["DailyAggregate"]] = relationship(
+        back_populates="daily_view"
+    )
+
+
 class DailyAggregate(Base):
     """Stores per-day derived summaries for overall and connector-scoped views."""
 
@@ -174,6 +209,8 @@ class DailyAggregate(Base):
             "source_type",
             "date",
         ),
+        Index("ix_daily_aggregate_view_date", "daily_view_id", "date"),
+        UniqueConstraint("date", "daily_view_id", name="uq_daily_aggregate_date_view"),
     )
 
     date: Mapped[date] = mapped_column(Date(), primary_key=True)
@@ -186,6 +223,10 @@ class DailyAggregate(Base):
         String(100),
         primary_key=True,
         default=DAILY_AGGREGATE_OVERALL_SOURCE_TYPE,
+    )
+    daily_view_id: Mapped[int] = mapped_column(
+        ForeignKey("daily_view.id"),
+        nullable=False,
     )
     total_events: Mapped[int] = mapped_column(nullable=False, default=0)
     media_count: Mapped[int] = mapped_column(nullable=False, default=0)
@@ -214,6 +255,7 @@ class DailyAggregate(Base):
         nullable=False,
         default=dict,
     )
+    daily_view: Mapped[DailyView] = relationship(back_populates="aggregates")
 
 
 class EventAsset(Base):

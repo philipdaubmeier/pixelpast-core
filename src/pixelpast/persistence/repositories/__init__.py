@@ -15,6 +15,7 @@ from pixelpast.persistence.repositories.daily_aggregates import (
     CanonicalTimelineRepository,
     DailyAggregateRepository,
     DailyAggregateSnapshot,
+    DailyViewRepository,
 )
 from pixelpast.persistence.repositories.timeline_read import (
     DailyAggregateReadRepository,
@@ -41,6 +42,7 @@ __all__ = [
     "DailyAggregateReadSnapshot",
     "DailyAggregateRepository",
     "DailyAggregateSnapshot",
+    "DailyViewRepository",
     "EventReplaceResult",
     "EventRepository",
     "DayTimelineItemSnapshot",

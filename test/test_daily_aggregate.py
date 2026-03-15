@@ -14,6 +14,7 @@ from pixelpast.analytics.daily_aggregate import (
     DailyAggregateJob,
     build_daily_aggregate_snapshots,
 )
+from pixelpast.analytics.daily_views import build_daily_view
 from pixelpast.persistence.models import (
     DAILY_AGGREGATE_OVERALL_SOURCE_TYPE,
     DAILY_AGGREGATE_SCOPE_SOURCE_TYPE,
@@ -21,6 +22,7 @@ from pixelpast.persistence.models import (
     AssetPerson,
     AssetTag,
     DailyAggregate,
+    DailyView,
     Event,
     EventPerson,
     EventTag,
@@ -203,6 +205,23 @@ def test_build_daily_aggregate_snapshots_is_deterministic_without_database() -> 
     ]
 
 
+def test_build_daily_view_returns_stable_metadata() -> None:
+    overall_view = build_daily_view(aggregate_scope="overall", source_type="__all__")
+    photo_view = build_daily_view(
+        aggregate_scope="source_type",
+        source_type="photo",
+    )
+
+    assert overall_view.source_type is None
+    assert overall_view.label == "Activity"
+    assert overall_view.description == (
+        "Default heat intensity across all timeline sources."
+    )
+    assert photo_view.source_type == "photo"
+    assert photo_view.label == "Photo"
+    assert photo_view.description == "Highlights days with photo activity."
+
+
 def test_daily_aggregate_job_clears_rows_for_empty_canonical_dataset() -> None:
     workspace_root = _create_workspace_dir(prefix="daily-aggregate-empty")
     runtime = None
@@ -210,9 +229,18 @@ def test_daily_aggregate_job_clears_rows_for_empty_canonical_dataset() -> None:
         runtime = _create_runtime(workspace_root=workspace_root)
 
         with runtime.session_factory() as session:
+            overall_view = DailyView(
+                aggregate_scope="overall",
+                source_type=None,
+                label="Activity",
+                description="Default heat intensity across all timeline sources.",
+            )
+            session.add(overall_view)
+            session.flush()
             session.add(
                 DailyAggregate(
                     date=date(2024, 1, 1),
+                    daily_view_id=overall_view.id,
                     total_events=9,
                     media_count=4,
                     activity_score=13,

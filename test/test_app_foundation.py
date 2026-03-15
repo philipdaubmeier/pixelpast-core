@@ -17,6 +17,7 @@ from pixelpast.persistence.models import (
     DAILY_AGGREGATE_OVERALL_SOURCE_TYPE,
     DAILY_AGGREGATE_SCOPE_OVERALL,
     DailyAggregate,
+    DailyView,
     Event,
     JobRun,
     Source,
@@ -77,6 +78,7 @@ def test_alembic_upgrade_head_runs() -> None:
                 "asset_person",
                 "asset_tag",
                 "daily_aggregate",
+                "daily_view",
                 "event",
                 "event_asset",
                 "event_person",
@@ -120,6 +122,9 @@ def test_alembic_upgrade_head_runs() -> None:
                 index["name"] for index in inspector.get_indexes("daily_aggregate")
             }
             daily_aggregate_pk = inspector.get_pk_constraint("daily_aggregate")
+            daily_view_columns = {
+                column["name"] for column in inspector.get_columns("daily_view")
+            }
             assert {
                 "type",
                 "job",
@@ -132,6 +137,7 @@ def test_alembic_upgrade_head_runs() -> None:
                 "date",
                 "aggregate_scope",
                 "source_type",
+                "daily_view_id",
                 "total_events",
                 "media_count",
                 "activity_score",
@@ -140,7 +146,17 @@ def test_alembic_upgrade_head_runs() -> None:
                 "location_summary",
                 "metadata",
             } <= daily_aggregate_columns
-            assert daily_aggregate_indexes == {"ix_daily_aggregate_scope_date"}
+            assert daily_view_columns == {
+                "id",
+                "aggregate_scope",
+                "source_type",
+                "label",
+                "description",
+            }
+            assert daily_aggregate_indexes == {
+                "ix_daily_aggregate_scope_date",
+                "ix_daily_aggregate_view_date",
+            }
             assert daily_aggregate_pk["constrained_columns"] == [
                 "date",
                 "aggregate_scope",
@@ -159,6 +175,7 @@ def test_metadata_contains_canonical_tables() -> None:
         "asset_person",
         "asset_tag",
         "daily_aggregate",
+        "daily_view",
         "event",
         "event_asset",
         "event_person",
@@ -332,9 +349,18 @@ def test_daily_aggregate_date_roundtrip_uses_python_date() -> None:
     Base.metadata.create_all(engine)
 
     with Session(engine) as session:
+        daily_view = DailyView(
+            aggregate_scope=DAILY_AGGREGATE_SCOPE_OVERALL,
+            source_type=None,
+            label="Activity",
+            description="Default heat intensity across all timeline sources.",
+        )
+        session.add(daily_view)
+        session.flush()
         session.add(
             DailyAggregate(
                 date=datetime(2026, 3, 11, tzinfo=UTC).date(),
+                daily_view_id=daily_view.id,
                 total_events=2,
                 media_count=1,
                 activity_score=3,
@@ -394,6 +420,7 @@ def test_daily_aggregate_schema_v2_upgrade_backfills_legacy_rows() -> None:
         try:
             with Session(upgraded_engine) as session:
                 stored_aggregate = session.query(DailyAggregate).one()
+                stored_daily_view = session.query(DailyView).one()
 
             assert stored_aggregate.date.isoformat() == "2024-01-02"
             assert stored_aggregate.aggregate_scope == DAILY_AGGREGATE_SCOPE_OVERALL
@@ -401,6 +428,7 @@ def test_daily_aggregate_schema_v2_upgrade_backfills_legacy_rows() -> None:
                 stored_aggregate.source_type
                 == DAILY_AGGREGATE_OVERALL_SOURCE_TYPE
             )
+            assert stored_aggregate.daily_view_id == stored_daily_view.id
             assert stored_aggregate.total_events == 2
             assert stored_aggregate.media_count == 1
             assert stored_aggregate.activity_score == 3
@@ -408,6 +436,13 @@ def test_daily_aggregate_schema_v2_upgrade_backfills_legacy_rows() -> None:
             assert stored_aggregate.person_summary_json == []
             assert stored_aggregate.location_summary_json == []
             assert stored_aggregate.metadata_json == {"score_version": "v1"}
+            assert stored_daily_view.aggregate_scope == DAILY_AGGREGATE_SCOPE_OVERALL
+            assert stored_daily_view.source_type is None
+            assert stored_daily_view.label == "Activity"
+            assert (
+                stored_daily_view.description
+                == "Default heat intensity across all timeline sources."
+            )
         finally:
             upgraded_engine.dispose()
     finally:
