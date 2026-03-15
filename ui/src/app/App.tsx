@@ -72,7 +72,7 @@ function resolveHoverContextStatus(
 }
 
 function AppBootstrap() {
-  const { state, setHoveredDate } = useUiState();
+  const { state, setHoveredDate, setViewMode } = useUiState();
   const isMountedRef = useRef(true);
   const latestGridRequestIdRef = useRef(0);
   const [shellState, setShellState] = useState<ShellLoadState>("loading");
@@ -144,7 +144,24 @@ function AppBootstrap() {
   }, []);
 
   useEffect(() => {
-    if (shellState !== "ready" || explorationRange === null) {
+    if (shellState !== "ready" || viewModes.length === 0) {
+      return;
+    }
+
+    if (viewModes.some((viewMode) => viewMode.id === state.viewMode)) {
+      return;
+    }
+
+    setViewMode(viewModes[0].id);
+  }, [setViewMode, shellState, state.viewMode, viewModes]);
+
+  useEffect(() => {
+    if (
+      shellState !== "ready" ||
+      explorationRange === null ||
+      viewModes.length === 0 ||
+      !viewModes.some((viewMode) => viewMode.id === state.viewMode)
+    ) {
       return;
     }
 

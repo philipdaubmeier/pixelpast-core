@@ -355,14 +355,14 @@ class DemoTimelineProjectionProvider:
         ordinal = (day - _DEMO_REFERENCE_DATE).days
         weekday = day.weekday()
         is_weekend = weekday >= 5
-        travel_cluster = ordinal % 61 in {0, 1, 2, 3, 4}
-        sports_cluster = ordinal % 14 in {1, 4}
-        family_cluster = ordinal % 11 == 0
+        photos_cluster = ordinal % 61 in {0, 1, 2, 3, 4}
+        videos_cluster = ordinal % 14 in {1, 4}
+        music_cluster = ordinal % 11 == 0
         work_cluster = weekday < 5 and ordinal % 9 in {2, 3, 4}
-        party_cluster = (ordinal + day.year) % 37 == 0
-        outdoor_cluster = is_weekend and ordinal % 8 in {2, 3}
+        calendar_cluster = (ordinal + day.year) % 37 == 0
+        sports_cluster = is_weekend and ordinal % 8 in {2, 3}
         quiet_cluster = ordinal % 17 == 0 and not (
-            travel_cluster or sports_cluster or party_cluster
+            photos_cluster or videos_cluster or calendar_cluster
         )
 
         event_count = 1 if weekday < 5 and ordinal % 6 != 0 else 0
@@ -370,17 +370,17 @@ class DemoTimelineProjectionProvider:
 
         if work_cluster:
             event_count += 1
-        if travel_cluster:
+        if photos_cluster:
             event_count += 2
             asset_count += 2
+        if videos_cluster:
+            event_count += 1
+        if music_cluster and (is_weekend or asset_count > 0):
+            asset_count += 1
+        if calendar_cluster:
+            event_count += 1
+            asset_count += 1
         if sports_cluster:
-            event_count += 1
-        if family_cluster and (is_weekend or asset_count > 0):
-            asset_count += 1
-        if party_cluster:
-            event_count += 1
-            asset_count += 1
-        if outdoor_cluster:
             asset_count += 1
         if is_weekend and ordinal % 3 == 0:
             asset_count += 1
@@ -402,31 +402,31 @@ class DemoTimelineProjectionProvider:
             100,
             event_count * 16
             + asset_count * 12
-            + (14 if travel_cluster else 0)
-            + (10 if sports_cluster else 0)
-            + (8 if party_cluster else 0)
-            + (6 if outdoor_cluster else 0),
+            + (14 if photos_cluster else 0)
+            + (10 if videos_cluster else 0)
+            + (8 if calendar_cluster else 0)
+            + (6 if sports_cluster else 0),
         )
         person_ids: set[int] = set()
         tag_paths: set[str] = set()
 
-        if travel_cluster:
+        if photos_cluster:
             person_ids.update({1, 2})
             tag_paths.add("travel/europe")
             if ordinal % 122 < 10:
                 tag_paths.add("travel/weekender")
-        if sports_cluster:
+        if videos_cluster:
             person_ids.add(4)
             tag_paths.add("activity/sports/running")
-        if outdoor_cluster:
+        if sports_cluster:
             tag_paths.add("activity/outdoors")
-        if family_cluster:
+        if music_cluster:
             person_ids.add(1)
             tag_paths.add("people/family")
         if work_cluster:
             person_ids.add(3)
             tag_paths.add("work/project-atlas")
-        if party_cluster:
+        if calendar_cluster:
             person_ids.update({1, 5})
             tag_paths.add("social/house-party")
         if asset_count > 0 and not person_ids and ordinal % 23 == 0:
@@ -435,11 +435,11 @@ class DemoTimelineProjectionProvider:
         map_points = self._build_map_points(
             day=day,
             ordinal=ordinal,
-            travel_cluster=travel_cluster,
+            photos_cluster=photos_cluster,
+            videos_cluster=videos_cluster,
+            music_cluster=music_cluster,
+            calendar_cluster=calendar_cluster,
             sports_cluster=sports_cluster,
-            family_cluster=family_cluster,
-            party_cluster=party_cluster,
-            outdoor_cluster=outdoor_cluster,
             asset_count=asset_count,
         )
 
@@ -457,11 +457,11 @@ class DemoTimelineProjectionProvider:
         *,
         day: date,
         ordinal: int,
-        travel_cluster: bool,
+        photos_cluster: bool,
+        videos_cluster: bool,
+        music_cluster: bool,
+        calendar_cluster: bool,
         sports_cluster: bool,
-        family_cluster: bool,
-        party_cluster: bool,
-        outdoor_cluster: bool,
         asset_count: int,
     ) -> tuple[DayContextMapPoint, ...]:
         """Generate stable real-coordinate map points for a day."""
@@ -469,14 +469,14 @@ class DemoTimelineProjectionProvider:
         locations: list[_DemoLocationDefinition] = []
         base_index = (ordinal + day.year) % len(_DEMO_LOCATIONS)
 
-        if travel_cluster:
+        if photos_cluster:
             locations.append(_DEMO_LOCATIONS[base_index])
             locations.append(_DEMO_LOCATIONS[(base_index + 3) % len(_DEMO_LOCATIONS)])
-        elif sports_cluster:
+        elif videos_cluster:
             locations.append(_DEMO_LOCATIONS[(base_index + 1) % len(_DEMO_LOCATIONS)])
-        elif party_cluster:
+        elif calendar_cluster:
             locations.append(_DEMO_LOCATIONS[(base_index + 2) % len(_DEMO_LOCATIONS)])
-        elif outdoor_cluster or family_cluster:
+        elif sports_cluster or music_cluster:
             locations.append(_DEMO_LOCATIONS[(base_index + 4) % len(_DEMO_LOCATIONS)])
         elif asset_count > 0 and ordinal % 5 == 0:
             locations.append(_DEMO_LOCATIONS[(base_index + 5) % len(_DEMO_LOCATIONS)])

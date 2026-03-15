@@ -1,48 +1,38 @@
 import type { HeatmapDayRenderProjection } from "../../../projections/exploration";
-import type { ViewMode } from "../../../state/ui-state";
 
 type DayCellProps = {
   day: HeatmapDayRenderProjection;
-  viewMode: ViewMode;
+  viewColorToken: string;
   isHovered: boolean;
   onHover: (date: string | null) => void;
 };
 
-const toneByViewMode: Record<
-  ViewMode,
-  Record<
-    HeatmapDayRenderProjection["colorValue"],
-    { backgroundColor: string; opacity: number }
-  >
-> = {
-  activity: {
-    empty: { backgroundColor: "var(--pp-grid-muted)", opacity: 0.45 },
-    low: { backgroundColor: "var(--pp-grid-activity)", opacity: 0.45 },
-    medium: { backgroundColor: "var(--pp-grid-activity)", opacity: 0.7 },
-    high: { backgroundColor: "var(--pp-grid-activity)", opacity: 1 },
-  },
-  travel: {
-    empty: { backgroundColor: "var(--pp-grid-muted)", opacity: 0.45 },
-    low: { backgroundColor: "var(--pp-grid-travel)", opacity: 0.45 },
-    medium: { backgroundColor: "var(--pp-grid-travel)", opacity: 0.7 },
-    high: { backgroundColor: "var(--pp-grid-travel)", opacity: 1 },
-  },
-  sports: {
-    empty: { backgroundColor: "var(--pp-grid-muted)", opacity: 0.45 },
-    low: { backgroundColor: "var(--pp-grid-sports)", opacity: 0.45 },
-    medium: { backgroundColor: "var(--pp-grid-sports)", opacity: 0.7 },
-    high: { backgroundColor: "var(--pp-grid-sports)", opacity: 1 },
-  },
-  party_probability: {
-    empty: { backgroundColor: "var(--pp-grid-muted)", opacity: 0.45 },
-    low: { backgroundColor: "var(--pp-grid-party)", opacity: 0.45 },
-    medium: { backgroundColor: "var(--pp-grid-party)", opacity: 0.7 },
-    high: { backgroundColor: "var(--pp-grid-party)", opacity: 1 },
-  },
+const emptyTone = {
+  backgroundColor: "var(--pp-grid-muted)",
+  opacity: 0.45,
 };
 
-export function DayCell({ day, viewMode, isHovered, onHover }: DayCellProps) {
-  const tone = toneByViewMode[viewMode][day.renderColorValue];
+function getTone(
+  colorValue: HeatmapDayRenderProjection["colorValue"],
+  viewColorToken: string,
+) {
+  if (colorValue === "empty") {
+    return emptyTone;
+  }
+
+  if (colorValue === "low") {
+    return { backgroundColor: viewColorToken, opacity: 0.45 };
+  }
+
+  if (colorValue === "medium") {
+    return { backgroundColor: viewColorToken, opacity: 0.7 };
+  }
+
+  return { backgroundColor: viewColorToken, opacity: 1 };
+}
+
+export function DayCell({ day, viewColorToken, isHovered, onHover }: DayCellProps) {
+  const tone = getTone(day.renderColorValue, viewColorToken);
   const opacity = day.isDimmed ? Math.max(0.16, tone.opacity * 0.26) : tone.opacity;
   const title = [
     day.date,

@@ -14,6 +14,7 @@ import type {
   TagProjection,
   ViewModeOption,
 } from "../projections/timeline";
+import { getViewModeColorToken } from "../projections/timeline";
 import { useUiState } from "../state/UiStateContext";
 
 type HoverContextStatus = "idle" | "loading" | "ready" | "error";
@@ -65,6 +66,7 @@ export function AppShell({
   });
   const activeViewMode =
     viewModes.find((viewMode) => viewMode.id === state.viewMode) ?? null;
+  const activeViewColorToken = getViewModeColorToken(viewModes, state.viewMode);
 
   return (
     <main className="h-screen overflow-hidden">
@@ -89,7 +91,7 @@ export function AppShell({
           left={
             <LeftGridPane
               days={exploration.gridDays}
-              viewMode={state.viewMode}
+              viewColorToken={activeViewColorToken}
               hoveredDate={state.hoveredDate}
               onVisibleRangesChange={onVisibleRangesChange}
               onHover={setHoveredDate}

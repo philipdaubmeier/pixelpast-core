@@ -21,19 +21,29 @@ _VIEW_MODE_DEFINITIONS: Final[tuple[tuple[str, str, str], ...]] = (
         "Default heat intensity across all timeline sources.",
     ),
     (
-        "travel",
-        "Travel",
-        "Highlights movement-heavy and location-rich days.",
+        "photos",
+        "Photos",
+        "Highlights days with a large number of photos.",
+    ),
+    (
+        "videos",
+        "Videos",
+        "Highlights days with a large number of videos.",
+    ),
+    (
+        "music",
+        "Music",
+        "Highlights days with a large number of music tracks.",
+    ),
+    (
+        "calendar",
+        "Calendar",
+        "Highlights days with calendar events.",
     ),
     (
         "sports",
         "Sports",
-        "Reserves the grid for workout and fitness projections.",
-    ),
-    (
-        "party_probability",
-        "Social",
-        "Placeholder derived view for future social-density signals.",
+        "Highlights days with sports activities.",
     ),
 )
 

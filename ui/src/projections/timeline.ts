@@ -51,3 +51,25 @@ export type ViewModeOption = {
   label: string;
   description: string;
 };
+
+export const viewColorTokens = [
+  "var(--pp-grid-viewcolor1)",
+  "var(--pp-grid-viewcolor2)",
+  "var(--pp-grid-viewcolor3)",
+  "var(--pp-grid-viewcolor4)",
+  "var(--pp-grid-viewcolor5)",
+] as const;
+
+export function getViewModeColorToken(
+  options: ViewModeOption[],
+  viewModeId: ViewMode,
+): string {
+  if (options.length === 0) {
+    return viewColorTokens[0];
+  }
+
+  const viewIndex = options.findIndex((option) => option.id === viewModeId);
+  const normalizedIndex = viewIndex >= 0 ? viewIndex : 0;
+
+  return viewColorTokens[normalizedIndex % viewColorTokens.length];
+}

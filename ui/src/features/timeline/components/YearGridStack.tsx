@@ -1,12 +1,11 @@
 import { useEffect, useRef } from "react";
 import type { HeatmapDayRenderProjection } from "../../../projections/exploration";
 import type { DateRange } from "../../../projections/timeline";
-import type { ViewMode } from "../../../state/ui-state";
 import { YearGrid } from "./YearGrid";
 
 type YearGridStackProps = {
   days: HeatmapDayRenderProjection[];
-  viewMode: ViewMode;
+  viewColorToken: string;
   hoveredDate: string | null;
   scrollRoot: HTMLDivElement | null;
   onVisibleRangesChange: (ranges: DateRange[]) => void;
@@ -15,7 +14,7 @@ type YearGridStackProps = {
 
 export function YearGridStack({
   days,
-  viewMode,
+  viewColorToken,
   hoveredDate,
   scrollRoot,
   onVisibleRangesChange,
@@ -130,7 +129,7 @@ export function YearGridStack({
           }}
           year={year}
           days={groupedYears.get(year) ?? []}
-          viewMode={viewMode}
+          viewColorToken={viewColorToken}
           hoveredDate={hoveredDate}
           onHover={onHover}
         />

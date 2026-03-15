@@ -14,10 +14,11 @@
   --pp-ink: #1c2430;
   --pp-muted: #627081;
   --pp-grid-muted: #e7dac6;
-  --pp-grid-activity: #ca9f58;
-  --pp-grid-travel: #6ea69b;
-  --pp-grid-sports: #748fb6;
-  --pp-grid-party: #cf8268;
+  --pp-grid-viewcolor1: #ca9f58;
+  --pp-grid-viewcolor2: #6ea69b;
+  --pp-grid-viewcolor3: #748fb6;
+  --pp-grid-viewcolor4: #cf8268;
+  --pp-grid-viewcolor5: #98ab63;
 }
 
 html,

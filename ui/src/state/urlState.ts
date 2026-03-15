@@ -1,13 +1,4 @@
-import {
-  defaultUiState,
-  supportedViewModes,
-  type PersistentUiState,
-  type ViewMode,
-} from "./ui-state";
-
-function isViewMode(value: string | null): value is ViewMode {
-  return value !== null && supportedViewModes.includes(value as ViewMode);
-}
+import { defaultUiState, type PersistentUiState } from "./ui-state";
 
 function parseList(value: string | null): string[] {
   if (!value) {
@@ -29,9 +20,7 @@ export function readPersistentUiState(search: string): PersistentUiState {
   const viewModeParam = params.get("viewMode");
 
   return {
-    viewMode: isViewMode(viewModeParam)
-      ? viewModeParam
-      : defaultUiState.viewMode,
+    viewMode: viewModeParam?.trim() || defaultUiState.viewMode,
     selectedPersons: parseList(params.get("persons")),
     selectedTags: parseList(params.get("tags")),
   };

@@ -201,7 +201,7 @@ def test_exploration_grid_endpoint_accepts_server_side_filter_parameters() -> No
         with TestClient(app) as client:
             response = client.get(
                 "/api/exploration?start=2024-01-01&end=2024-01-03"
-                "&view_mode=travel"
+                "&view_mode=photos"
                 "&person_ids=1"
                 "&tag_paths=travel"
             )
@@ -572,19 +572,29 @@ def _default_view_modes_payload() -> list[dict[str, str]]:
             "description": "Default heat intensity across all timeline sources.",
         },
         {
-            "id": "travel",
-            "label": "Travel",
-            "description": "Highlights movement-heavy and location-rich days.",
+            "id": "photos",
+            "label": "Photos",
+            "description": "Highlights days with a large number of photos.",
+        },
+        {
+            "id": "videos",
+            "label": "Videos",
+            "description": "Highlights days with a large number of videos.",
+        },
+        {
+            "id": "music",
+            "label": "Music",
+            "description": "Highlights days with a large number of music tracks.",
+        },
+        {
+            "id": "calendar",
+            "label": "Calendar",
+            "description": "Highlights days with calendar events.",
         },
         {
             "id": "sports",
             "label": "Sports",
-            "description": "Reserves the grid for workout and fitness projections.",
-        },
-        {
-            "id": "party_probability",
-            "label": "Social",
-            "description": "Placeholder derived view for future social-density signals.",
+            "description": "Highlights days with sports activities.",
         },
     ]
 

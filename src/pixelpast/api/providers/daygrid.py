@@ -182,21 +182,28 @@ def get_view_mode_color_value(
     if view_mode == "activity":
         return get_activity_color_value(activity_score)
 
-    if view_mode == "travel":
+    if view_mode == "photos":
         if any(tag_path.startswith("travel/") for tag_path in tag_paths):
             return "high"
         if person_ids:
             return "medium"
         return "low" if activity_score >= 55 else "empty"
 
-    if view_mode == "sports":
+    if view_mode == "videos":
         if any(tag_path.startswith("activity/") for tag_path in tag_paths):
             return "high"
         if activity_score >= 78:
             return "medium"
         return "low" if activity_score >= 60 else "empty"
 
-    if view_mode == "party_probability":
+    if view_mode == "music":
+        if any(tag_path.startswith("people/") for tag_path in tag_paths):
+            return "high"
+        if len(person_ids) >= 2:
+            return "medium"
+        return "low" if len(person_ids) == 1 else "empty"
+
+    if view_mode == "calendar":
         if len(person_ids) >= 2:
             return "high"
         if len(person_ids) == 1:
@@ -206,6 +213,13 @@ def get_view_mode_color_value(
             if any(tag_path.startswith("people/") for tag_path in tag_paths)
             else "empty"
         )
+
+    if view_mode == "sports":
+        if any(tag_path == "activity/outdoors" for tag_path in tag_paths):
+            return "high"
+        if any(tag_path.startswith("activity/") for tag_path in tag_paths):
+            return "medium"
+        return "low" if activity_score >= 60 else "empty"
 
     return get_activity_color_value(activity_score)
 

@@ -1,18 +1,17 @@
 import { forwardRef } from "react";
 import type { HeatmapDayRenderProjection } from "../../../projections/exploration";
-import type { ViewMode } from "../../../state/ui-state";
 import { DayCell } from "./DayCell";
 
 type YearGridProps = {
   year: number;
   days: HeatmapDayRenderProjection[];
-  viewMode: ViewMode;
+  viewColorToken: string;
   hoveredDate: string | null;
   onHover: (date: string | null) => void;
 };
 
 export const YearGrid = forwardRef<HTMLElement, YearGridProps>(function YearGrid(
-  { year, days, viewMode, hoveredDate, onHover },
+  { year, days, viewColorToken, hoveredDate, onHover },
   ref,
 ) {
   const orderedDays = [...days].sort((leftDay, rightDay) =>
@@ -45,7 +44,7 @@ export const YearGrid = forwardRef<HTMLElement, YearGridProps>(function YearGrid
             <DayCell
               key={day.date}
               day={day}
-              viewMode={viewMode}
+              viewColorToken={viewColorToken}
               isHovered={hoveredDate === day.date}
               onHover={onHover}
             />

@@ -1,8 +1,4 @@
-export type ViewMode =
-  | "activity"
-  | "travel"
-  | "sports"
-  | "party_probability";
+export type ViewMode = string;
 
 export type HoveredPanelItem =
   | { kind: "person"; id: string }
@@ -43,13 +39,6 @@ export type PersistentUiState = Pick<
   PixelPastUiState,
   "viewMode" | "selectedPersons" | "selectedTags"
 >;
-
-export const supportedViewModes: ViewMode[] = [
-  "activity",
-  "travel",
-  "sports",
-  "party_probability",
-];
 
 export const defaultUiState: PixelPastUiState = {
   hoveredDate: null,
