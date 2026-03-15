@@ -12,7 +12,7 @@ from typing import Any, Callable
 
 from pixelpast.ingestion.photos.contracts import PhotoMetadataBatchProgress
 
-_EXIFTOOL_BATCH_SIZE = 85
+_EXIFTOOL_BATCH_SIZE = 50
 _EXIFTOOL_BATCH_TIMEOUT_SECONDS = 120
 _EXIFTOOL_METADATA_PARAMS = ("-n", "-a", "-G1", "-s")
 

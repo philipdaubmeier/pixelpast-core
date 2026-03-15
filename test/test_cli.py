@@ -16,8 +16,14 @@ from sqlalchemy.orm import Session
 from typer.testing import CliRunner
 
 from pixelpast.analytics.entrypoints import list_supported_derive_jobs
-from pixelpast.cli.main import UI_WORKSPACE, _build_dev_process_specs, app
+from pixelpast.cli.main import (
+    UI_WORKSPACE,
+    IngestionCliProgressReporter,
+    _build_dev_process_specs,
+    app,
+)
 from pixelpast.ingestion.entrypoints import list_supported_ingest_sources
+from pixelpast.ingestion.progress import IngestionProgressSnapshot
 from pixelpast.persistence.models import Asset, DailyAggregate, Event, ImportRun, Source
 from pixelpast.shared.logging import KeyValueFormatter
 from pixelpast.shared.runtime import create_runtime_context, initialize_database
@@ -183,6 +189,52 @@ def test_cli_ingest_photos_subprocess_completes_with_fixture_assets() -> None:
     finally:
         if database_path.exists():
             database_path.unlink()
+
+
+def test_ingestion_cli_progress_reporter_prints_metadata_batch_progress(capsys) -> None:
+    reporter = IngestionCliProgressReporter()
+
+    reporter(
+        IngestionProgressSnapshot(
+            event="progress",
+            source="photos",
+            import_run_id=1,
+            phase="metadata extraction",
+            status="running",
+            total=3,
+            completed=1,
+            inserted=0,
+            updated=0,
+            unchanged=0,
+            skipped=0,
+            failed=0,
+            missing_from_source=0,
+            heartbeat_written=False,
+        )
+    )
+    reporter(
+        IngestionProgressSnapshot(
+            event="progress",
+            source="photos",
+            import_run_id=1,
+            phase="metadata extraction",
+            status="running",
+            total=3,
+            completed=3,
+            inserted=0,
+            updated=0,
+            unchanged=0,
+            skipped=0,
+            failed=0,
+            missing_from_source=0,
+            heartbeat_written=False,
+        )
+    )
+
+    assert capsys.readouterr().out.splitlines() == [
+        "[photos] phase=metadata extraction completed=1 total=3 inserted=0 updated=0 unchanged=0 skipped=0 failed=0 missing_from_source=0",
+        "[photos] phase=metadata extraction completed=3 total=3 inserted=0 updated=0 unchanged=0 skipped=0 failed=0 missing_from_source=0",
+    ]
 
 
 def test_cli_derive_daily_aggregate_rebuilds_rows(monkeypatch) -> None:

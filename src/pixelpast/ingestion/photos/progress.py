@@ -30,6 +30,7 @@ class PhotoIngestionProgressState:
     discovered_file_count: int = 0
     analyzed_file_count: int = 0
     failed: int = 0
+    metadata_files_completed: int = 0
     metadata_batches_submitted: int = 0
     metadata_batches_completed: int = 0
     inserted: int = 0
@@ -59,6 +60,7 @@ class PhotoIngestionProgressState:
             self.metadata_batches_submitted += 1
         elif progress.event == "completed":
             self.metadata_batches_completed += 1
+            self.metadata_files_completed += progress.batch_size
 
     def mark_analysis_success(self) -> int:
         """Advance successful analysis progress and return phase completion."""
@@ -221,6 +223,13 @@ class PhotoIngestionProgressTracker:
         """Record metadata batch progress for logs and photo-specific summaries."""
 
         self._state.apply_metadata_batch(progress)
+        if progress.event == "completed":
+            self._engine.state.set_phase_progress(
+                completed=min(
+                    self._state.metadata_files_completed,
+                    self._engine.state.total or self._state.metadata_files_completed,
+                )
+            )
         logger.info(
             "photo ingest metadata batch progress",
             extra={
@@ -240,7 +249,10 @@ class PhotoIngestionProgressTracker:
         """Record one successfully analyzed file."""
 
         self._engine.state.set_phase_progress(
-            completed=self._state.mark_analysis_success(),
+            completed=max(
+                self._engine.state.completed,
+                self._state.mark_analysis_success(),
+            ),
         )
         self._emit(event="progress")
 
@@ -248,7 +260,10 @@ class PhotoIngestionProgressTracker:
         """Record one file that failed during analysis."""
 
         self._engine.state.set_phase_progress(
-            completed=self._state.mark_analysis_failure(),
+            completed=max(
+                self._engine.state.completed,
+                self._state.mark_analysis_failure(),
+            ),
         )
         logger.warning(
             "photo ingestion skipped file",

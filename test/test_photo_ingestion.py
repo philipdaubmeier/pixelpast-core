@@ -20,6 +20,7 @@ from pixelpast.ingestion.photos import (
     PhotoExifMetadata,
     PhotoImportRunCoordinator,
     PhotoIngestionService,
+    PhotoMetadataBatchProgress,
     PhotoPersonCandidate,
     build_initial_photo_import_progress_payload,
 )
@@ -694,6 +695,41 @@ def test_photo_ingestion_persists_heartbeat_updates_during_a_long_running_run() 
         shutil.rmtree(workspace_root, ignore_errors=True)
 
 
+def test_photo_ingestion_reports_metadata_phase_progress_after_completed_batches() -> None:
+    workspace_root = _create_workspace_dir(prefix="photo-metadata-progress")
+    runtime = None
+    try:
+        photos_root = workspace_root / "photos"
+        photos_root.mkdir()
+        for name in ("image-0.jpg", "image-1.jpg", "image-2.jpg"):
+            (photos_root / name).write_bytes(b"photo")
+
+        runtime = _create_runtime(
+            workspace_root=workspace_root,
+            photos_root=photos_root,
+        )
+        observed_completed: list[int] = []
+
+        def capture_progress(snapshot) -> None:
+            if snapshot.event != "progress" or snapshot.phase != "metadata extraction":
+                return
+            observed_completed.append(snapshot.completed)
+
+        result = PhotoIngestionService(
+            connector=_MetadataBatchProgressConnector()
+        ).ingest(
+            runtime=runtime,
+            progress_callback=capture_progress,
+        )
+
+        assert result.status == "completed"
+        assert observed_completed == [0, 1, 1, 3, 3, 3, 3]
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
 def test_photo_import_run_lifecycle_uses_authoritative_initial_progress_shape() -> None:
     workspace_root = _create_workspace_dir(prefix="photo-lifecycle-bootstrap")
     runtime = None
@@ -1146,6 +1182,80 @@ class _HeartbeatConnector(PhotoConnector):
 
     def extract_metadata_by_path(self, *, paths: list[Path], on_batch_progress=None):
         del on_batch_progress
+        return {path.resolve().as_posix(): {} for path in paths}
+
+    def build_asset_candidate(
+        self,
+        *,
+        root: Path,
+        path: Path,
+        metadata=None,
+    ) -> PhotoAssetCandidate:
+        del root, metadata
+        return PhotoAssetCandidate(
+            external_id=path.resolve().as_posix(),
+            media_type="photo",
+            timestamp=datetime(2024, 1, 1, 0, 0, tzinfo=UTC),
+            summary=path.name,
+            latitude=None,
+            longitude=None,
+            creator_name=None,
+            tag_paths=(),
+            asset_tag_paths=(),
+            persons=(),
+            metadata_json={"path": path.name},
+        )
+
+
+class _MetadataBatchProgressConnector(PhotoConnector):
+    """Test connector that emits deterministic metadata batch progress updates."""
+
+    def discover_paths(
+        self,
+        root: Path,
+        *,
+        on_path_discovered=None,
+    ) -> list[Path]:
+        paths = [root / "image-0.jpg", root / "image-1.jpg", root / "image-2.jpg"]
+        if on_path_discovered is not None:
+            for index, path in enumerate(paths, start=1):
+                on_path_discovered(path, index)
+        return paths
+
+    def extract_metadata_by_path(self, *, paths: list[Path], on_batch_progress=None):
+        if on_batch_progress is not None:
+            on_batch_progress(
+                PhotoMetadataBatchProgress(
+                    event="submitted",
+                    batch_index=1,
+                    batch_total=2,
+                    batch_size=1,
+                )
+            )
+            on_batch_progress(
+                PhotoMetadataBatchProgress(
+                    event="completed",
+                    batch_index=1,
+                    batch_total=2,
+                    batch_size=1,
+                )
+            )
+            on_batch_progress(
+                PhotoMetadataBatchProgress(
+                    event="submitted",
+                    batch_index=2,
+                    batch_total=2,
+                    batch_size=2,
+                )
+            )
+            on_batch_progress(
+                PhotoMetadataBatchProgress(
+                    event="completed",
+                    batch_index=2,
+                    batch_total=2,
+                    batch_size=2,
+                )
+            )
         return {path.resolve().as_posix(): {} for path in paths}
 
     def build_asset_candidate(
