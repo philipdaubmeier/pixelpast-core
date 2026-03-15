@@ -38,6 +38,10 @@ class Settings(BaseSettings):
         default=None,
         description="Root directory for the photo ingestion connector.",
     )
+    calendar_root: Path | None = Field(
+        default=None,
+        description="Root path for the calendar ingestion connector.",
+    )
     day_context_max_days: int = Field(
         default=366,
         ge=1,

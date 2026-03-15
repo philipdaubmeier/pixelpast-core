@@ -50,12 +50,18 @@ class CalendarIngestionService:
         self,
         *,
         runtime: RuntimeContext,
-        root: Path,
+        root: Path | None = None,
         progress_callback: JobProgressCallback | None = None,
     ) -> CalendarIngestionResult:
         """Run staged calendar ingestion and return the stable public result."""
 
-        resolved_root = root.expanduser().resolve()
+        configured_root = root or runtime.settings.calendar_root
+        if configured_root is None:
+            raise ValueError(
+                "Calendar ingestion requires PIXELPAST_CALENDAR_ROOT to be configured."
+            )
+
+        resolved_root = configured_root.expanduser().resolve()
         run_id = self._lifecycle.create_run(
             runtime=runtime,
             resolved_root=resolved_root,

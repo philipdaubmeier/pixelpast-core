@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 import tomllib
+import zipfile
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
@@ -193,6 +194,89 @@ def test_cli_ingest_photos_subprocess_completes_with_fixture_assets() -> None:
     finally:
         if database_path.exists():
             database_path.unlink()
+
+
+def test_cli_ingest_calendar_persists_events_from_fixture(monkeypatch) -> None:
+    database_path = _build_test_database_path("cli-calendar-ingest")
+    fixture_path = Path("test") / "assets" / "outlook_cal_export_test_fixture.ics"
+    monkeypatch.setenv("PIXELPAST_DATABASE_URL", f"sqlite:///{database_path.as_posix()}")
+    monkeypatch.setenv("PIXELPAST_CALENDAR_ROOT", str(fixture_path.resolve()))
+    get_settings.cache_clear()
+
+    try:
+        result = runner.invoke(app, ["ingest", "calendar"])
+        assert result.exit_code == 0
+        assert database_path.exists()
+        assert "[calendar] completed" in result.stdout
+        assert "inserted: 1" in result.stdout
+        assert "failed: 0" in result.stdout
+
+        engine = create_engine(f"sqlite:///{database_path.as_posix()}")
+        try:
+            with Session(engine) as session:
+                sources = list(session.execute(select(Source)).scalars())
+                events = list(session.execute(select(Event)).scalars())
+                assets = list(session.execute(select(Asset)).scalars())
+                job_runs = list(
+                    session.execute(select(JobRun).order_by(JobRun.id)).scalars()
+                )
+        finally:
+            engine.dispose()
+
+        assert len(sources) == 1
+        assert sources[0].type == "calendar"
+        assert sources[0].external_id == "{0000002E-4C28-07C7-8A98-F77FE2214668}"
+        assert len(events) == 1
+        assert events[0].type == "calendar"
+        assert events[0].title == "My Appointment"
+        assert events[0].summary == "...some long html file content..."
+        assert assets == []
+        assert len(job_runs) == 1
+        assert job_runs[0].type == "ingest"
+        assert job_runs[0].job == "calendar"
+        assert job_runs[0].status == "completed"
+        assert job_runs[0].progress_json is not None
+        assert job_runs[0].progress_json["inserted"] == 1
+        assert job_runs[0].progress_json["failed"] == 0
+    finally:
+        get_settings.cache_clear()
+        if database_path.exists():
+            database_path.unlink()
+
+
+def test_cli_ingest_calendar_subprocess_completes_with_zip_fixture() -> None:
+    database_path = _build_test_database_path("cli-calendar-ingest-zip")
+    workspace_root = Path("var") / f"cli-calendar-{uuid4().hex}"
+    fixture_path = Path("test") / "assets" / "outlook_cal_export_test_fixture.ics"
+    archive_path = workspace_root / "calendar.zip"
+    workspace_root.mkdir(parents=True, exist_ok=False)
+    with zipfile.ZipFile(archive_path, mode="w") as archive:
+        archive.writestr("nested/outlook.ics", fixture_path.read_text(encoding="utf-8"))
+
+    environment = os.environ.copy()
+    environment["PIXELPAST_DATABASE_URL"] = (
+        f"sqlite:///{database_path.resolve().as_posix()}"
+    )
+    environment["PIXELPAST_CALENDAR_ROOT"] = str(archive_path.resolve())
+
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "pixelpast.cli.main", "ingest", "calendar"],
+            cwd=Path.cwd(),
+            env=environment,
+            capture_output=True,
+            text=True,
+            timeout=20,
+            check=False,
+        )
+
+        assert result.returncode == 0, result.stderr
+        assert "[calendar] completed" in result.stdout
+        assert "inserted: 1" in result.stdout
+    finally:
+        if database_path.exists():
+            database_path.unlink()
+        shutil.rmtree(workspace_root, ignore_errors=True)
 
 
 def test_ingestion_cli_progress_reporter_tracks_phase_progress() -> None:
@@ -555,6 +639,23 @@ def test_cli_returns_invalid_argument_exit_code_for_unknown_source(
             database_path.unlink()
 
 
+def test_cli_returns_invalid_argument_exit_code_when_calendar_root_is_missing(
+    monkeypatch,
+) -> None:
+    database_path = _build_test_database_path("cli-calendar-missing-root")
+    monkeypatch.setenv("PIXELPAST_DATABASE_URL", f"sqlite:///{database_path.as_posix()}")
+    monkeypatch.delenv("PIXELPAST_CALENDAR_ROOT", raising=False)
+    get_settings.cache_clear()
+
+    try:
+        result = runner.invoke(app, ["ingest", "calendar"])
+        assert result.exit_code == 2
+    finally:
+        get_settings.cache_clear()
+        if database_path.exists():
+            database_path.unlink()
+
+
 def test_cli_returns_invalid_argument_exit_code_for_unknown_derive_job(
     monkeypatch,
 ) -> None:
@@ -606,6 +707,8 @@ def _build_test_database_path(prefix: str) -> Path:
     database_dir = Path("var")
     database_dir.mkdir(exist_ok=True)
     return database_dir / f"{prefix}-{uuid4().hex}.db"
+
+
 def _non_empty_lines(value: str) -> list[str]:
     """Return non-empty lines from captured CLI output."""
 

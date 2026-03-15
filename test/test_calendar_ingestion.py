@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import shutil
+import zipfile
 from pathlib import Path
 from uuid import uuid4
 
 from sqlalchemy import select
 
 from pixelpast.ingestion.calendar import CalendarIngestionService
-from pixelpast.persistence.models import Event, JobRun, Source
+from pixelpast.persistence.models import Asset, Event, JobRun, Source
 from pixelpast.shared.runtime import create_runtime_context, initialize_database
 from pixelpast.shared.settings import Settings
 
@@ -249,8 +250,90 @@ def test_calendar_ingestion_treats_duplicate_external_ids_as_partial_failure(
         shutil.rmtree(workspace_root, ignore_errors=True)
 
 
-def _create_runtime():
-    runtime = create_runtime_context(settings=Settings(database_url="sqlite://"))
+def test_calendar_ingestion_reads_zip_backed_fixture_without_creating_assets() -> None:
+    fixture_path = Path("test") / "assets" / "outlook_cal_export_test_fixture.ics"
+    workspace_root = _create_workspace_root()
+    archive_path = workspace_root / "calendar-export.zip"
+    runtime = _create_runtime(calendar_root=archive_path)
+    try:
+        with zipfile.ZipFile(archive_path, mode="w") as archive:
+            archive.writestr(
+                "nested/outlook.ics",
+                fixture_path.read_text(encoding="utf-8"),
+            )
+
+        result = CalendarIngestionService().ingest(runtime=runtime)
+
+        with runtime.session_factory() as session:
+            sources = list(session.execute(select(Source)).scalars())
+            events = list(session.execute(select(Event)).scalars())
+            assets = list(session.execute(select(Asset)).scalars())
+
+        assert result.status == "completed"
+        assert result.processed_document_count == 1
+        assert result.persisted_source_count == 1
+        assert result.persisted_event_count == 1
+        assert result.error_count == 0
+        assert len(sources) == 1
+        assert sources[0].type == "calendar"
+        assert sources[0].external_id == "{0000002E-4C28-07C7-8A98-F77FE2214668}"
+        assert len(events) == 1
+        assert events[0].type == "calendar"
+        assert events[0].title == "My Appointment"
+        assert events[0].summary == "...some long html file content..."
+        assert assets == []
+    finally:
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_calendar_ingestion_recurses_through_directory_ics_and_zip_inputs() -> None:
+    workspace_root = _create_workspace_root()
+    nested_root = workspace_root / "nested"
+    nested_root.mkdir()
+    direct_path = nested_root / "work.ics"
+    archive_path = workspace_root / "archives.zip"
+    runtime = _create_runtime(calendar_root=workspace_root)
+    try:
+        direct_path.write_text(
+            _build_calendar_document(
+                external_id="direct-cal",
+                name="Direct",
+                events=(("event-1", "20240102T090000Z", None, "Direct Event", None),),
+            ),
+            encoding="utf-8",
+        )
+        with zipfile.ZipFile(archive_path, mode="w") as archive:
+            archive.writestr(
+                "deep/archive.ics",
+                _build_calendar_document(
+                    external_id="zip-cal",
+                    name="Archive",
+                    events=(("event-2", "20240103T100000Z", None, "Archived Event", None),),
+                ),
+            )
+
+        result = CalendarIngestionService().ingest(runtime=runtime)
+
+        with runtime.session_factory() as session:
+            sources = list(
+                session.execute(select(Source).order_by(Source.external_id)).scalars()
+            )
+            events = list(session.execute(select(Event).order_by(Event.title)).scalars())
+
+        assert result.status == "completed"
+        assert result.processed_document_count == 2
+        assert result.persisted_source_count == 2
+        assert result.persisted_event_count == 2
+        assert [source.external_id for source in sources] == ["direct-cal", "zip-cal"]
+        assert [event.title for event in events] == ["Archived Event", "Direct Event"]
+    finally:
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def _create_runtime(*, calendar_root: Path | None = None):
+    runtime = create_runtime_context(
+        settings=Settings(database_url="sqlite://", calendar_root=calendar_root)
+    )
     initialize_database(runtime)
     return runtime
 

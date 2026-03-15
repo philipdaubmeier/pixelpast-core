@@ -3,6 +3,10 @@
 import logging
 from collections.abc import Callable
 
+from pixelpast.ingestion.calendar.service import (
+    CalendarIngestionResult,
+    CalendarIngestionService,
+)
 from pixelpast.ingestion.photos.service import (
     PhotoIngestionResult,
     PhotoIngestionService,
@@ -12,7 +16,7 @@ from pixelpast.shared.runtime import RuntimeContext
 
 logger = logging.getLogger(__name__)
 
-_SUPPORTED_SOURCES = frozenset({"photos"})
+_SUPPORTED_SOURCES = frozenset({"calendar", "photos"})
 
 
 def list_supported_ingest_sources() -> tuple[str, ...]:
@@ -26,7 +30,7 @@ def run_ingest_source(
     source: str,
     runtime: RuntimeContext,
     progress_callback: Callable[[JobProgressSnapshot], None] | None = None,
-) -> PhotoIngestionResult:
+) -> PhotoIngestionResult | CalendarIngestionResult:
     """Run an ingestion entrypoint for a configured source."""
 
     if source not in _SUPPORTED_SOURCES:
@@ -60,6 +64,26 @@ def run_ingest_source(
                 "missing_from_source_count": result.missing_from_source_count,
                 "metadata_batches_submitted": result.metadata_batches_submitted,
                 "metadata_batches_completed": result.metadata_batches_completed,
+            },
+        )
+        return result
+
+    if source == "calendar":
+        result = CalendarIngestionService().ingest(
+            runtime=runtime,
+            progress_callback=progress_callback,
+        )
+        logger.info(
+            "ingest completed",
+            extra={
+                "source": source,
+                "database_url": runtime.settings.database_url,
+                "processed_document_count": result.processed_document_count,
+                "persisted_source_count": result.persisted_source_count,
+                "persisted_event_count": result.persisted_event_count,
+                "error_count": result.error_count,
+                "status": result.status,
+                "run_id": result.run_id,
             },
         )
         return result
