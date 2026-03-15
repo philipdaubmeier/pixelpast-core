@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import asdict
 from datetime import UTC, date, datetime, time
 from html import unescape
@@ -97,7 +98,12 @@ def build_calendar_event_candidates(
     return tuple(
         CalendarEventCandidate(
             source_external_id=document.calendar_external_id,
-            external_event_id=event.uid,
+            external_event_id=_build_external_event_id(
+                uid=event.uid,
+                starts_at=event.starts_at.astimezone(UTC),
+                ends_at=event.ends_at.astimezone(UTC) if event.ends_at is not None else None,
+                summary=event.summary,
+            ),
             type="calendar",
             timestamp_start=event.starts_at.astimezone(UTC),
             timestamp_end=(
@@ -290,6 +296,28 @@ def _html_to_plaintext(value: str) -> str:
     parser.feed(value)
     parser.close()
     return parser.get_text()
+
+
+def _build_external_event_id(
+    *,
+    uid: str | None,
+    starts_at: datetime,
+    ends_at: datetime | None,
+    summary: str | None,
+) -> str | None:
+    if uid is None:
+        return None
+
+    normalized_summary = " ".join((summary or "").split())
+    digest = hashlib.md5(usedforsecurity=False)
+    digest.update(uid.encode("utf-8"))
+    digest.update(b"\x1f")
+    digest.update(starts_at.isoformat().encode("utf-8"))
+    digest.update(b"\x1f")
+    digest.update((ends_at.isoformat() if ends_at is not None else "").encode("utf-8"))
+    digest.update(b"\x1f")
+    digest.update(normalized_summary.encode("utf-8"))
+    return digest.hexdigest()
 
 
 __all__ = [

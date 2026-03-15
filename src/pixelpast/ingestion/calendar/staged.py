@@ -49,10 +49,12 @@ class CalendarIngestionPersistenceScope:
         *,
         resolved_root: Path,
         discovered_units: Sequence[CalendarDocumentDescriptor],
+        candidates: Sequence[CalendarDocumentCandidate],
     ) -> int:
-        return self._lifecycle.count_missing_from_source(
-            resolved_root=resolved_root,
-            discovered_documents=list(discovered_units),
+        del resolved_root, discovered_units
+        return sum(
+            self._persister.count_missing_from_source(candidate=candidate)
+            for candidate in candidates
         )
 
     def persist(self, *, candidate: CalendarDocumentCandidate) -> str:

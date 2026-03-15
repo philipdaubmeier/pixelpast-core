@@ -142,8 +142,9 @@ class _FakePersistenceScope:
         *,
         resolved_root: Path,
         discovered_units,
+        candidates,
     ) -> int:
-        del resolved_root, discovered_units
+        del resolved_root, discovered_units, candidates
         self.count_calls += 1
         return 0
 

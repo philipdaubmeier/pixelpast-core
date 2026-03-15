@@ -63,8 +63,18 @@ class CalendarIngestionProgressState:
         return self.analysis_completed_count
 
     def mark_persisted(self, *, outcome: str) -> None:
-        normalized_outcome, event_count = _parse_document_outcome(outcome)
+        normalized_outcome, event_count, detailed_counts = _parse_document_outcome(
+            outcome
+        )
         self.persisted_document_count += 1
+        if detailed_counts is not None:
+            self.inserted += detailed_counts["inserted"]
+            self.updated += detailed_counts["updated"]
+            self.unchanged += detailed_counts["unchanged"]
+            self.skipped += detailed_counts["skipped"]
+            self.persisted_event_count += detailed_counts["persisted_event_count"]
+            return
+
         self.persisted_event_count += event_count
         if normalized_outcome == "inserted":
             self.inserted += event_count
@@ -297,11 +307,35 @@ class CalendarIngestionProgressTracker:
         )
 
 
-def _parse_document_outcome(outcome: str) -> tuple[str, int]:
+def _parse_document_outcome(
+    outcome: str,
+) -> tuple[str, int, dict[str, int] | None]:
+    if "=" in outcome and ";" in outcome:
+        detailed_counts = {
+            key: int(value)
+            for key, value in (
+                part.split("=", 1) for part in outcome.split(";") if part.strip()
+            )
+        }
+        return (
+            "detailed",
+            detailed_counts.get("persisted_event_count", 0),
+            {
+                "inserted": detailed_counts.get("inserted", 0),
+                "updated": detailed_counts.get("updated", 0),
+                "unchanged": detailed_counts.get("unchanged", 0),
+                "skipped": detailed_counts.get("skipped", 0),
+                "persisted_event_count": detailed_counts.get(
+                    "persisted_event_count",
+                    0,
+                ),
+            },
+        )
+
     normalized_outcome, separator, event_count = outcome.partition(":")
     if not separator:
-        return normalized_outcome, 0
-    return normalized_outcome, int(event_count)
+        return normalized_outcome, 0, None
+    return normalized_outcome, int(event_count), None
 
 
 __all__ = [

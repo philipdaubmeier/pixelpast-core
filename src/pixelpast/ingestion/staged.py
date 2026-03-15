@@ -63,6 +63,7 @@ class StagedIngestionPersistenceScope(Protocol[DiscoveredUnitT, CandidateT]):
         *,
         resolved_root: Path,
         discovered_units: Sequence[DiscoveredUnitT],
+        candidates: Sequence[CandidateT],
     ) -> int: ...
 
     def persist(self, *, candidate: CandidateT) -> str: ...
@@ -181,14 +182,6 @@ class StagedIngestionRunner(
             )
             progress.finish_phase()
 
-            missing_from_source_count = persistence.count_missing_from_source(
-                resolved_root=resolved_root,
-                discovered_units=discovered_units,
-            )
-            progress.mark_missing_from_source(
-                missing_from_source_count=missing_from_source_count
-            )
-
             progress.start_phase(
                 phase=self._phases.fetch_transform,
                 total=len(discovered_units),
@@ -204,6 +197,15 @@ class StagedIngestionRunner(
                 progress=progress,
             )
             progress.finish_phase()
+
+            missing_from_source_count = persistence.count_missing_from_source(
+                resolved_root=resolved_root,
+                discovered_units=discovered_units,
+                candidates=candidates,
+            )
+            progress.mark_missing_from_source(
+                missing_from_source_count=missing_from_source_count
+            )
 
             progress.start_phase(
                 phase=self._phases.persistence,

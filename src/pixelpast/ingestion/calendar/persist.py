@@ -33,6 +33,7 @@ class CalendarDocumentPersister:
             source_id=source_result.source.id,
             events=[
                 {
+                    "external_event_id": event.external_event_id,
                     "type": event.type,
                     "timestamp_start": event.timestamp_start,
                     "timestamp_end": event.timestamp_end,
@@ -40,7 +41,10 @@ class CalendarDocumentPersister:
                     "summary": event.summary,
                     "latitude": None,
                     "longitude": None,
-                    "raw_payload": event.raw_payload or {},
+                    "raw_payload": {
+                        **(event.raw_payload or {}),
+                        "external_event_id": event.external_event_id,
+                    },
                     "derived_payload": event.derived_payload or {},
                 }
                 for event in candidate.events
@@ -50,22 +54,60 @@ class CalendarDocumentPersister:
         self.persisted_event_count += event_result.persisted_event_count
         return _compose_document_outcome(
             source_status=source_result.status,
-            event_status=event_result.status,
-            event_count=event_result.persisted_event_count,
+            event_result=event_result,
+        )
+
+    def count_missing_from_source(self, *, candidate: CalendarDocumentCandidate) -> int:
+        """Preview source-scoped missing events for one calendar document."""
+
+        source_external_id = _require_source_external_id(candidate)
+        source = self._source_repository.get_by_external_id(external_id=source_external_id)
+        if source is None:
+            return 0
+        return self._event_repository.count_missing_from_source(
+            source_id=source.id,
+            events=[
+                {
+                    "external_event_id": event.external_event_id,
+                    "type": event.type,
+                    "timestamp_start": event.timestamp_start,
+                    "timestamp_end": event.timestamp_end,
+                    "title": event.title,
+                    "summary": event.summary,
+                    "latitude": None,
+                    "longitude": None,
+                    "raw_payload": {
+                        **(event.raw_payload or {}),
+                        "external_event_id": event.external_event_id,
+                    },
+                    "derived_payload": event.derived_payload or {},
+                }
+                for event in candidate.events
+            ],
         )
 
 
 def _compose_document_outcome(
     *,
     source_status: str,
-    event_status: str,
-    event_count: int,
+    event_result,
 ) -> str:
-    if source_status == "inserted":
-        return f"inserted:{event_count}"
-    if source_status == "updated" or event_status in {"inserted", "updated"}:
-        return f"updated:{event_count}"
-    return f"unchanged:{event_count}"
+    del source_status
+    inserted_event_count = event_result.inserted_event_count
+    updated_event_count = event_result.updated_event_count
+    unchanged_event_count = event_result.unchanged_event_count
+
+    return (
+        "inserted="
+        f"{inserted_event_count};"
+        "updated="
+        f"{updated_event_count};"
+        "unchanged="
+        f"{unchanged_event_count};"
+        "skipped=0;"
+        "persisted_event_count="
+        f"{event_result.persisted_event_count}"
+    )
 
 
 def _require_source_external_id(candidate: CalendarDocumentCandidate) -> str:

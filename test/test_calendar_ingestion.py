@@ -183,12 +183,262 @@ def test_calendar_ingestion_replaces_events_for_existing_source_when_document_ch
         assert latest_job_run.progress_json == {
             "total": 1,
             "completed": 1,
-            "inserted": 0,
-            "updated": 2,
+            "inserted": 2,
+            "updated": 0,
             "unchanged": 0,
             "skipped": 0,
             "failed": 0,
-            "missing_from_source": 0,
+            "missing_from_source": 1,
+            "persisted_event_count": 2,
+        }
+    finally:
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_calendar_ingestion_deletes_events_missing_from_existing_source() -> None:
+    runtime = _create_runtime()
+    workspace_root = _create_workspace_root()
+    try:
+        calendar_path = workspace_root / "work.ics"
+        calendar_path.write_text(
+            _build_calendar_document(
+                external_id="cal-123",
+                name="Work",
+                events=(
+                    (
+                        "event-1",
+                        "20240102T091500Z",
+                        "20240102T101500Z",
+                        "Standup",
+                        "Planning",
+                    ),
+                    (
+                        "event-2",
+                        "20240103T120000Z",
+                        "20240103T130000Z",
+                        "Lunch",
+                        "Food",
+                    ),
+                ),
+            ),
+            encoding="utf-8",
+        )
+
+        CalendarIngestionService().ingest(runtime=runtime, root=calendar_path)
+        with runtime.session_factory() as session:
+            original_events = list(
+                session.execute(
+                    select(Event).order_by(Event.timestamp_start, Event.id)
+                ).scalars()
+            )
+
+        calendar_path.write_text(
+            _build_calendar_document(
+                external_id="cal-123",
+                name="Work",
+                events=(
+                    (
+                        "event-1",
+                        "20240102T091500Z",
+                        "20240102T101500Z",
+                        "Standup",
+                        "Planning",
+                    ),
+                ),
+            ),
+            encoding="utf-8",
+        )
+
+        result = CalendarIngestionService().ingest(runtime=runtime, root=calendar_path)
+
+        with runtime.session_factory() as session:
+            events = list(
+                session.execute(
+                    select(Event).order_by(Event.timestamp_start, Event.id)
+                ).scalars()
+            )
+            latest_job_run = session.execute(
+                select(JobRun).order_by(JobRun.id.desc())
+            ).scalars().first()
+
+        assert result.status == "completed"
+        assert result.persisted_event_count == 1
+        assert [event.title for event in events] == ["Standup"]
+        assert [event.id for event in events] == [original_events[0].id]
+        assert latest_job_run is not None
+        assert latest_job_run.progress_json == {
+            "total": 1,
+            "completed": 1,
+            "inserted": 0,
+            "updated": 0,
+            "unchanged": 1,
+            "skipped": 0,
+            "failed": 0,
+            "missing_from_source": 1,
+            "persisted_event_count": 1,
+        }
+    finally:
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_calendar_ingestion_reconciles_missing_events_when_uids_repeat() -> None:
+    runtime = _create_runtime()
+    workspace_root = _create_workspace_root()
+    try:
+        calendar_path = workspace_root / "series.ics"
+        calendar_path.write_text(
+            _build_calendar_document(
+                external_id="cal-recurring",
+                name="Series",
+                events=(
+                    (
+                        "series-1",
+                        "20240102T091500Z",
+                        "20240102T101500Z",
+                        "Occurrence One",
+                        None,
+                    ),
+                    (
+                        "series-1",
+                        "20240103T091500Z",
+                        "20240103T101500Z",
+                        "Occurrence Two",
+                        None,
+                    ),
+                ),
+            ),
+            encoding="utf-8",
+        )
+
+        CalendarIngestionService().ingest(runtime=runtime, root=calendar_path)
+
+        calendar_path.write_text(
+            _build_calendar_document(
+                external_id="cal-recurring",
+                name="Series",
+                events=(
+                    (
+                        "series-1",
+                        "20240102T091500Z",
+                        "20240102T101500Z",
+                        "Occurrence One",
+                        None,
+                    ),
+                ),
+            ),
+            encoding="utf-8",
+        )
+
+        CalendarIngestionService().ingest(runtime=runtime, root=calendar_path)
+
+        with runtime.session_factory() as session:
+            events = list(
+                session.execute(
+                    select(Event).order_by(Event.timestamp_start, Event.id)
+                ).scalars()
+            )
+            latest_job_run = session.execute(
+                select(JobRun).order_by(JobRun.id.desc())
+            ).scalars().first()
+
+        assert [event.title for event in events] == ["Occurrence One"]
+        assert latest_job_run is not None
+        assert latest_job_run.progress_json == {
+            "total": 1,
+            "completed": 1,
+            "inserted": 0,
+            "updated": 0,
+            "unchanged": 1,
+            "skipped": 0,
+            "failed": 0,
+            "missing_from_source": 1,
+            "persisted_event_count": 1,
+        }
+    finally:
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_calendar_ingestion_updates_event_when_summary_changes_for_repeated_uid() -> None:
+    runtime = _create_runtime()
+    workspace_root = _create_workspace_root()
+    try:
+        calendar_path = workspace_root / "series-update.ics"
+        calendar_path.write_text(
+            _build_calendar_document(
+                external_id="cal-repeated-update",
+                name="Series",
+                events=(
+                    (
+                        "series-1",
+                        "20240102T091500Z",
+                        "20240102T101500Z",
+                        "Occurrence One",
+                        None,
+                    ),
+                    (
+                        "series-1",
+                        "20240103T091500Z",
+                        "20240103T101500Z",
+                        "Occurrence Two",
+                        None,
+                    ),
+                ),
+            ),
+            encoding="utf-8",
+        )
+
+        CalendarIngestionService().ingest(runtime=runtime, root=calendar_path)
+
+        calendar_path.write_text(
+            _build_calendar_document(
+                external_id="cal-repeated-update",
+                name="Series",
+                events=(
+                    (
+                        "series-1",
+                        "20240102T091500Z",
+                        "20240102T101500Z",
+                        "Occurrence One Renamed",
+                        None,
+                    ),
+                    (
+                        "series-1",
+                        "20240103T091500Z",
+                        "20240103T101500Z",
+                        "Occurrence Two",
+                        None,
+                    ),
+                ),
+            ),
+            encoding="utf-8",
+        )
+
+        CalendarIngestionService().ingest(runtime=runtime, root=calendar_path)
+
+        with runtime.session_factory() as session:
+            events = list(
+                session.execute(
+                    select(Event).order_by(Event.timestamp_start, Event.id)
+                ).scalars()
+            )
+            latest_job_run = session.execute(
+                select(JobRun).order_by(JobRun.id.desc())
+            ).scalars().first()
+
+        assert [event.title for event in events] == [
+            "Occurrence One Renamed",
+            "Occurrence Two",
+        ]
+        assert latest_job_run is not None
+        assert latest_job_run.progress_json == {
+            "total": 1,
+            "completed": 1,
+            "inserted": 1,
+            "updated": 0,
+            "unchanged": 1,
+            "skipped": 0,
+            "failed": 0,
+            "missing_from_source": 1,
             "persisted_event_count": 2,
         }
     finally:
@@ -326,6 +576,114 @@ def test_calendar_ingestion_recurses_through_directory_ics_and_zip_inputs() -> N
         assert result.persisted_event_count == 2
         assert [source.external_id for source in sources] == ["direct-cal", "zip-cal"]
         assert [event.title for event in events] == ["Archived Event", "Direct Event"]
+    finally:
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_calendar_ingestion_fixture_reports_unchanged_updated_and_missing_from_source(
+) -> None:
+    runtime = _create_runtime()
+    workspace_root = _create_workspace_root()
+    before_fixture_path = (
+        Path("test") / "assets" / "outlook_cal_fixture_update_remove_before.ics"
+    )
+    after_fixture_path = (
+        Path("test") / "assets" / "outlook_cal_fixture_update_remove_after.ics"
+    )
+    calendar_path = workspace_root / "fixture.ics"
+    try:
+        calendar_path.write_text(
+            before_fixture_path.read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+
+        first_result = CalendarIngestionService().ingest(
+            runtime=runtime,
+            root=calendar_path,
+        )
+
+        calendar_path.write_text(
+            after_fixture_path.read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+
+        second_result = CalendarIngestionService().ingest(
+            runtime=runtime,
+            root=calendar_path,
+        )
+
+        with runtime.session_factory() as session:
+            job_runs = list(
+                session.execute(select(JobRun).order_by(JobRun.id)).scalars()
+            )
+
+        assert first_result.status == "completed"
+        assert second_result.status == "completed"
+        assert len(job_runs) == 2
+        assert job_runs[1].progress_json == {
+            "total": 1,
+            "completed": 1,
+            "inserted": 1,
+            "updated": 0,
+            "unchanged": 1,
+            "skipped": 0,
+            "failed": 0,
+            "missing_from_source": 2,
+            "persisted_event_count": 2,
+        }
+    finally:
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_calendar_ingestion_real_world_fixture_reports_only_missing_from_source(
+) -> None:
+    runtime = _create_runtime()
+    workspace_root = _create_workspace_root()
+    before_fixture_path = Path("test") / "assets" / "outlook_cal_fixture_double_uid_start_end_before.ics"
+    after_fixture_path = Path("test") / "assets" / "outlook_cal_fixture_double_uid_start_end_after.ics"
+    calendar_path = workspace_root / "real-world.ics"
+    try:
+        calendar_path.write_text(
+            before_fixture_path.read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+
+        first_result = CalendarIngestionService().ingest(
+            runtime=runtime,
+            root=calendar_path,
+        )
+
+        calendar_path.write_text(
+            after_fixture_path.read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+
+        second_result = CalendarIngestionService().ingest(
+            runtime=runtime,
+            root=calendar_path,
+        )
+
+        with runtime.session_factory() as session:
+            job_runs = list(
+                session.execute(select(JobRun).order_by(JobRun.id)).scalars()
+            )
+            event_count = session.execute(select(Event)).scalars().all()
+
+        assert first_result.status == "completed"
+        assert second_result.status == "completed"
+        assert len(job_runs) == 2
+        assert len(event_count) == 4
+        assert job_runs[1].progress_json == {
+            "total": 1,
+            "completed": 1,
+            "inserted": 0,
+            "updated": 0,
+            "unchanged": 4,
+            "skipped": 0,
+            "failed": 0,
+            "missing_from_source": 1,
+            "persisted_event_count": 4,
+        }
     finally:
         shutil.rmtree(workspace_root, ignore_errors=True)
 

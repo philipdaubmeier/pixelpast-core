@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable, Sequence
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any
 
@@ -417,11 +417,31 @@ class AssetRepository:
 class EventReplaceResult:
     """Represents the source-scoped replacement outcome for one event set."""
 
-    __slots__ = ("persisted_event_count", "status")
+    __slots__ = (
+        "persisted_event_count",
+        "status",
+        "inserted_event_count",
+        "updated_event_count",
+        "unchanged_event_count",
+        "missing_from_source_count",
+    )
 
-    def __init__(self, *, persisted_event_count: int, status: str) -> None:
+    def __init__(
+        self,
+        *,
+        persisted_event_count: int,
+        status: str,
+        inserted_event_count: int = 0,
+        updated_event_count: int = 0,
+        unchanged_event_count: int = 0,
+        missing_from_source_count: int = 0,
+    ) -> None:
         self.persisted_event_count = persisted_event_count
         self.status = status
+        self.inserted_event_count = inserted_event_count
+        self.updated_event_count = updated_event_count
+        self.unchanged_event_count = unchanged_event_count
+        self.missing_from_source_count = missing_from_source_count
 
 
 class EventRepository:
@@ -446,7 +466,7 @@ class EventRepository:
         source_id: int,
         events: Sequence[dict[str, Any]],
     ) -> EventReplaceResult:
-        """Replace one source's events unless the canonical payload is unchanged."""
+        """Reconcile one source's events against the next canonical payload."""
 
         persisted_events = self.list_by_source_id(source_id=source_id)
         existing_signatures = sorted(
@@ -460,30 +480,101 @@ class EventRepository:
             return EventReplaceResult(
                 persisted_event_count=len(events),
                 status="unchanged",
+                unchanged_event_count=len(events),
             )
 
+        existing_by_identity = _build_unique_event_identity_map_from_models(
+            persisted_events
+        )
+        next_by_identity = _build_unique_event_identity_map_from_payloads(events)
+        if existing_by_identity is None or next_by_identity is None:
+            return self._replace_for_source_fallback(
+                source_id=source_id,
+                persisted_events=persisted_events,
+                events=events,
+            )
+
+        inserted_event_count = 0
+        updated_event_count = 0
+        unchanged_event_count = 0
+        missing_from_source_count = 0
+
+        existing_identities = set(existing_by_identity)
+        next_identities = set(next_by_identity)
+
+        for identity in sorted(existing_identities - next_identities):
+            self._session.delete(existing_by_identity[identity])
+            missing_from_source_count += 1
+
+        for identity in sorted(next_identities - existing_identities):
+            self._session.add(
+                _build_event_model(source_id=source_id, event=next_by_identity[identity])
+            )
+            inserted_event_count += 1
+
+        for identity in sorted(existing_identities & next_identities):
+            persisted_event = existing_by_identity[identity]
+            next_event = next_by_identity[identity]
+            existing_signature = _serialize_event_signature_from_model(persisted_event)
+            next_signature = _serialize_event_signature_from_payload(
+                source_id=source_id,
+                event=next_event,
+            )
+            if existing_signature == next_signature:
+                unchanged_event_count += 1
+                continue
+            _apply_event_payload_to_model(event_model=persisted_event, event=next_event)
+            updated_event_count += 1
+
+        self._session.flush()
+        return EventReplaceResult(
+            persisted_event_count=len(events),
+            status=_resolve_event_replace_status(
+                inserted_event_count=inserted_event_count,
+                updated_event_count=updated_event_count,
+                unchanged_event_count=unchanged_event_count,
+            ),
+            inserted_event_count=inserted_event_count,
+            updated_event_count=updated_event_count,
+            unchanged_event_count=unchanged_event_count,
+            missing_from_source_count=missing_from_source_count,
+        )
+
+    def count_missing_from_source(
+        self,
+        *,
+        source_id: int,
+        events: Sequence[dict[str, Any]],
+    ) -> int:
+        """Return how many persisted source events are absent from the next payload."""
+
+        existing_by_identity = _build_unique_event_identity_map_from_models(
+            self.list_by_source_id(source_id=source_id)
+        )
+        next_by_identity = _build_unique_event_identity_map_from_payloads(events)
+        if existing_by_identity is None or next_by_identity is None:
+            return 0
+        return len(set(existing_by_identity) - set(next_by_identity))
+
+    def _replace_for_source_fallback(
+        self,
+        *,
+        source_id: int,
+        persisted_events: Sequence[Event],
+        events: Sequence[dict[str, Any]],
+    ) -> EventReplaceResult:
         self._session.execute(delete(Event).where(Event.source_id == source_id))
         self._session.add_all(
-            [
-                Event(
-                    source_id=source_id,
-                    type=str(event["type"]),
-                    timestamp_start=event["timestamp_start"],
-                    timestamp_end=event["timestamp_end"],
-                    title=str(event.get("title") or ""),
-                    summary=event["summary"],
-                    latitude=event["latitude"],
-                    longitude=event["longitude"],
-                    raw_payload=dict(event["raw_payload"]),
-                    derived_payload=dict(event["derived_payload"]),
-                )
-                for event in events
-            ]
+            [_build_event_model(source_id=source_id, event=event) for event in events]
         )
         self._session.flush()
         return EventReplaceResult(
             persisted_event_count=len(events),
             status="inserted" if not persisted_events else "updated",
+            inserted_event_count=(len(events) if not persisted_events else 0),
+            updated_event_count=(len(events) if persisted_events else 0),
+            unchanged_event_count=0,
+            missing_from_source_count=0,
         )
 
 class TagRepository:
@@ -628,3 +719,128 @@ def _serialize_event_signature_from_payload(
         sort_keys=True,
         separators=(",", ":"),
     )
+
+
+def _build_event_model(*, source_id: int, event: dict[str, Any]) -> Event:
+    return Event(
+        source_id=source_id,
+        type=str(event["type"]),
+        timestamp_start=event["timestamp_start"],
+        timestamp_end=event["timestamp_end"],
+        title=str(event.get("title") or ""),
+        summary=event["summary"],
+        latitude=event["latitude"],
+        longitude=event["longitude"],
+        raw_payload=dict(event["raw_payload"]),
+        derived_payload=dict(event["derived_payload"]),
+    )
+
+
+def _apply_event_payload_to_model(
+    *,
+    event_model: Event,
+    event: dict[str, Any],
+) -> None:
+    event_model.type = str(event["type"])
+    event_model.timestamp_start = event["timestamp_start"]
+    event_model.timestamp_end = event["timestamp_end"]
+    event_model.title = str(event.get("title") or "")
+    event_model.summary = event["summary"]
+    event_model.latitude = event["latitude"]
+    event_model.longitude = event["longitude"]
+    event_model.raw_payload = dict(event["raw_payload"])
+    event_model.derived_payload = dict(event["derived_payload"])
+
+
+def _build_unique_event_identity_map_from_models(
+    events: Sequence[Event],
+) -> dict[str, Event] | None:
+    identities = [_event_identity_from_model(event) for event in events]
+    if any(identity is None for identity in identities):
+        return None
+    keys = [identity for identity in identities if identity is not None]
+    if len(keys) != len(set(keys)):
+        return None
+    return {
+        identity: event
+        for identity, event in zip(keys, events, strict=True)
+    }
+
+
+def _build_unique_event_identity_map_from_payloads(
+    events: Sequence[dict[str, Any]],
+) -> dict[str, dict[str, Any]] | None:
+    identities = [_event_identity_from_payload(event) for event in events]
+    if any(identity is None for identity in identities):
+        return None
+    keys = [identity for identity in identities if identity is not None]
+    if len(keys) != len(set(keys)):
+        return None
+    return {
+        identity: event
+        for identity, event in zip(keys, events, strict=True)
+    }
+
+
+def _event_identity_from_model(event: Event) -> str | None:
+    raw_payload = event.raw_payload if isinstance(event.raw_payload, dict) else {}
+    external_event_id = raw_payload.get("external_event_id")
+    if isinstance(external_event_id, str) and external_event_id:
+        return f"external_event_id:{external_event_id}"
+    uid = _event_uid_from_model(event)
+    if uid is None:
+        return None
+    timestamp_end = (
+        event.timestamp_end.isoformat() if event.timestamp_end is not None else "none"
+    )
+    return (
+        f"uid:{uid}|dtstart:{event.timestamp_start.isoformat()}|dtend:{timestamp_end}"
+    )
+
+
+def _event_identity_from_payload(event: dict[str, Any]) -> str | None:
+    external_event_id = event.get("external_event_id")
+    if isinstance(external_event_id, str) and external_event_id:
+        return f"external_event_id:{external_event_id}"
+    uid = _event_uid_from_payload(event)
+    if uid is None:
+        return None
+    timestamp_end = event["timestamp_end"]
+    return (
+        "uid:"
+        f"{uid}|dtstart:{event['timestamp_start'].isoformat()}|dtend:"
+        f"{timestamp_end.isoformat() if timestamp_end is not None else 'none'}"
+    )
+
+
+def _event_uid_from_model(event: Event) -> str | None:
+    if isinstance(event.raw_payload, dict):
+        uid = event.raw_payload.get("uid")
+        if isinstance(uid, str) and uid:
+            return uid
+    return None
+
+
+def _event_uid_from_payload(event: dict[str, Any]) -> str | None:
+    external_event_id = event.get("external_event_id")
+    if isinstance(external_event_id, str) and external_event_id:
+        return external_event_id
+    raw_payload = event.get("raw_payload")
+    if isinstance(raw_payload, dict):
+        uid = raw_payload.get("uid")
+        if isinstance(uid, str) and uid:
+            return uid
+    return None
+
+
+def _resolve_event_replace_status(
+    *,
+    inserted_event_count: int,
+    updated_event_count: int,
+    unchanged_event_count: int,
+) -> str:
+    if inserted_event_count and not updated_event_count and not unchanged_event_count:
+        return "inserted"
+    if inserted_event_count or updated_event_count:
+        return "updated"
+    return "unchanged"

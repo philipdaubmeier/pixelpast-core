@@ -338,6 +338,94 @@ def test_cli_ingest_calendar_reports_event_counts_in_terminal_summary(monkeypatc
         shutil.rmtree(workspace_root, ignore_errors=True)
 
 
+def test_cli_ingest_calendar_reports_missing_from_source_for_removed_events(
+    monkeypatch,
+) -> None:
+    database_path = _build_test_database_path("cli-calendar-missing-from-source")
+    workspace_root = Path("var") / f"cli-calendar-missing-{uuid4().hex}"
+    calendar_path = workspace_root / "work.ics"
+    workspace_root.mkdir(parents=True, exist_ok=False)
+    monkeypatch.setenv("PIXELPAST_DATABASE_URL", f"sqlite:///{database_path.as_posix()}")
+    monkeypatch.setenv("PIXELPAST_CALENDAR_ROOT", str(calendar_path.resolve()))
+    get_settings.cache_clear()
+
+    try:
+        calendar_path.write_text(
+            "\n".join(
+                [
+                    "BEGIN:VCALENDAR",
+                    "VERSION:2.0",
+                    "X-WR-CALNAME:Work",
+                    "X-WR-RELCALID:cli-calendar-delete-sync",
+                    "BEGIN:VEVENT",
+                    "UID:event-1",
+                    "DTSTART:20240102T090000Z",
+                    "SUMMARY:Event One",
+                    "END:VEVENT",
+                    "BEGIN:VEVENT",
+                    "UID:event-2",
+                    "DTSTART:20240103T090000Z",
+                    "SUMMARY:Event Two",
+                    "END:VEVENT",
+                    "END:VCALENDAR",
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        first_result = runner.invoke(app, ["ingest", "calendar"])
+        assert first_result.exit_code == 0
+
+        calendar_path.write_text(
+            "\n".join(
+                [
+                    "BEGIN:VCALENDAR",
+                    "VERSION:2.0",
+                    "X-WR-CALNAME:Work",
+                    "X-WR-RELCALID:cli-calendar-delete-sync",
+                    "BEGIN:VEVENT",
+                    "UID:event-1",
+                    "DTSTART:20240102T090000Z",
+                    "SUMMARY:Event One",
+                    "END:VEVENT",
+                    "END:VCALENDAR",
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        result = runner.invoke(app, ["ingest", "calendar"])
+
+        assert result.exit_code == 0
+        assert "[calendar] completed" in result.stdout
+        assert "unchanged: 1" in result.stdout
+        assert "missing_from_source: 1" in result.stdout
+
+        engine = create_engine(f"sqlite:///{database_path.as_posix()}")
+        try:
+            with Session(engine) as session:
+                events = list(
+                    session.execute(select(Event).order_by(Event.timestamp_start)).scalars()
+                )
+                job_run = session.execute(
+                    select(JobRun).order_by(JobRun.id.desc())
+                ).scalars().first()
+        finally:
+            engine.dispose()
+
+        assert [event.title for event in events] == ["Event One"]
+        assert job_run is not None
+        assert job_run.progress_json is not None
+        assert job_run.progress_json["unchanged"] == 1
+        assert job_run.progress_json["missing_from_source"] == 1
+    finally:
+        get_settings.cache_clear()
+        if database_path.exists():
+            database_path.unlink()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
 def test_ingestion_cli_progress_reporter_tracks_phase_progress() -> None:
     stream = io.StringIO()
     reporter = IngestionCliProgressReporter(stream=stream)

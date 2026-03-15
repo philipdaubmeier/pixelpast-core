@@ -47,9 +47,11 @@ class PhotoIngestionPersistenceScope:
         *,
         resolved_root: Path,
         discovered_units: Sequence[Path],
+        candidates: Sequence[PhotoAssetCandidate],
     ) -> int:
         """Count persisted photo assets missing from the current discovery set."""
 
+        del candidates
         return self._lifecycle.count_missing_from_source(
             asset_repository=self._asset_repository,
             resolved_root=resolved_root,
