@@ -17,6 +17,7 @@ class ExplorationGridDay(BaseModel):
     """Minimal derived activity payload for one calendar day."""
 
     date: date
+    count: int
     activity_score: int
     color_value: ColorValue
     has_data: bool

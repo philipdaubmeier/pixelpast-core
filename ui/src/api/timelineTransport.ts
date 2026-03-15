@@ -22,6 +22,7 @@ export type ApiExplorationGridResponse = {
   range: DateRange;
   days: Array<{
     date: string;
+    count: number;
     activity_score: number;
     color_value: "empty" | "low" | "medium" | "high";
     has_data: boolean;

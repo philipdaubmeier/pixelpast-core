@@ -37,3 +37,30 @@ def test_exploration_projection_uses_server_grid_as_source_of_truth() -> None:
     assert "matchingDayCount = gridDays.filter((day) => day.hasData).length" in source
     assert "function matchesPersistentFilters(" not in source
     assert "function getViewModeColorValue(" not in source
+
+
+def test_timeline_api_maps_grid_count_without_legacy_placeholders() -> None:
+    source = (UI_ROOT / "api" / "timeline.ts").read_text(encoding="utf-8")
+
+    assert "count: day.count" in source
+    assert "eventCount: 0" not in source
+    assert "assetCount: 0" not in source
+    assert "personIds: []" not in source
+    assert "tagPaths: []" not in source
+
+
+def test_heatmap_day_projection_no_longer_carries_client_filter_arrays() -> None:
+    source = (UI_ROOT / "projections" / "timeline.ts").read_text(encoding="utf-8")
+
+    assert "personIds:" not in source
+    assert "tagPaths:" not in source
+
+
+def test_day_cell_tooltip_uses_backend_count() -> None:
+    source = (UI_ROOT / "features" / "timeline" / "components" / "DayCell.tsx").read_text(
+        encoding="utf-8"
+    )
+
+    assert "`${day.count} items`" in source
+    assert "eventCount" not in source
+    assert "assetCount" not in source

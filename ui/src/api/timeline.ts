@@ -66,15 +66,10 @@ function mapExplorationDay(
     year: parsedDate.getUTCFullYear(),
     weekIndex: getWeekIndex(parsedDate),
     weekdayIndex: getWeekdayIndex(parsedDate),
+    count: day.count,
     activityScore: day.activity_score,
     colorValue: day.color_value,
     hasData: day.has_data,
-    // The backend grid contract intentionally omits these legacy client-only
-    // detail fields, so they remain zeroed in the render projection.
-    eventCount: 0,
-    assetCount: 0,
-    personIds: [],
-    tagPaths: [],
   };
 }
 

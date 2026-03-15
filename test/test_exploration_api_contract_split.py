@@ -117,6 +117,7 @@ def test_exploration_contract_split_returns_bootstrap_and_grid_separately() -> N
                 _empty_grid_day_payload("2024-01-01"),
                 _active_grid_day_payload(
                     "2024-01-02",
+                    count=2,
                     activity_score=40,
                     color_value="medium",
                 ),
@@ -127,6 +128,7 @@ def test_exploration_contract_split_returns_bootstrap_and_grid_separately() -> N
         assert sorted(grid_response.json()["days"][1]) == [
             "activity_score",
             "color_value",
+            "count",
             "date",
             "has_data",
         ]
@@ -211,9 +213,39 @@ def test_exploration_grid_endpoint_accepts_server_side_filter_parameters() -> No
                 _empty_grid_day_payload("2024-01-01"),
                 _active_grid_day_payload(
                     "2024-01-02",
+                    count=1,
                     activity_score=12,
                     color_value="high",
                 ),
+                _empty_grid_day_payload("2024-01-03"),
+            ],
+        }
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_exploration_grid_filtered_out_days_return_zero_count_and_empty_state() -> None:
+    workspace_root = _create_workspace_dir(prefix="exploration-grid-filtered-count")
+    runtime = None
+    try:
+        runtime = _create_runtime(workspace_root=workspace_root)
+        _seed_filter_scenario(runtime=runtime)
+
+        app = create_app(settings=runtime.settings)
+        with TestClient(app) as client:
+            response = client.get(
+                "/api/exploration?start=2024-01-02&end=2024-01-03"
+                "&view_mode=activity"
+                "&person_ids=999"
+            )
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "range": {"start": "2024-01-02", "end": "2024-01-03"},
+            "days": [
+                _empty_grid_day_payload("2024-01-02"),
                 _empty_grid_day_payload("2024-01-03"),
             ],
         }
@@ -344,6 +376,7 @@ def test_day_context_endpoint_remains_separate_from_grid_activity_loading() -> N
         assert sorted(grid_response.json()["days"][1]) == [
             "activity_score",
             "color_value",
+            "count",
             "date",
             "has_data",
         ]
@@ -559,6 +592,7 @@ def _default_view_modes_payload() -> list[dict[str, str]]:
 def _empty_grid_day_payload(day: str) -> dict[str, object]:
     return {
         "date": day,
+        "count": 0,
         "activity_score": 0,
         "color_value": "empty",
         "has_data": False,
@@ -568,11 +602,13 @@ def _empty_grid_day_payload(day: str) -> dict[str, object]:
 def _active_grid_day_payload(
     day: str,
     *,
+    count: int,
     activity_score: int,
     color_value: str,
 ) -> dict[str, object]:
     return {
         "date": day,
+        "count": count,
         "activity_score": activity_score,
         "color_value": color_value,
         "has_data": True,

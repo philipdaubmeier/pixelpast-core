@@ -10,13 +10,10 @@ export type HeatmapDayProjection = {
   year: number;
   weekIndex: number;
   weekdayIndex: number;
+  count: number;
   activityScore: number;
   colorValue: "empty" | "low" | "medium" | "high";
   hasData: boolean;
-  eventCount: number;
-  assetCount: number;
-  personIds: string[];
-  tagPaths: string[];
 };
 
 export type PersonProjection = {

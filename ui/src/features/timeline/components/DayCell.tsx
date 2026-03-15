@@ -46,8 +46,7 @@ export function DayCell({ day, viewMode, isHovered, onHover }: DayCellProps) {
   const opacity = day.isDimmed ? Math.max(0.16, tone.opacity * 0.26) : tone.opacity;
   const title = [
     day.date,
-    `${day.eventCount} events`,
-    `${day.assetCount} assets`,
+    `${day.count} items`,
     day.hasPersistentFilters
       ? day.matchesPersistentFilters
         ? "matches persistent filters"

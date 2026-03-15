@@ -77,6 +77,7 @@ def build_grid_day_from_aggregate(
 
     return ExplorationGridDay(
         date=day,
+        count=aggregate.total_events + aggregate.media_count,
         activity_score=aggregate.activity_score,
         color_value=get_view_mode_color_value(
             view_mode=filters.view_mode,
@@ -110,6 +111,7 @@ def build_grid_day_from_snapshot(
 
     return ExplorationGridDay(
         date=day,
+        count=event_count + asset_count,
         activity_score=activity_score,
         color_value=get_view_mode_color_value(
             view_mode=filters.view_mode,
@@ -126,6 +128,7 @@ def empty_grid_day(day: date) -> ExplorationGridDay:
 
     return ExplorationGridDay(
         date=day,
+        count=0,
         activity_score=0,
         color_value="empty",
         has_data=False,
