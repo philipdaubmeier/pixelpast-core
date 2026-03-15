@@ -11,6 +11,7 @@ from typing import Any
 from pixelpast.analytics.daily_aggregate.loading import (
     DailyAggregateCanonicalInputs,
 )
+from pixelpast.analytics.daily_views import build_daily_view
 from pixelpast.persistence.models import (
     DAILY_AGGREGATE_OVERALL_SOURCE_TYPE,
     DAILY_AGGREGATE_SCOPE_OVERALL,
@@ -109,8 +110,10 @@ def build_daily_aggregate_snapshots(
         snapshots.append(
             DailyAggregateSnapshot(
                 date=aggregate_date,
-                aggregate_scope=aggregate_scope,
-                source_type=source_type,
+                daily_view=build_daily_view(
+                    aggregate_scope=aggregate_scope,
+                    source_type=source_type,
+                ),
                 total_events=state.total_events,
                 media_count=state.media_count,
                 activity_score=_calculate_activity_score(

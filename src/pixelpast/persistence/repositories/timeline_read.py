@@ -17,6 +17,7 @@ from pixelpast.persistence.models import (
     DAILY_AGGREGATE_SCOPE_OVERALL,
     DAILY_AGGREGATE_SCOPE_SOURCE_TYPE,
     DailyAggregate,
+    DailyView,
     Event,
     EventPerson,
     EventTag,
@@ -120,19 +121,20 @@ class DailyAggregateReadRepository:
         """Return overall aggregate rows in an inclusive date range."""
 
         statement = (
-            select(DailyAggregate)
+            select(DailyAggregate, DailyView)
+            .join(DailyView, DailyView.id == DailyAggregate.daily_view_id)
             .where(
                 DailyAggregate.date >= start_date,
                 DailyAggregate.date <= end_date,
-                DailyAggregate.aggregate_scope == DAILY_AGGREGATE_SCOPE_OVERALL,
-                DailyAggregate.source_type == DAILY_AGGREGATE_OVERALL_SOURCE_TYPE,
+                DailyView.aggregate_scope == DAILY_AGGREGATE_SCOPE_OVERALL,
+                DailyView.source_type.is_(None),
             )
             .order_by(DailyAggregate.date)
         )
-        aggregates = self._session.execute(statement).scalars()
+        rows = self._session.execute(statement)
         return [
-            _to_daily_aggregate_read_snapshot(aggregate)
-            for aggregate in aggregates
+            _to_daily_aggregate_read_snapshot(aggregate=aggregate, daily_view=daily_view)
+            for aggregate, daily_view in rows
         ]
 
     def list_source_type_range(
@@ -144,27 +146,30 @@ class DailyAggregateReadRepository:
         """Return connector-scoped aggregate rows in an inclusive date range."""
 
         statement = (
-            select(DailyAggregate)
+            select(DailyAggregate, DailyView)
+            .join(DailyView, DailyView.id == DailyAggregate.daily_view_id)
             .where(
                 DailyAggregate.date >= start_date,
                 DailyAggregate.date <= end_date,
-                DailyAggregate.aggregate_scope == DAILY_AGGREGATE_SCOPE_SOURCE_TYPE,
+                DailyView.aggregate_scope == DAILY_AGGREGATE_SCOPE_SOURCE_TYPE,
             )
-            .order_by(DailyAggregate.date, DailyAggregate.source_type)
+            .order_by(DailyAggregate.date, DailyView.source_type)
         )
-        aggregates = self._session.execute(statement).scalars()
+        rows = self._session.execute(statement)
         return [
-            _to_daily_aggregate_read_snapshot(aggregate)
-            for aggregate in aggregates
+            _to_daily_aggregate_read_snapshot(aggregate=aggregate, daily_view=daily_view)
+            for aggregate, daily_view in rows
         ]
 
     def resolve_bounds(self) -> TimelineBoundsSnapshot | None:
         """Return aggregate-backed timeline bounds for exploration grid ranges."""
 
         min_date, max_date = self._session.execute(
-            select(func.min(DailyAggregate.date), func.max(DailyAggregate.date)).where(
-                DailyAggregate.aggregate_scope == DAILY_AGGREGATE_SCOPE_OVERALL,
-                DailyAggregate.source_type == DAILY_AGGREGATE_OVERALL_SOURCE_TYPE,
+            select(func.min(DailyAggregate.date), func.max(DailyAggregate.date))
+            .join(DailyView, DailyView.id == DailyAggregate.daily_view_id)
+            .where(
+                DailyView.aggregate_scope == DAILY_AGGREGATE_SCOPE_OVERALL,
+                DailyView.source_type.is_(None),
             )
         ).one()
         if min_date is None or max_date is None:
@@ -575,7 +580,11 @@ class DayTimelineRepository:
         ]
 
 
-def _to_daily_aggregate_read_snapshot(aggregate: DailyAggregate) -> DailyAggregateReadSnapshot:
+def _to_daily_aggregate_read_snapshot(
+    *,
+    aggregate: DailyAggregate,
+    daily_view: DailyView,
+) -> DailyAggregateReadSnapshot:
     """Map an ORM row to a read-only derived aggregate snapshot."""
 
     return DailyAggregateReadSnapshot(
@@ -583,8 +592,12 @@ def _to_daily_aggregate_read_snapshot(aggregate: DailyAggregate) -> DailyAggrega
         total_events=aggregate.total_events,
         media_count=aggregate.media_count,
         activity_score=aggregate.activity_score,
-        aggregate_scope=aggregate.aggregate_scope,
-        source_type=aggregate.source_type,
+        aggregate_scope=daily_view.aggregate_scope,
+        source_type=(
+            daily_view.source_type
+            if daily_view.source_type is not None
+            else DAILY_AGGREGATE_OVERALL_SOURCE_TYPE
+        ),
         tag_summary_json=list(aggregate.tag_summary_json),
         person_summary_json=list(aggregate.person_summary_json),
         location_summary_json=list(aggregate.location_summary_json),

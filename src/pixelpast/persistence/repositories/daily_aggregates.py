@@ -9,6 +9,7 @@ from typing import Any
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from pixelpast.analytics.daily_views import DailyView as DailyViewDefinition
 from pixelpast.analytics.daily_views import build_daily_view
 from pixelpast.persistence.models import (
     DAILY_AGGREGATE_OVERALL_SOURCE_TYPE,
@@ -32,6 +33,7 @@ class DailyAggregateSnapshot:
     """Serializable repository payload for a derived day summary."""
 
     date: date
+    daily_view: DailyViewDefinition
     total_events: int
     media_count: int
     activity_score: int
@@ -39,8 +41,6 @@ class DailyAggregateSnapshot:
     person_summary_json: list[dict[str, Any]]
     location_summary_json: list[dict[str, Any]]
     metadata_json: dict[str, Any]
-    aggregate_scope: str = DAILY_AGGREGATE_SCOPE_OVERALL
-    source_type: str = DAILY_AGGREGATE_OVERALL_SOURCE_TYPE
 
 
 @dataclass(slots=True, frozen=True)
@@ -367,23 +367,39 @@ class DailyAggregateRepository:
 
         view_repository = DailyViewRepository(self._session)
         self._session.add_all(
-            DailyAggregate(
-                date=aggregate.date,
-                aggregate_scope=aggregate.aggregate_scope,
-                source_type=aggregate.source_type,
-                daily_view_id=view_repository.get_or_create(
-                    aggregate_scope=aggregate.aggregate_scope,
-                    source_type=aggregate.source_type,
-                ).id,
-                total_events=aggregate.total_events,
-                media_count=aggregate.media_count,
-                activity_score=aggregate.activity_score,
-                tag_summary_json=list(aggregate.tag_summary_json),
-                person_summary_json=list(aggregate.person_summary_json),
-                location_summary_json=list(aggregate.location_summary_json),
-                metadata_json=dict(aggregate.metadata_json),
+            self._build_daily_aggregate_row(
+                aggregate=aggregate,
+                view_repository=view_repository,
             )
             for aggregate in aggregates
+        )
+
+    def _build_daily_aggregate_row(
+        self,
+        *,
+        aggregate: DailyAggregateSnapshot,
+        view_repository: "DailyViewRepository",
+    ) -> DailyAggregate:
+        """Map one repository snapshot to an ORM aggregate row."""
+
+        daily_view = view_repository.get_or_create(definition=aggregate.daily_view)
+        resolved_source_type = (
+            daily_view.source_type
+            if daily_view.source_type is not None
+            else DAILY_AGGREGATE_OVERALL_SOURCE_TYPE
+        )
+        return DailyAggregate(
+            date=aggregate.date,
+            aggregate_scope=daily_view.aggregate_scope,
+            source_type=resolved_source_type,
+            daily_view_id=daily_view.id,
+            total_events=aggregate.total_events,
+            media_count=aggregate.media_count,
+            activity_score=aggregate.activity_score,
+            tag_summary_json=list(aggregate.tag_summary_json),
+            person_summary_json=list(aggregate.person_summary_json),
+            location_summary_json=list(aggregate.location_summary_json),
+            metadata_json=dict(aggregate.metadata_json),
         )
 
 
@@ -407,11 +423,11 @@ class DailyViewRepository:
         self,
         *,
         aggregate_scope: str,
-        source_type: str,
+        source_type: str | None,
     ) -> DailyView | None:
         """Return one catalog row for the normalized view identity."""
 
-        normalized_source_type = _normalize_daily_view_source_type(
+        normalized_source_type = normalize_daily_view_source_type(
             aggregate_scope=aggregate_scope,
             source_type=source_type,
         )
@@ -427,19 +443,15 @@ class DailyViewRepository:
     def get_or_create(
         self,
         *,
-        aggregate_scope: str,
-        source_type: str,
+        definition: DailyViewDefinition,
     ) -> DailyView:
         """Return a stable daily view row, creating it when missing."""
 
         daily_view = self.get_by_identity(
-            aggregate_scope=aggregate_scope,
-            source_type=source_type,
+            aggregate_scope=definition.aggregate_scope,
+            source_type=definition.source_type,
         )
-        metadata = build_daily_view(
-            aggregate_scope=aggregate_scope,
-            source_type=source_type,
-        )
+        metadata = ensure_daily_view_metadata(definition=definition)
         if daily_view is None:
             daily_view = DailyView(
                 aggregate_scope=metadata.aggregate_scope,
@@ -459,6 +471,25 @@ class DailyViewRepository:
             daily_view.description = metadata.description
 
         return daily_view
+
+    def get_or_create_by_identity(
+        self,
+        *,
+        aggregate_scope: str,
+        source_type: str | None,
+    ) -> DailyView:
+        """Resolve one catalog row from identity primitives."""
+
+        return self.get_or_create(
+            definition=build_daily_view(
+                aggregate_scope=aggregate_scope,
+                source_type=(
+                    source_type
+                    if source_type is not None
+                    else DAILY_AGGREGATE_OVERALL_SOURCE_TYPE
+                ),
+            )
+        )
 
 
 def _apply_datetime_range(
@@ -498,10 +529,24 @@ def _extract_person_role(metadata_json: object) -> str | None:
     return role if isinstance(role, str) and role else None
 
 
-def _normalize_daily_view_source_type(
+def ensure_daily_view_metadata(*, definition: DailyViewDefinition) -> DailyViewDefinition:
+    """Return canonical backend-owned metadata for one daily view identity."""
+
+    source_type = (
+        definition.source_type
+        if definition.source_type is not None
+        else DAILY_AGGREGATE_OVERALL_SOURCE_TYPE
+    )
+    return build_daily_view(
+        aggregate_scope=definition.aggregate_scope,
+        source_type=source_type,
+    )
+
+
+def normalize_daily_view_source_type(
     *,
     aggregate_scope: str,
-    source_type: str,
+    source_type: str | None,
 ) -> str | None:
     """Return the catalog identity source type for one aggregate snapshot."""
 

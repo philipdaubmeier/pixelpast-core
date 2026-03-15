@@ -384,6 +384,15 @@ def test_daily_aggregate_job_builds_connector_scoped_rows_with_semantic_summarie
                     )
                 ).scalars()
             )
+            stored_views = list(
+                session.execute(
+                    select(DailyView).order_by(
+                        DailyView.aggregate_scope,
+                        DailyView.source_type,
+                        DailyView.id,
+                    )
+                ).scalars()
+            )
 
         aggregates = {
             (
@@ -511,6 +520,18 @@ def test_daily_aggregate_job_builds_connector_scoped_rows_with_semantic_summarie
             or aggregate.aggregate_scope == DAILY_AGGREGATE_SCOPE_SOURCE_TYPE
             for aggregate in stored_aggregates
         )
+        assert [
+            (
+                daily_view.aggregate_scope,
+                daily_view.source_type,
+                daily_view.label,
+            )
+            for daily_view in stored_views
+        ] == [
+            ("overall", None, "Activity"),
+            ("source_type", "calendar", "Calendar"),
+            ("source_type", "photo", "Photo"),
+        ]
     finally:
         if runtime is not None:
             runtime.engine.dispose()
@@ -580,6 +601,21 @@ def test_daily_aggregate_job_recomputes_range_idempotently_for_v2_rows() -> None
         assert initial_result.aggregate_count == 7
 
         with runtime.session_factory() as session:
+            initial_view_ids = {
+                (
+                    daily_view.aggregate_scope,
+                    daily_view.source_type,
+                ): daily_view.id
+                for daily_view in session.execute(
+                    select(DailyView).order_by(
+                        DailyView.aggregate_scope,
+                        DailyView.source_type,
+                        DailyView.id,
+                    )
+                ).scalars()
+            }
+
+        with runtime.session_factory() as session:
             calendar_source = session.execute(select(Source)).scalar_one()
             session.add(
                 Event(
@@ -630,12 +666,26 @@ def test_daily_aggregate_job_recomputes_range_idempotently_for_v2_rows() -> None
                     )
                 ).scalars()
             ]
+            repeated_view_ids = {
+                (
+                    daily_view.aggregate_scope,
+                    daily_view.source_type,
+                ): daily_view.id
+                for daily_view in session.execute(
+                    select(DailyView).order_by(
+                        DailyView.aggregate_scope,
+                        DailyView.source_type,
+                        DailyView.id,
+                    )
+                ).scalars()
+            }
 
         assert range_result.mode == "range"
         assert range_result.aggregate_count == 3
         assert range_result.total_events == 2
         assert range_result.media_count == 1
         assert repeated_result.aggregate_count == 3
+        assert repeated_view_ids == initial_view_ids
         assert first_pass_rows == second_pass_rows
         assert first_pass_rows == [
             {
@@ -836,8 +886,12 @@ def _serialize_snapshot(snapshot) -> dict[str, object]:
 
     return {
         "date": snapshot.date.isoformat(),
-        "scope": snapshot.aggregate_scope,
-        "source_type": snapshot.source_type,
+        "scope": snapshot.daily_view.aggregate_scope,
+        "source_type": (
+            snapshot.daily_view.source_type
+            if snapshot.daily_view.source_type is not None
+            else DAILY_AGGREGATE_OVERALL_SOURCE_TYPE
+        ),
         "total_events": snapshot.total_events,
         "media_count": snapshot.media_count,
         "activity_score": snapshot.activity_score,
