@@ -72,12 +72,13 @@ def build_calendar_source_candidate(
 ) -> CalendarSourceCandidate:
     """Build the canonical source candidate represented by one calendar document."""
 
+    resolved_document_path = document.descriptor.path.expanduser().resolve().as_posix()
     return CalendarSourceCandidate(
         type="calendar",
         name=document.calendar_name,
         external_id=document.calendar_external_id,
         config_json={
-            "document_path": document.descriptor.path.as_posix(),
+            "origin_path": resolved_document_path,
             "archive_member_path": document.descriptor.archive_member_path,
             "calendar_name_header": document.calendar_name_header,
             "calendar_external_id_header": document.calendar_external_id_header,

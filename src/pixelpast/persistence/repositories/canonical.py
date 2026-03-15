@@ -42,6 +42,12 @@ class SourceRepository:
         )
         return self._session.execute(statement).scalars().first()
 
+    def get_by_external_id(self, *, external_id: str) -> Source | None:
+        """Return the configured source matching a stable external identifier."""
+
+        statement = select(Source).where(Source.external_id == external_id)
+        return self._session.execute(statement).scalar_one_or_none()
+
     def get_or_create(
         self,
         *,
@@ -53,12 +59,46 @@ class SourceRepository:
 
         source = self.get_by_type_and_name(source_type=source_type, name=name)
         if source is None:
-            source = Source(name=name, type=source_type, config=dict(config))
+            source = Source(
+                name=name,
+                type=source_type,
+                external_id=None,
+                config=dict(config),
+            )
             self._session.add(source)
             self._session.flush()
             return source
 
         source.name = name
+        source.config = dict(config)
+        self._session.flush()
+        return source
+
+    def get_or_create_by_external_id(
+        self,
+        *,
+        external_id: str,
+        name: str,
+        source_type: str,
+        config: dict[str, Any],
+    ) -> Source:
+        """Return an existing source by external identity or create one."""
+
+        source = self.get_by_external_id(external_id=external_id)
+        if source is None:
+            source = Source(
+                name=name,
+                type=source_type,
+                external_id=external_id,
+                config=dict(config),
+            )
+            self._session.add(source)
+            self._session.flush()
+            return source
+
+        source.name = name
+        source.type = source_type
+        source.external_id = external_id
         source.config = dict(config)
         self._session.flush()
         return source

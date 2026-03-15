@@ -41,11 +41,13 @@ class Source(Base):
     __tablename__ = "source"
     __table_args__ = (
         UniqueConstraint("type", "name", name="uq_source_type_name"),
+        UniqueConstraint("external_id", name="uq_source_external_id"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     type: Mapped[str] = mapped_column(String(100), nullable=False)
+    external_id: Mapped[str | None] = mapped_column(String(512), nullable=True)
     config: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(
         UTCDateTime(),

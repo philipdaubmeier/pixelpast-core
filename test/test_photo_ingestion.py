@@ -968,6 +968,74 @@ def test_sources_can_share_type_when_name_differs() -> None:
         shutil.rmtree(workspace_root, ignore_errors=True)
 
 
+def test_source_external_id_is_unique_at_database_level_when_present() -> None:
+    workspace_root = _create_workspace_dir(prefix="source-external-id-unique")
+    runtime = None
+    try:
+        photos_root = workspace_root / "photos"
+        photos_root.mkdir()
+        runtime = _create_runtime(
+            workspace_root=workspace_root,
+            photos_root=photos_root,
+        )
+
+        with pytest.raises(IntegrityError):
+            with runtime.session_factory() as session:
+                session.add_all(
+                    [
+                        Source(
+                            name="Calendar A",
+                            type="calendar",
+                            external_id="calendar-123",
+                            config={},
+                        ),
+                        Source(
+                            name="Calendar B",
+                            type="calendar",
+                            external_id="calendar-123",
+                            config={},
+                        ),
+                    ]
+                )
+                session.commit()
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_sources_can_omit_external_id_without_regressing_photo_behavior() -> None:
+    workspace_root = _create_workspace_dir(prefix="source-external-id-null")
+    runtime = None
+    try:
+        photos_root = workspace_root / "photos"
+        photos_root.mkdir()
+        runtime = _create_runtime(
+            workspace_root=workspace_root,
+            photos_root=photos_root,
+        )
+
+        with runtime.session_factory() as session:
+            session.add_all(
+                [
+                    Source(name="Photos A", type="photos", external_id=None, config={}),
+                    Source(name="Photos B", type="photos", external_id=None, config={}),
+                ]
+            )
+            session.commit()
+
+            sources = list(
+                session.execute(select(Source).order_by(Source.name)).scalars()
+            )
+
+        assert [source.name for source in sources] == ["Photos A", "Photos B"]
+        assert [source.external_id for source in sources] == [None, None]
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
 class _ConvenienceDiscoverConnector(PhotoConnector):
     """Test connector that freezes discover() delegation behavior."""
 

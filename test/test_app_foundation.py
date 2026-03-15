@@ -21,6 +21,7 @@ from pixelpast.persistence.models import (
     JobRun,
     Source,
 )
+from pixelpast.persistence.repositories import SourceRepository
 from pixelpast.persistence.session import session_scope
 from pixelpast.shared.runtime import create_runtime_context, initialize_database
 from pixelpast.shared.settings import Settings
@@ -103,7 +104,11 @@ def test_alembic_upgrade_head_runs() -> None:
             assert {
                 constraint["name"] for constraint in source_unique_constraints
             } == {
+                "uq_source_external_id",
                 "uq_source_type_name",
+            }
+            source_columns = {
+                column["name"] for column in inspector.get_columns("source")
             }
             import_run_columns = {
                 column["name"] for column in inspector.get_columns("import_run")
@@ -122,6 +127,7 @@ def test_alembic_upgrade_head_runs() -> None:
                 "last_heartbeat_at",
                 "progress",
             } <= import_run_columns
+            assert {"external_id", "name", "type", "config", "created_at"} <= source_columns
             assert {
                 "date",
                 "aggregate_scope",
@@ -180,7 +186,12 @@ def test_utc_datetime_roundtrip_uses_aware_utc_values() -> None:
     )
 
     with Session(engine) as session:
-        source = Source(name="Calendar", type="calendar", config={})
+        source = Source(
+            name="Calendar",
+            type="calendar",
+            external_id="calendar-1",
+            config={},
+        )
         session.add(source)
         session.flush()
         session.add(
@@ -217,6 +228,103 @@ def test_utc_datetime_roundtrip_uses_aware_utc_values() -> None:
     assert stored_asset.timestamp.tzinfo is UTC
     assert stored_event.timestamp_start == datetime(2026, 3, 11, 17, 15, tzinfo=UTC)
     assert stored_asset.timestamp == datetime(2026, 3, 11, 12, 15, tzinfo=UTC)
+
+
+def test_source_external_id_upgrade_keeps_existing_rows_nullable() -> None:
+    database_dir = Path("var")
+    database_dir.mkdir(exist_ok=True)
+    database_path = database_dir / f"test-source-external-id-{uuid4().hex}.db"
+    config = Config("alembic.ini")
+    config.attributes["database_url"] = f"sqlite:///{database_path.as_posix()}"
+
+    try:
+        command.upgrade(config, "20260315_0007")
+        engine = create_engine(f"sqlite:///{database_path.as_posix()}")
+        try:
+            with engine.begin() as connection:
+                connection.execute(
+                    text(
+                        """
+                        INSERT INTO source (id, name, type, config, created_at)
+                        VALUES (
+                            1,
+                            'Photos',
+                            'photos',
+                            '{}',
+                            '2026-03-15 12:00:00'
+                        )
+                        """
+                    )
+                )
+        finally:
+            engine.dispose()
+
+        command.upgrade(config, "head")
+        upgraded_engine = create_engine(f"sqlite:///{database_path.as_posix()}")
+        try:
+            with Session(upgraded_engine) as session:
+                source = session.query(Source).one()
+
+            assert source.name == "Photos"
+            assert source.type == "photos"
+            assert source.external_id is None
+        finally:
+            upgraded_engine.dispose()
+    finally:
+        if database_path.exists():
+            database_path.unlink()
+
+
+def test_source_repository_reconciles_sources_by_external_identity() -> None:
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        repository = SourceRepository(session)
+
+        created = repository.get_or_create_by_external_id(
+            external_id="calendar-123",
+            name="Work Calendar",
+            source_type="calendar",
+            config={"origin_path": "/tmp/work.ics"},
+        )
+        created_id = created.id
+        session.commit()
+
+    with Session(engine) as session:
+        repository = SourceRepository(session)
+        persisted = repository.get_by_external_id(external_id="calendar-123")
+
+        assert persisted is not None
+        assert persisted.id == created_id
+        assert persisted.name == "Work Calendar"
+        assert persisted.type == "calendar"
+        assert persisted.external_id == "calendar-123"
+        assert persisted.config == {"origin_path": "/tmp/work.ics"}
+
+        updated = repository.get_or_create_by_external_id(
+            external_id="calendar-123",
+            name="Renamed Calendar",
+            source_type="calendar",
+            config={
+                "origin_path": "/tmp/archive.zip",
+                "archive_member_path": "nested/work.ics",
+            },
+        )
+        session.commit()
+
+        assert updated.id == persisted.id
+
+    with Session(engine) as session:
+        sources = list(session.query(Source).all())
+
+    assert len(sources) == 1
+    assert sources[0].name == "Renamed Calendar"
+    assert sources[0].external_id == "calendar-123"
+    assert sources[0].config == {
+        "origin_path": "/tmp/archive.zip",
+        "archive_member_path": "nested/work.ics",
+    }
 
 
 def test_daily_aggregate_date_roundtrip_uses_python_date() -> None:

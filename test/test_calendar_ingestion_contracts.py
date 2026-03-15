@@ -96,11 +96,50 @@ def test_calendar_document_contract_models_one_source_candidate_and_many_events(
     assert source_candidate.type == "calendar"
     assert source_candidate.name == "Trips"
     assert source_candidate.external_id == "cal-123"
+    assert source_candidate.config_json == {
+        "origin_path": (Path("calendar.ics").resolve().as_posix()),
+        "archive_member_path": None,
+        "calendar_name_header": "X-WR-CALNAME",
+        "calendar_external_id_header": "X-WR-RELCALID",
+        "timezone_ids": [],
+    }
     assert len(event_candidates) == 2
     assert [candidate.external_event_id for candidate in event_candidates] == [
         "event-1",
         "event-2",
     ]
+
+
+def test_calendar_source_candidate_uses_archive_origin_without_fake_extraction_path() -> None:
+    archive_path = Path("calendar-export.zip")
+    parsed = parse_calendar_document(
+        descriptor=CalendarDocumentDescriptor(
+            path=archive_path,
+            archive_member_path="nested/work.ics",
+        ),
+        text=(
+            "BEGIN:VCALENDAR\n"
+            "VERSION:2.0\n"
+            "X-WR-CALNAME:Work\n"
+            "X-WR-RELCALID:work-cal\n"
+            "BEGIN:VEVENT\n"
+            "UID:event-1\n"
+            "DTSTART:20240102T090000Z\n"
+            "SUMMARY:Standup\n"
+            "END:VEVENT\n"
+            "END:VCALENDAR\n"
+        ),
+    )
+
+    source_candidate = build_calendar_source_candidate(parsed)
+
+    assert source_candidate.config_json == {
+        "origin_path": archive_path.resolve().as_posix(),
+        "archive_member_path": "nested/work.ics",
+        "calendar_name_header": "X-WR-CALNAME",
+        "calendar_external_id_header": "X-WR-RELCALID",
+        "timezone_ids": [],
+    }
 
 
 def test_calendar_event_title_truncation_keeps_220_characters_then_ellipsis() -> None:
