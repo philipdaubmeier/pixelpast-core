@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import asdict
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, time
 from html import unescape
 from html.parser import HTMLParser
-from typing import Iterable
+from typing import Any
 
+from icalendar import Calendar
 from pixelpast.ingestion.calendar.contracts import (
     CalendarDocumentDescriptor,
     CalendarEventCandidate,
@@ -29,44 +30,20 @@ def parse_calendar_document(
 ) -> ParsedCalendarDocument:
     """Parse one VCALENDAR text payload into an explicit document contract."""
 
-    lines = _unfold_ical_lines(text)
-    calendar_properties: list[CalendarParsedProperty] = []
-    timezone_ids: list[str] = []
-    events: list[ParsedCalendarEvent] = []
-
-    active_component: str | None = None
-    active_event_properties: list[CalendarParsedProperty] = []
-
-    for line in lines:
-        if not line:
-            continue
-        if line == "BEGIN:VEVENT":
-            active_component = "VEVENT"
-            active_event_properties = []
-            continue
-        if line == "END:VEVENT":
-            events.append(_build_parsed_event(active_event_properties))
-            active_component = None
-            active_event_properties = []
-            continue
-        if line == "BEGIN:VTIMEZONE":
-            active_component = "VTIMEZONE"
-            continue
-        if line == "END:VTIMEZONE":
-            active_component = None
-            continue
-        if line.startswith("BEGIN:") or line.startswith("END:"):
-            continue
-
-        parsed_property = _parse_property_line(line)
-        if active_component == "VEVENT":
-            active_event_properties.append(parsed_property)
-            continue
-        if active_component == "VTIMEZONE":
-            if parsed_property.name == "TZID":
-                timezone_ids.append(parsed_property.value)
-            continue
-        calendar_properties.append(parsed_property)
+    calendar = Calendar.from_ical(text)
+    timezone_ids = tuple(
+        str(component.get("TZID"))
+        for component in calendar.walk("VTIMEZONE")
+        if component.get("TZID") is not None
+    )
+    calendar_properties = tuple(
+        _build_parsed_property(name=name, value=value)
+        for name, value in calendar.property_items(recursive=False, sorted=False)
+        if name not in {"BEGIN", "END"}
+    )
+    events = tuple(
+        _build_parsed_event(component=event) for event in calendar.walk("VEVENT")
+    )
 
     name_property = _find_first_property(calendar_properties, _CALENDAR_NAME_HEADERS)
     external_id_property = _find_first_property(
@@ -84,9 +61,9 @@ def parse_calendar_document(
         calendar_external_id=(
             external_id_property.value if external_id_property is not None else None
         ),
-        timezone_ids=tuple(timezone_ids),
-        properties=tuple(calendar_properties),
-        events=tuple(events),
+        timezone_ids=timezone_ids,
+        properties=calendar_properties,
+        events=events,
     )
 
 
@@ -136,9 +113,14 @@ def build_calendar_event_candidates(
 
 
 def _build_parsed_event(
-    properties: Iterable[CalendarParsedProperty],
+    *,
+    component,
 ) -> ParsedCalendarEvent:
-    event_properties = tuple(properties)
+    event_properties = tuple(
+        _build_parsed_property(name=name, value=value)
+        for name, value in component.property_items(recursive=False, sorted=False)
+        if name not in {"BEGIN", "END"}
+    )
     uid_property = _find_first_property(event_properties, ("UID",))
     dtstart_property = _find_first_property(event_properties, ("DTSTART",))
     if dtstart_property is None:
@@ -149,9 +131,17 @@ def _build_parsed_event(
 
     return ParsedCalendarEvent(
         uid=uid_property.value if uid_property is not None else None,
-        starts_at=_parse_ical_datetime(dtstart_property),
+        starts_at=_resolve_component_datetime(
+            component=component,
+            property_name="DTSTART",
+        ),
         ends_at=(
-            _parse_ical_datetime(dtend_property) if dtend_property is not None else None
+            _resolve_component_datetime(
+                component=component,
+                property_name="DTEND",
+            )
+            if dtend_property is not None
+            else None
         ),
         summary=summary_property.value if summary_property is not None else None,
         alt_description=(
@@ -169,7 +159,7 @@ def _build_parsed_event(
 
 
 def _find_first_property(
-    properties: Iterable[CalendarParsedProperty],
+    properties: tuple[CalendarParsedProperty, ...],
     names: tuple[str, ...],
 ) -> CalendarParsedProperty | None:
     normalized_names = {name.upper() for name in names}
@@ -179,67 +169,48 @@ def _find_first_property(
     return None
 
 
-def _parse_property_line(line: str) -> CalendarParsedProperty:
-    before_value, value = _split_property_line(line)
-    parts = before_value.split(";")
-    name = parts[0].upper()
-    parameters: list[tuple[str, str]] = []
-    for parameter in parts[1:]:
-        parameter_name, parameter_value = parameter.split("=", maxsplit=1)
-        parameters.append(
-            (
-                parameter_name.upper(),
-                _strip_wrapping_quotes(_unescape_ical_text(parameter_value)),
-            )
-        )
+def _build_parsed_property(*, name: str, value: object) -> CalendarParsedProperty:
+    parameters = getattr(value, "params", {})
     return CalendarParsedProperty(
-        name=name,
-        value=_unescape_ical_text(value),
-        parameters=tuple(parameters),
+        name=name.upper(),
+        value=_serialize_property_value(value),
+        parameters=tuple(
+            (str(parameter_name).upper(), str(parameter_value))
+            for parameter_name, parameter_value in parameters.items()
+        ),
     )
 
 
-def _split_property_line(line: str) -> tuple[str, str]:
-    in_quotes = False
-    for index, character in enumerate(line):
-        if character == '"':
-            in_quotes = not in_quotes
-            continue
-        if character == ":" and not in_quotes:
-            return line[:index], line[index + 1 :]
-    raise ValueError(f"Invalid iCalendar property line '{line}'.")
+def _serialize_property_value(value: object) -> str:
+    if isinstance(value, bytes):
+        return value.decode("utf-8")
+    if hasattr(value, "dt") and hasattr(value, "to_ical"):
+        serialized = value.to_ical()
+        if isinstance(serialized, bytes):
+            return serialized.decode("utf-8")
+        return str(serialized)
+    return str(value)
 
 
-def _parse_ical_datetime(property_value: CalendarParsedProperty) -> datetime:
-    value = property_value.value
-    if value.endswith("Z"):
-        return datetime.strptime(value, "%Y%m%dT%H%M%SZ").replace(tzinfo=UTC)
+def _resolve_component_datetime(
+    *,
+    component,
+    property_name: str,
+) -> datetime:
+    decoded_value = component.decoded(property_name)
+    resolved_datetime = _coerce_datetime(decoded_value)
+    if resolved_datetime.tzinfo is not None:
+        return resolved_datetime
 
-    parsed_datetime = datetime.strptime(value, "%Y%m%dT%H%M%S")
-    tzid = property_value.get_parameter("TZID")
-    if tzid is None:
-        return parsed_datetime.replace(tzinfo=UTC)
-
-    return parsed_datetime.replace(tzinfo=_timezone_from_tzid(tzid))
-
-
-def _timezone_from_tzid(tzid: str) -> timezone:
-    normalized_tzid = tzid.strip()
-    if normalized_tzid.upper() == "UTC":
-        return timezone.utc
-
-    if normalized_tzid.startswith("(UTC") and ")" in normalized_tzid:
-        offset_token = normalized_tzid[4 : normalized_tzid.index(")")]
-        return timezone(_parse_utc_offset(offset_token))
-
-    raise ValueError(f"Unsupported TZID value '{tzid}'.")
+    return resolved_datetime.replace(tzinfo=UTC)
 
 
-def _parse_utc_offset(value: str) -> timedelta:
-    sign = 1 if value.startswith("+") else -1
-    hours = int(value[1:3])
-    minutes = int(value[4:6])
-    return timedelta(hours=sign * hours, minutes=sign * minutes)
+def _coerce_datetime(value: Any) -> datetime:
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, date):
+        return datetime.combine(value, time.min, tzinfo=UTC)
+    raise TypeError(f"Unsupported calendar datetime value '{value!r}'.")
 
 
 def _normalize_title(summary: str | None) -> str | None:
@@ -268,32 +239,6 @@ def _build_raw_event_payload(event: ParsedCalendarEvent) -> dict[str, object]:
         "alt_description_format": event.alt_description_format,
         "properties": [asdict(property_value) for property_value in event.properties],
     }
-
-
-def _unfold_ical_lines(text: str) -> list[str]:
-    unfolded_lines: list[str] = []
-    for raw_line in text.splitlines():
-        if raw_line.startswith((" ", "\t")) and unfolded_lines:
-            unfolded_lines[-1] += raw_line[1:]
-            continue
-        unfolded_lines.append(raw_line)
-    return unfolded_lines
-
-
-def _unescape_ical_text(value: str) -> str:
-    return (
-        value.replace("\\\\", "\\")
-        .replace("\\n", "\n")
-        .replace("\\N", "\n")
-        .replace("\\,", ",")
-        .replace("\\;", ";")
-    )
-
-
-def _strip_wrapping_quotes(value: str) -> str:
-    if len(value) >= 2 and value.startswith('"') and value.endswith('"'):
-        return value[1:-1]
-    return value
 
 
 class _CalendarHtmlTextExtractor(HTMLParser):

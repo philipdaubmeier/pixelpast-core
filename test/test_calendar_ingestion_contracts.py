@@ -166,7 +166,7 @@ def test_calendar_html_alt_description_removes_markup_and_ignores_images() -> No
     assert candidate.summary == "Hello World & beyond"
 
 
-def test_calendar_timezones_are_normalized_to_utc_before_persistence() -> None:
+def test_calendar_parser_keeps_standard_tzid_datetimes_timezone_aware() -> None:
     parsed = parse_calendar_document(
         descriptor=CalendarDocumentDescriptor(path=Path("calendar.ics")),
         text=(
@@ -174,8 +174,49 @@ def test_calendar_timezones_are_normalized_to_utc_before_persistence() -> None:
             "VERSION:2.0\n"
             "BEGIN:VEVENT\n"
             "UID:event-1\n"
-            "DTSTART;TZID=\"(UTC-05:30) Sample\":20240102T091500\n"
-            "DTEND;TZID=\"(UTC-05:30) Sample\":20240102T104500\n"
+            "DTSTART;TZID=Europe/Berlin:20240102T091500\n"
+            "DTEND;TZID=Europe/Berlin:20240102T104500\n"
+            "SUMMARY:Berlin example\n"
+            "END:VEVENT\n"
+            "END:VCALENDAR\n"
+        ),
+    )
+
+    event = parsed.events[0]
+    candidate = build_calendar_event_candidates(parsed)[0]
+
+    assert event.starts_at.tzinfo is not None
+    assert event.ends_at is not None
+    assert event.ends_at.tzinfo is not None
+    assert candidate.timestamp_start == datetime(2024, 1, 2, 8, 15, tzinfo=UTC)
+    assert candidate.timestamp_end == datetime(2024, 1, 2, 9, 45, tzinfo=UTC)
+
+
+def test_calendar_timezones_are_normalized_to_utc_before_persistence() -> None:
+    parsed = parse_calendar_document(
+        descriptor=CalendarDocumentDescriptor(path=Path("calendar.ics")),
+        text=(
+            "BEGIN:VCALENDAR\n"
+            "VERSION:2.0\n"
+            "BEGIN:VTIMEZONE\n"
+            "TZID:America/New_York\n"
+            "BEGIN:STANDARD\n"
+            "DTSTART:16011101T020000\n"
+            "RRULE:FREQ=YEARLY;BYDAY=1SU;BYMONTH=11\n"
+            "TZOFFSETFROM:-0400\n"
+            "TZOFFSETTO:-0500\n"
+            "END:STANDARD\n"
+            "BEGIN:DAYLIGHT\n"
+            "DTSTART:16010308T020000\n"
+            "RRULE:FREQ=YEARLY;BYDAY=2SU;BYMONTH=3\n"
+            "TZOFFSETFROM:-0500\n"
+            "TZOFFSETTO:-0400\n"
+            "END:DAYLIGHT\n"
+            "END:VTIMEZONE\n"
+            "BEGIN:VEVENT\n"
+            "UID:event-1\n"
+            "DTSTART;TZID=America/New_York:20240102T091500\n"
+            "DTEND;TZID=America/New_York:20240102T104500\n"
             "SUMMARY:Offset example\n"
             "END:VEVENT\n"
             "END:VCALENDAR\n"
@@ -184,5 +225,5 @@ def test_calendar_timezones_are_normalized_to_utc_before_persistence() -> None:
 
     candidate = build_calendar_event_candidates(parsed)[0]
 
-    assert candidate.timestamp_start == datetime(2024, 1, 2, 14, 45, tzinfo=UTC)
-    assert candidate.timestamp_end == datetime(2024, 1, 2, 16, 15, tzinfo=UTC)
+    assert candidate.timestamp_start == datetime(2024, 1, 2, 14, 15, tzinfo=UTC)
+    assert candidate.timestamp_end == datetime(2024, 1, 2, 15, 45, tzinfo=UTC)

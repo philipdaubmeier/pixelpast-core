@@ -15,6 +15,7 @@ authors = [
 dependencies = [
   "alembic>=1.14",
   "fastapi>=0.115",
+  "icalendar>=7.0",
   "Pillow>=10.0",
   "PyExifTool>=0.5.6",
   "pydantic-settings>=2.6",
