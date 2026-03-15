@@ -30,6 +30,7 @@ class CalendarIngestionProgressState:
     failed: int = 0
     documents_submitted: int = 0
     documents_completed: int = 0
+    persisted_document_count: int = 0
     inserted: int = 0
     updated: int = 0
     unchanged: int = 0
@@ -63,15 +64,16 @@ class CalendarIngestionProgressState:
 
     def mark_persisted(self, *, outcome: str) -> None:
         normalized_outcome, event_count = _parse_document_outcome(outcome)
+        self.persisted_document_count += 1
         self.persisted_event_count += event_count
         if normalized_outcome == "inserted":
-            self.inserted += 1
+            self.inserted += event_count
         elif normalized_outcome == "updated":
-            self.updated += 1
+            self.updated += event_count
         elif normalized_outcome == "unchanged":
-            self.unchanged += 1
+            self.unchanged += event_count
         elif normalized_outcome == "skipped":
-            self.skipped += 1
+            self.skipped += event_count
         else:
             raise ValueError(f"Unsupported persistence outcome: {normalized_outcome}")
 

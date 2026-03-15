@@ -145,8 +145,8 @@ class CalendarStagedIngestionStrategy:
         counters = progress.counters
         return CalendarIngestionResult(
             run_id=run_id,
-            processed_document_count=counters.items_persisted,
-            persisted_source_count=counters.items_persisted,
+            processed_document_count=counters.persisted_document_count,
+            persisted_source_count=counters.persisted_document_count,
             persisted_event_count=counters.persisted_event_count,
             error_count=len(transform_errors),
             status=status,

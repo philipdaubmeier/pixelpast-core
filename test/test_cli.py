@@ -279,6 +279,65 @@ def test_cli_ingest_calendar_subprocess_completes_with_zip_fixture() -> None:
         shutil.rmtree(workspace_root, ignore_errors=True)
 
 
+def test_cli_ingest_calendar_reports_event_counts_in_terminal_summary(monkeypatch) -> None:
+    database_path = _build_test_database_path("cli-calendar-ingest-summary")
+    workspace_root = Path("var") / f"cli-calendar-summary-{uuid4().hex}"
+    calendar_path = workspace_root / "work.ics"
+    workspace_root.mkdir(parents=True, exist_ok=False)
+    monkeypatch.setenv("PIXELPAST_DATABASE_URL", f"sqlite:///{database_path.as_posix()}")
+    monkeypatch.setenv("PIXELPAST_CALENDAR_ROOT", str(calendar_path.resolve()))
+    get_settings.cache_clear()
+
+    calendar_path.write_text(
+        "\n".join(
+            [
+                "BEGIN:VCALENDAR",
+                "VERSION:2.0",
+                "X-WR-CALNAME:Work",
+                "X-WR-RELCALID:cli-calendar-summary",
+                "BEGIN:VEVENT",
+                "UID:event-1",
+                "DTSTART:20240102T090000Z",
+                "SUMMARY:Event One",
+                "END:VEVENT",
+                "BEGIN:VEVENT",
+                "UID:event-2",
+                "DTSTART:20240103T090000Z",
+                "SUMMARY:Event Two",
+                "END:VEVENT",
+                "END:VCALENDAR",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    try:
+        result = runner.invoke(app, ["ingest", "calendar"])
+
+        assert result.exit_code == 0
+        assert "[calendar] completed" in result.stdout
+        assert "inserted: 2" in result.stdout
+
+        engine = create_engine(f"sqlite:///{database_path.as_posix()}")
+        try:
+            with Session(engine) as session:
+                job_run = session.execute(
+                    select(JobRun).order_by(JobRun.id.desc())
+                ).scalar_one()
+        finally:
+            engine.dispose()
+
+        assert job_run.progress_json is not None
+        assert job_run.progress_json["inserted"] == 2
+        assert job_run.progress_json["persisted_event_count"] == 2
+    finally:
+        get_settings.cache_clear()
+        if database_path.exists():
+            database_path.unlink()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
 def test_ingestion_cli_progress_reporter_tracks_phase_progress() -> None:
     stream = io.StringIO()
     reporter = IngestionCliProgressReporter(stream=stream)
