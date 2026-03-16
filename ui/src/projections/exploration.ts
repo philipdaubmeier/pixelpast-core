@@ -8,7 +8,7 @@ import type {
 } from "./timeline";
 
 type SummaryCounts = DayContextProjection["summaryCounts"];
-type HeatmapColorValue = HeatmapDayProjection["colorValue"];
+type HeatmapColorValue = HeatmapDayProjection["color"];
 
 type ExplorationProjectionInput = {
   heatmapDays: HeatmapDayProjection[];
@@ -150,12 +150,14 @@ function buildGridDays(
     selectedPersons.length > 0 || selectedTags.length > 0;
 
   return heatmapDays.map((day) => {
+    const hasVisibleData = day.color !== "empty";
+
     return {
       ...day,
-      renderColorValue: day.colorValue,
+      renderColorValue: day.color,
       isDimmed: false,
       hasPersistentFilters,
-      matchesPersistentFilters: hasPersistentFilters ? day.hasData : true,
+      matchesPersistentFilters: hasPersistentFilters ? hasVisibleData : true,
     };
   });
 }
@@ -177,7 +179,7 @@ function buildMapProjection(
   }
 
   const matchingContexts = gridDays
-    .filter((day) => day.hasPersistentFilters && day.hasData)
+    .filter((day) => day.hasPersistentFilters && day.color !== "empty")
     .map((day) => dayContextsByDate[day.date])
     .filter((context): context is DayContextProjection => context !== undefined);
 
@@ -233,7 +235,7 @@ export function buildExplorationProjection({
     state.selectedPersons,
     state.selectedTags,
   );
-  const matchingDayCount = gridDays.filter((day) => day.hasData).length;
+  const matchingDayCount = gridDays.filter((day) => day.color !== "empty").length;
   const { mapPoints, mapSummary } = buildMapProjection(
     state.hoveredDate,
     activeDayContext,

@@ -33,16 +33,19 @@ def test_exploration_projection_uses_server_grid_as_source_of_truth() -> None:
         encoding="utf-8"
     )
 
-    assert "renderColorValue: day.colorValue" in source
-    assert "matchingDayCount = gridDays.filter((day) => day.hasData).length" in source
+    assert "renderColorValue: day.color" in source
+    assert "matchingDayCount = gridDays.filter((day) => day.color !== \"empty\").length" in source
     assert "function matchesPersistentFilters(" not in source
     assert "function getViewModeColorValue(" not in source
 
 
-def test_timeline_api_maps_grid_count_without_legacy_placeholders() -> None:
+def test_timeline_api_maps_grid_contract_with_backend_count() -> None:
     source = (UI_ROOT / "api" / "timeline.ts").read_text(encoding="utf-8")
 
     assert "count: day.count" in source
+    assert "color: day.color" in source
+    assert "label: day.label" in source
+    assert "activityScore: day.activity_score" not in source
     assert "eventCount: 0" not in source
     assert "assetCount: 0" not in source
     assert "personIds: []" not in source
@@ -54,13 +57,16 @@ def test_heatmap_day_projection_no_longer_carries_client_filter_arrays() -> None
 
     assert "personIds:" not in source
     assert "tagPaths:" not in source
+    assert "count:" in source
+    assert "activityScore:" not in source
+    assert "hasData:" not in source
 
 
-def test_day_cell_tooltip_uses_backend_count() -> None:
+def test_day_cell_supports_direct_hex_colors_and_backend_count_tooltip() -> None:
     source = (UI_ROOT / "features" / "timeline" / "components" / "DayCell.tsx").read_text(
         encoding="utf-8"
     )
 
+    assert "colorValue.startsWith(\"#\")" in source
+    assert "backgroundColor: colorValue" in source
     assert "`${day.count} items`" in source
-    assert "eventCount" not in source
-    assert "assetCount" not in source

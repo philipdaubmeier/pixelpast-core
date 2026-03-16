@@ -77,15 +77,12 @@ def build_grid_day_from_aggregate(
     ):
         return empty_grid_day(day)
 
+    color = resolve_grid_day_color(aggregate=aggregate)
     return ExplorationGridDay(
         date=day,
         count=aggregate.total_events + aggregate.media_count,
-        activity_score=aggregate.activity_score,
-        color_value=get_view_mode_color_value(
-            activity_score=aggregate.activity_score,
-            metadata_json=aggregate.metadata_json,
-        ),
-        has_data=True,
+        color=color,
+        label=aggregate.title,
     )
 
 
@@ -112,12 +109,10 @@ def build_grid_day_from_snapshot(
     return ExplorationGridDay(
         date=day,
         count=event_count + asset_count,
-        activity_score=activity_score,
-        color_value=get_view_mode_color_value(
+        color=get_view_mode_color_value(
             activity_score=activity_score,
             metadata_json=build_default_daily_view_metadata(),
         ),
-        has_data=True,
     )
 
 
@@ -127,9 +122,22 @@ def empty_grid_day(day: date) -> ExplorationGridDay:
     return ExplorationGridDay(
         date=day,
         count=0,
-        activity_score=0,
-        color_value="empty",
-        has_data=False,
+        color="empty",
+    )
+
+
+def resolve_grid_day_color(*, aggregate: DailyAggregateReadSnapshot) -> str:
+    """Resolve either direct per-day color output or token-based color output."""
+
+    if uses_direct_color(metadata_json=aggregate.metadata_json):
+        direct_color = aggregate.color_value
+        if isinstance(direct_color, str) and direct_color.startswith("#"):
+            return direct_color
+        return "empty"
+
+    return get_view_mode_color_value(
+        activity_score=aggregate.activity_score,
+        metadata_json=aggregate.metadata_json,
     )
 
 
@@ -186,6 +194,12 @@ def get_view_mode_color_value(
         activity_score=activity_score,
         thresholds=thresholds,
     )
+
+
+def uses_direct_color(*, metadata_json: dict[str, Any]) -> bool:
+    """Return whether the selected daily view expects direct hex day colors."""
+
+    return metadata_json.get("direct_color") is True
 
 
 def parse_activity_score_color_thresholds(

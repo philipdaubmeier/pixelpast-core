@@ -35,6 +35,8 @@ class DailyAggregateReadSnapshot:
     total_events: int
     media_count: int
     activity_score: int
+    color_value: str | None
+    title: str | None
     aggregate_scope: str
     source_type: str
     tag_summary_json: list[dict[str, Any]]
@@ -644,6 +646,8 @@ def _to_daily_aggregate_read_snapshot(
         total_events=aggregate.total_events,
         media_count=aggregate.media_count,
         activity_score=aggregate.activity_score,
+        color_value=aggregate.color_value,
+        title=aggregate.title,
         aggregate_scope=daily_view.aggregate_scope,
         source_type=(
             daily_view.source_type

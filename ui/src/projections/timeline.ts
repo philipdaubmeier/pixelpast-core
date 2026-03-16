@@ -11,9 +11,8 @@ export type HeatmapDayProjection = {
   weekIndex: number;
   weekdayIndex: number;
   count: number;
-  activityScore: number;
-  colorValue: "empty" | "low" | "medium" | "high";
-  hasData: boolean;
+  color: "empty" | "low" | "medium" | "high" | `#${string}`;
+  label?: string;
 };
 
 export type PersonProjection = {

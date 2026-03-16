@@ -67,9 +67,8 @@ function mapExplorationDay(
     weekIndex: getWeekIndex(parsedDate),
     weekdayIndex: getWeekdayIndex(parsedDate),
     count: day.count,
-    activityScore: day.activity_score,
-    colorValue: day.color_value,
-    hasData: day.has_data,
+    color: day.color,
+    label: day.label,
   };
 }
 

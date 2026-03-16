@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 from datetime import date
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from pixelpast.api.schemas.bootstrap_ui import ExplorationRange
 
 
-ColorValue = Literal["empty", "low", "medium", "high"]
+ColorToken = Literal["empty", "low", "medium", "high"]
+HexColor = Annotated[str, Field(pattern=r"^#[0-9A-Fa-f]{6}$")]
+ColorValue = ColorToken | HexColor
 
 
 class ExplorationGridDay(BaseModel):
@@ -18,9 +20,8 @@ class ExplorationGridDay(BaseModel):
 
     date: date
     count: int
-    activity_score: int
-    color_value: ColorValue
-    has_data: bool
+    color: ColorValue
+    label: str | None = None
 
 
 class ExplorationGridResponse(BaseModel):

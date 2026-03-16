@@ -23,9 +23,8 @@ export type ApiExplorationGridResponse = {
   days: Array<{
     date: string;
     count: number;
-    activity_score: number;
-    color_value: "empty" | "low" | "medium" | "high";
-    has_data: boolean;
+    color: "empty" | "low" | "medium" | "high" | `#${string}`;
+    label?: string;
   }>;
 };
 

@@ -17,7 +17,11 @@ from pixelpast.api.schemas import ExplorationGridResponse
 router = APIRouter(tags=["timeline"])
 
 
-@router.get("/exploration", response_model=ExplorationGridResponse)
+@router.get(
+    "/exploration",
+    response_model=ExplorationGridResponse,
+    response_model_exclude_none=True,
+)
 def get_exploration(
     start: date | None = Query(default=None),
     end: date | None = Query(default=None),

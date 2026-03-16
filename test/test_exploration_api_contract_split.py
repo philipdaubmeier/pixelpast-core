@@ -128,23 +128,12 @@ def test_exploration_contract_split_returns_bootstrap_and_grid_separately() -> N
             "range": {"start": "2024-01-01", "end": "2024-01-03"},
             "days": [
                 _empty_grid_day_payload("2024-01-01"),
-                _active_grid_day_payload(
-                    "2024-01-02",
-                    count=2,
-                    activity_score=40,
-                    color_value="medium",
-                ),
+                _active_grid_day_payload("2024-01-02", count=2, color="medium"),
                 _empty_grid_day_payload("2024-01-03"),
             ],
         }
         assert "days" not in bootstrap_response.json()
-        assert sorted(grid_response.json()["days"][1]) == [
-            "activity_score",
-            "color_value",
-            "count",
-            "date",
-            "has_data",
-        ]
+        assert sorted(grid_response.json()["days"][1]) == ["color", "count", "date"]
     finally:
         if runtime is not None:
             runtime.engine.dispose()
@@ -225,12 +214,7 @@ def test_exploration_grid_endpoint_accepts_server_side_filter_parameters() -> No
             "range": {"start": "2024-01-01", "end": "2024-01-03"},
             "days": [
                 _empty_grid_day_payload("2024-01-01"),
-                _active_grid_day_payload(
-                    "2024-01-02",
-                    count=1,
-                    activity_score=80,
-                    color_value="high",
-                ),
+                _active_grid_day_payload("2024-01-02", count=1, color="high"),
                 _empty_grid_day_payload("2024-01-03"),
             ],
         }
@@ -259,27 +243,13 @@ def test_exploration_grid_endpoint_selects_requested_daily_view_rows() -> None:
         assert activity_response.status_code == 200
         assert activity_response.json() == {
             "range": {"start": "2024-01-02", "end": "2024-01-02"},
-            "days": [
-                _active_grid_day_payload(
-                    "2024-01-02",
-                    count=2,
-                    activity_score=40,
-                    color_value="medium",
-                )
-            ],
+            "days": [_active_grid_day_payload("2024-01-02", count=2, color="medium")],
         }
 
         assert calendar_response.status_code == 200
         assert calendar_response.json() == {
             "range": {"start": "2024-01-02", "end": "2024-01-02"},
-            "days": [
-                _active_grid_day_payload(
-                    "2024-01-02",
-                    count=1,
-                    activity_score=20,
-                    color_value="low",
-                )
-            ],
+            "days": [_active_grid_day_payload("2024-01-02", count=1, color="low")],
         }
     finally:
         if runtime is not None:
@@ -403,12 +373,7 @@ def test_exploration_grid_returns_empty_day_when_selected_view_has_no_row() -> N
         assert response.json() == {
             "range": {"start": "2024-01-02", "end": "2024-01-03"},
             "days": [
-                _active_grid_day_payload(
-                    "2024-01-02",
-                    count=1,
-                    activity_score=80,
-                    color_value="high",
-                ),
+                _active_grid_day_payload("2024-01-02", count=1, color="high"),
                 _empty_grid_day_payload("2024-01-03"),
             ],
         }
@@ -464,20 +429,75 @@ def test_exploration_grid_uses_daily_view_metadata_thresholds_for_color_value() 
         assert response.json() == {
             "range": {"start": "2024-01-02", "end": "2024-01-03"},
             "days": [
-                _active_grid_day_payload(
-                    "2024-01-02",
-                    count=1,
-                    activity_score=12,
-                    color_value="low",
-                ),
-                _active_grid_day_payload(
-                    "2024-01-03",
-                    count=1,
-                    activity_score=5,
-                    color_value="empty",
-                ),
+                _active_grid_day_payload("2024-01-02", count=1, color="low"),
+                _active_grid_day_payload("2024-01-03", count=1, color="empty"),
             ],
         }
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_exploration_grid_returns_direct_hex_color_and_optional_label() -> None:
+    workspace_root = _create_workspace_dir(prefix="exploration-grid-direct-color")
+    runtime = None
+    try:
+        runtime = _create_runtime(workspace_root=workspace_root)
+
+        with runtime.session_factory() as session:
+            workdays_view = _create_daily_view(
+                session=session,
+                aggregate_scope=DAILY_AGGREGATE_SCOPE_SOURCE_TYPE,
+                source_type="workdays_vacation",
+            )
+            workdays_view.label = "Workdays Vacation"
+            workdays_view.description = "Highlights days with workdays vacation activity."
+            workdays_view.metadata_json = {
+                **build_default_daily_view_metadata(),
+                "activity_score_color_thresholds": [],
+                "direct_color": True,
+            }
+            session.add_all(
+                [
+                    DailyAggregate(
+                        date=date(2024, 1, 2),
+                        daily_view_id=workdays_view.id,
+                        total_events=1,
+                        media_count=0,
+                        activity_score=1,
+                        color_value="#2F2FAB",
+                        title="V",
+                    ),
+                    DailyAggregate(
+                        date=date(2024, 1, 3),
+                        daily_view_id=workdays_view.id,
+                        total_events=1,
+                        media_count=0,
+                        activity_score=1,
+                        color_value="#66CCFF",
+                        title=None,
+                    ),
+                ]
+            )
+            session.commit()
+
+        app = create_app(settings=runtime.settings)
+        with TestClient(app) as client:
+            response = client.get(
+                "/api/exploration"
+                "?start=2024-01-02&end=2024-01-03&view_mode=workdays_vacation"
+            )
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "range": {"start": "2024-01-02", "end": "2024-01-03"},
+            "days": [
+                _active_grid_day_payload("2024-01-02", count=1, color="#2F2FAB", label="V"),
+                _active_grid_day_payload("2024-01-03", count=1, color="#66CCFF"),
+            ],
+        }
+        assert "label" not in response.json()["days"][1]
     finally:
         if runtime is not None:
             runtime.engine.dispose()
@@ -603,13 +623,7 @@ def test_day_context_endpoint_remains_separate_from_grid_activity_loading() -> N
 
         assert grid_response.status_code == 200
         assert context_response.status_code == 200
-        assert sorted(grid_response.json()["days"][1]) == [
-            "activity_score",
-            "color_value",
-            "count",
-            "date",
-            "has_data",
-        ]
+        assert sorted(grid_response.json()["days"][1]) == ["color", "count", "date"]
         assert context_response.json()["days"][1] == {
             "date": "2024-01-02",
             "persons": [{"id": 1, "name": "Anna", "role": "Family"}],
@@ -857,26 +871,25 @@ def _empty_grid_day_payload(day: str) -> dict[str, object]:
     return {
         "date": day,
         "count": 0,
-        "activity_score": 0,
-        "color_value": "empty",
-        "has_data": False,
+        "color": "empty",
     }
 
 
 def _active_grid_day_payload(
     day: str,
     *,
-    count: int,
-    activity_score: int,
-    color_value: str,
+    count: int = 1,
+    color: str,
+    label: str | None = None,
 ) -> dict[str, object]:
-    return {
+    payload: dict[str, object] = {
         "date": day,
         "count": count,
-        "activity_score": activity_score,
-        "color_value": color_value,
-        "has_data": True,
+        "color": color,
     }
+    if label is not None:
+        payload["label"] = label
+    return payload
 
 
 def _create_runtime(*, workspace_root: Path):

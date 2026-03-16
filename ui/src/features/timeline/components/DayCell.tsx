@@ -13,11 +13,15 @@ const emptyTone = {
 };
 
 function getTone(
-  colorValue: HeatmapDayRenderProjection["colorValue"],
+  colorValue: HeatmapDayRenderProjection["color"],
   viewColorToken: string,
 ) {
   if (colorValue === "empty") {
     return emptyTone;
+  }
+
+  if (colorValue.startsWith("#")) {
+    return { backgroundColor: colorValue, opacity: 1 };
   }
 
   if (colorValue === "low") {
@@ -37,6 +41,7 @@ export function DayCell({ day, viewColorToken, isHovered, onHover }: DayCellProp
   const title = [
     day.date,
     `${day.count} items`,
+    ...(day.label ? [day.label] : []),
     day.hasPersistentFilters
       ? day.matchesPersistentFilters
         ? "matches persistent filters"
@@ -53,7 +58,7 @@ export function DayCell({ day, viewColorToken, isHovered, onHover }: DayCellProp
       onBlur={() => onHover(null)}
       className={[
         "h-3.5 w-3.5 rounded-[4px] border transition duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900/55 focus-visible:ring-offset-1",
-        day.hasData
+        day.color !== "empty"
           ? "border-white/50 shadow-[0_1px_0_rgba(255,255,255,0.45)]"
           : "border-[color:rgba(98,80,46,0.14)]",
         isHovered
@@ -66,7 +71,7 @@ export function DayCell({ day, viewColorToken, isHovered, onHover }: DayCellProp
         gridColumnStart: day.weekIndex + 1,
         gridRowStart: day.weekdayIndex + 1,
       }}
-      aria-label={day.date}
+      aria-label={day.label ? `${day.date} ${day.label}` : day.date}
       title={title}
     />
   );
