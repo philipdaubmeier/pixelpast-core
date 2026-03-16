@@ -2,9 +2,11 @@
 
 from pixelpast.ingestion.workdays_vacation.connector import WorkdaysVacationConnector
 from pixelpast.ingestion.workdays_vacation.contracts import (
+    ParsedWorkdaysVacationDay,
     ParsedWorkdaysVacationWorkbook,
     WorkdaysVacationEventCandidate,
     WorkdaysVacationIngestionResult,
+    WorkdaysVacationLegendEntry,
     WorkdaysVacationSourceCandidate,
     WorkdaysVacationTransformError,
     WorkdaysVacationWorkbookCandidate,
@@ -41,6 +43,7 @@ from pixelpast.ingestion.workdays_vacation.transform import (
 )
 
 __all__ = [
+    "ParsedWorkdaysVacationDay",
     "ParsedWorkdaysVacationWorkbook",
     "WorkdaysVacationConnector",
     "WorkdaysVacationEventCandidate",
@@ -50,6 +53,7 @@ __all__ = [
     "WorkdaysVacationIngestionResult",
     "WorkdaysVacationIngestionRunCoordinator",
     "WorkdaysVacationIngestionService",
+    "WorkdaysVacationLegendEntry",
     "WorkdaysVacationSourceCandidate",
     "WorkdaysVacationStagedIngestionStrategy",
     "WorkdaysVacationTransformError",

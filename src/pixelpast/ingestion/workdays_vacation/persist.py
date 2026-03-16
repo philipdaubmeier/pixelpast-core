@@ -58,7 +58,10 @@ class WorkdaysVacationWorkbookPersister:
         )
         self.persisted_source_count += 1
         self.persisted_event_count += event_result.persisted_event_count
-        return _compose_workbook_outcome(event_result=event_result)
+        return _compose_workbook_outcome(
+            event_result=event_result,
+            skipped_event_count=candidate.skipped_event_count,
+        )
 
     def count_missing_from_source(
         self,
@@ -68,7 +71,9 @@ class WorkdaysVacationWorkbookPersister:
         """Preview source-scoped missing events for one workbook."""
 
         source_external_id = _require_source_external_id(candidate)
-        source = self._source_repository.get_by_external_id(external_id=source_external_id)
+        source = self._source_repository.get_by_external_id(
+            external_id=source_external_id
+        )
         if source is None:
             return 0
         return self._event_repository.count_missing_from_source(
@@ -97,6 +102,7 @@ class WorkdaysVacationWorkbookPersister:
 def _compose_workbook_outcome(
     *,
     event_result,
+    skipped_event_count: int,
 ) -> str:
     return (
         "inserted="
@@ -105,7 +111,7 @@ def _compose_workbook_outcome(
         f"{event_result.updated_event_count};"
         "unchanged="
         f"{event_result.unchanged_event_count};"
-        "skipped=0;"
+        f"skipped={skipped_event_count};"
         "persisted_event_count="
         f"{event_result.persisted_event_count}"
     )
@@ -114,7 +120,8 @@ def _compose_workbook_outcome(
 def _require_source_external_id(candidate: WorkdaysVacationWorkbookCandidate) -> str:
     if candidate.source.external_id is None:
         raise ValueError(
-            "Workdays vacation workbook candidate is missing a required source external id."
+            "Workdays vacation workbook candidate is missing a required source "
+            "external id."
         )
     return candidate.source.external_id
 

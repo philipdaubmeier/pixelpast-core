@@ -443,7 +443,8 @@ def test_cli_ingest_workdays_vacation_persists_source_from_fixture(
         assert result.exit_code == 0
         assert database_path.exists()
         assert "[workdays_vacation] completed" in result.stdout
-        assert "inserted: 0" in result.stdout
+        assert "inserted: 522" in result.stdout
+        assert "skipped: 207" in result.stdout
         assert "failed: 0" in result.stdout
 
         engine = create_engine(f"sqlite:///{database_path.as_posix()}")
@@ -459,16 +460,17 @@ def test_cli_ingest_workdays_vacation_persists_source_from_fixture(
 
         assert len(sources) == 1
         assert sources[0].type == "workdays_vacation"
-        assert sources[0].external_id is not None
+        assert sources[0].external_id == fixture_path.resolve().as_posix()
         assert sources[0].config["origin_path"] == fixture_path.resolve().as_posix()
         assert sources[0].config["sheet_names"]
-        assert len(events) == 0
+        assert len(events) == 522
         assert len(job_runs) == 1
         assert job_runs[0].type == "ingest"
         assert job_runs[0].job == "workdays_vacation"
         assert job_runs[0].status == "completed"
         assert job_runs[0].progress_json is not None
-        assert job_runs[0].progress_json["inserted"] == 0
+        assert job_runs[0].progress_json["inserted"] == 522
+        assert job_runs[0].progress_json["skipped"] == 207
         assert job_runs[0].progress_json["failed"] == 0
     finally:
         get_settings.cache_clear()

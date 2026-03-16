@@ -90,6 +90,7 @@ class WorkdaysVacationConnector:
             workbook=workbook,
             source=build_workdays_vacation_source_candidate(parsed_workbook),
             events=build_workdays_vacation_event_candidates(parsed_workbook),
+            skipped_event_count=len(parsed_workbook.skipped_day_warnings),
         )
 
     def build_transform_error(

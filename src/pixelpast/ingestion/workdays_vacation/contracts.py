@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -33,6 +33,30 @@ class ParsedWorkdaysVacationWorkbook:
 
     descriptor: WorkdaysVacationWorkbookDescriptor
     sheet_names: tuple[str, ...]
+    legend_entries: tuple["WorkdaysVacationLegendEntry", ...]
+    day_entries: tuple["ParsedWorkdaysVacationDay", ...]
+    skipped_day_warnings: tuple[str, ...]
+
+
+@dataclass(slots=True, frozen=True)
+class WorkdaysVacationLegendEntry:
+    """One parsed legend row from the workbook."""
+
+    code: str
+    description: str | None
+    color_value: str
+
+
+@dataclass(slots=True, frozen=True)
+class ParsedWorkdaysVacationDay:
+    """One populated workbook day cell resolved into calendar coordinates."""
+
+    represented_date: date
+    short_code: str
+    color_value: str
+    legend_description: str | None
+    worksheet_row: int
+    worksheet_column: str
 
 
 @dataclass(slots=True, frozen=True)
@@ -67,6 +91,7 @@ class WorkdaysVacationWorkbookCandidate:
     workbook: WorkdaysVacationWorkbookDescriptor
     source: WorkdaysVacationSourceCandidate
     events: tuple[WorkdaysVacationEventCandidate, ...]
+    skipped_event_count: int = 0
 
 
 @dataclass(slots=True, frozen=True)
@@ -90,9 +115,11 @@ class WorkdaysVacationIngestionResult:
 
 
 __all__ = [
+    "ParsedWorkdaysVacationDay",
     "ParsedWorkdaysVacationWorkbook",
     "WorkdaysVacationEventCandidate",
     "WorkdaysVacationIngestionResult",
+    "WorkdaysVacationLegendEntry",
     "WorkdaysVacationSourceCandidate",
     "WorkdaysVacationTransformError",
     "WorkdaysVacationWorkbookCandidate",
