@@ -426,6 +426,73 @@ def test_cli_ingest_calendar_reports_missing_from_source_for_removed_events(
         shutil.rmtree(workspace_root, ignore_errors=True)
 
 
+def test_cli_ingest_workdays_vacation_persists_source_from_fixture(
+    monkeypatch,
+) -> None:
+    database_path = _build_test_database_path("cli-workdays-vacation-ingest")
+    fixture_path = Path("test") / "assets" / "workday_vacation_test_fixture.xlsx"
+    monkeypatch.setenv("PIXELPAST_DATABASE_URL", f"sqlite:///{database_path.as_posix()}")
+    monkeypatch.setenv(
+        "PIXELPAST_WORKDAYS_VACATION_ROOT",
+        str(fixture_path.resolve()),
+    )
+    get_settings.cache_clear()
+
+    try:
+        result = runner.invoke(app, ["ingest", "workdays_vacation"])
+        assert result.exit_code == 0
+        assert database_path.exists()
+        assert "[workdays_vacation] completed" in result.stdout
+        assert "inserted: 0" in result.stdout
+        assert "failed: 0" in result.stdout
+
+        engine = create_engine(f"sqlite:///{database_path.as_posix()}")
+        try:
+            with Session(engine) as session:
+                sources = list(session.execute(select(Source)).scalars())
+                events = list(session.execute(select(Event)).scalars())
+                job_runs = list(
+                    session.execute(select(JobRun).order_by(JobRun.id)).scalars()
+                )
+        finally:
+            engine.dispose()
+
+        assert len(sources) == 1
+        assert sources[0].type == "workdays_vacation"
+        assert sources[0].external_id is not None
+        assert sources[0].config["origin_path"] == fixture_path.resolve().as_posix()
+        assert sources[0].config["sheet_names"]
+        assert len(events) == 0
+        assert len(job_runs) == 1
+        assert job_runs[0].type == "ingest"
+        assert job_runs[0].job == "workdays_vacation"
+        assert job_runs[0].status == "completed"
+        assert job_runs[0].progress_json is not None
+        assert job_runs[0].progress_json["inserted"] == 0
+        assert job_runs[0].progress_json["failed"] == 0
+    finally:
+        get_settings.cache_clear()
+        if database_path.exists():
+            database_path.unlink()
+
+
+def test_cli_returns_invalid_argument_exit_code_when_workdays_vacation_root_is_missing(
+    monkeypatch,
+) -> None:
+    database_path = _build_test_database_path("cli-workdays-vacation-missing-root")
+    monkeypatch.setenv("PIXELPAST_DATABASE_URL", f"sqlite:///{database_path.as_posix()}")
+    monkeypatch.delenv("PIXELPAST_WORKDAYS_VACATION_ROOT", raising=False)
+    get_settings.cache_clear()
+
+    try:
+        result = runner.invoke(app, ["ingest", "workdays_vacation"])
+        assert result.exit_code == 2
+    finally:
+        get_settings.cache_clear()
+        if database_path.exists():
+            database_path.unlink()
+
+
 def test_ingestion_cli_progress_reporter_tracks_phase_progress() -> None:
     stream = io.StringIO()
     reporter = IngestionCliProgressReporter(stream=stream)
