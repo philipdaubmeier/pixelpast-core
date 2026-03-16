@@ -19,6 +19,7 @@ class DailyView:
     source_type: str | None
     label: str
     description: str
+    metadata_json: dict[str, object]
 
 
 def build_daily_view(
@@ -34,6 +35,12 @@ def build_daily_view(
             source_type=None,
             label="Activity",
             description="Default heat intensity across all timeline sources.",
+            metadata_json={
+                "score_version": "v2",
+                "score_formula": "activity_score = total_events + media_count",
+                "summary_version": "v1",
+                "source_partitioning": "events use source.type; assets use media_type",
+            },
         )
 
     if aggregate_scope != DAILY_AGGREGATE_SCOPE_SOURCE_TYPE:
@@ -49,4 +56,10 @@ def build_daily_view(
         source_type=source_type,
         label=label,
         description=f"Highlights days with {normalized_source_type} activity.",
+        metadata_json={
+            "score_version": "v2",
+            "score_formula": "activity_score = total_events + media_count",
+            "summary_version": "v1",
+            "source_partitioning": "events use source.type; assets use media_type",
+        },
     )

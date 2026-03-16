@@ -40,7 +40,6 @@ class DailyAggregateSnapshot:
     tag_summary_json: list[dict[str, Any]]
     person_summary_json: list[dict[str, Any]]
     location_summary_json: list[dict[str, Any]]
-    metadata_json: dict[str, Any]
 
 
 @dataclass(slots=True, frozen=True)
@@ -392,7 +391,6 @@ class DailyAggregateRepository:
             tag_summary_json=list(aggregate.tag_summary_json),
             person_summary_json=list(aggregate.person_summary_json),
             location_summary_json=list(aggregate.location_summary_json),
-            metadata_json=dict(aggregate.metadata_json),
         )
 
 
@@ -451,6 +449,7 @@ class DailyViewRepository:
                 source_type=metadata.source_type,
                 label=metadata.label,
                 description=metadata.description,
+                metadata_json=dict(metadata.metadata_json),
             )
             self._session.add(daily_view)
             self._session.flush()
@@ -459,9 +458,11 @@ class DailyViewRepository:
         if (
             daily_view.label != metadata.label
             or daily_view.description != metadata.description
+            or daily_view.metadata_json != metadata.metadata_json
         ):
             daily_view.label = metadata.label
             daily_view.description = metadata.description
+            daily_view.metadata_json = dict(metadata.metadata_json)
 
         return daily_view
 

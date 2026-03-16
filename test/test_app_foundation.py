@@ -141,7 +141,6 @@ def test_alembic_upgrade_head_runs() -> None:
                 "tag_summary",
                 "person_summary",
                 "location_summary",
-                "metadata",
             } <= daily_aggregate_columns
             assert daily_view_columns == {
                 "id",
@@ -149,6 +148,7 @@ def test_alembic_upgrade_head_runs() -> None:
                 "source_type",
                 "label",
                 "description",
+                "metadata",
             }
             assert daily_aggregate_indexes == {
                 "ix_daily_aggregate_view_date",
@@ -346,6 +346,7 @@ def test_daily_aggregate_date_roundtrip_uses_python_date() -> None:
             source_type=None,
             label="Activity",
             description="Default heat intensity across all timeline sources.",
+            metadata_json={"score_version": "v1"},
         )
         session.add(daily_view)
         session.flush()
@@ -356,7 +357,6 @@ def test_daily_aggregate_date_roundtrip_uses_python_date() -> None:
                 total_events=2,
                 media_count=1,
                 activity_score=3,
-                metadata_json={"score_version": "v1"},
             )
         )
         session.commit()
@@ -424,10 +424,10 @@ def test_daily_aggregate_schema_v2_upgrade_backfills_legacy_rows() -> None:
             assert stored_aggregate.tag_summary_json == []
             assert stored_aggregate.person_summary_json == []
             assert stored_aggregate.location_summary_json == []
-            assert stored_aggregate.metadata_json == {"score_version": "v1"}
             assert stored_daily_view.aggregate_scope == DAILY_AGGREGATE_SCOPE_OVERALL
             assert stored_daily_view.source_type is None
             assert stored_daily_view.label == "Activity"
+            assert stored_daily_view.metadata_json == {"score_version": "v1"}
             assert (
                 stored_daily_view.description
                 == "Default heat intensity across all timeline sources."

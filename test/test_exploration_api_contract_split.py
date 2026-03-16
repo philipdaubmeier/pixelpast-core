@@ -182,7 +182,6 @@ def test_exploration_grid_endpoint_uses_derived_bounds_without_canonical_fallbac
                     total_events=1,
                     media_count=0,
                     activity_score=5,
-                    metadata_json={},
                 )
             )
             session.commit()
@@ -523,7 +522,6 @@ def test_day_context_endpoint_remains_separate_from_grid_activity_loading() -> N
                             }
                         ],
                         location_summary_json=[],
-                        metadata_json={},
                     ),
                 ]
             )
@@ -645,7 +643,6 @@ def _seed_split_contract_scenario(*, runtime) -> None:
                         {"person_id": milo.id, "name": "Milo", "role": "Travel buddy", "count": 1},
                     ],
                     location_summary_json=[],
-                    metadata_json={"score_version": "v2"},
                 ),
                 DailyAggregate(
                     date=date(2024, 1, 2),
@@ -653,7 +650,6 @@ def _seed_split_contract_scenario(*, runtime) -> None:
                     total_events=1,
                     media_count=0,
                     activity_score=20,
-                    metadata_json={"score_version": "v2", "source_type": "calendar"},
                 ),
             ]
         )
@@ -721,7 +717,6 @@ def _seed_filter_scenario(*, runtime) -> None:
                         {"person_id": anna.id, "name": "Anna", "role": "Family", "count": 1}
                     ],
                     location_summary_json=[],
-                    metadata_json={},
                 ),
                 DailyAggregate(
                     date=date(2024, 1, 3),
@@ -736,7 +731,6 @@ def _seed_filter_scenario(*, runtime) -> None:
                         {"person_id": ben.id, "name": "Ben", "role": "Friend", "count": 1}
                     ],
                     location_summary_json=[],
-                    metadata_json={},
                 ),
                 DailyAggregate(
                     date=date(2024, 1, 2),
@@ -751,7 +745,6 @@ def _seed_filter_scenario(*, runtime) -> None:
                         {"person_id": anna.id, "name": "Anna", "role": "Family", "count": 1}
                     ],
                     location_summary_json=[],
-                    metadata_json={"source_type": "photo"},
                 ),
             ]
         )
@@ -839,6 +832,7 @@ def _create_daily_view(
             source_type=None,
             label="Activity",
             description="Default heat intensity across all timeline sources.",
+            metadata_json={"score_version": "v2"},
         )
     else:
         assert source_type is not None
@@ -848,6 +842,7 @@ def _create_daily_view(
             source_type=source_type,
             label=normalized_source_type.title(),
             description=f"Highlights days with {normalized_source_type} activity.",
+            metadata_json={"score_version": "v2", "source_type": source_type},
         )
 
     session.add(daily_view)

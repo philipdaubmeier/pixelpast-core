@@ -217,9 +217,11 @@ def test_build_daily_view_returns_stable_metadata() -> None:
     assert overall_view.description == (
         "Default heat intensity across all timeline sources."
     )
+    assert overall_view.metadata_json["score_version"] == "v2"
     assert photo_view.source_type == "photo"
     assert photo_view.label == "Photo"
     assert photo_view.description == "Highlights days with photo activity."
+    assert photo_view.metadata_json["score_version"] == "v2"
 
 
 def test_daily_aggregate_job_clears_rows_for_empty_canonical_dataset() -> None:
@@ -234,6 +236,7 @@ def test_daily_aggregate_job_clears_rows_for_empty_canonical_dataset() -> None:
                 source_type=None,
                 label="Activity",
                 description="Default heat intensity across all timeline sources.",
+                metadata_json={"score_version": "stale"},
             )
             session.add(overall_view)
             session.flush()
@@ -244,7 +247,6 @@ def test_daily_aggregate_job_clears_rows_for_empty_canonical_dataset() -> None:
                     total_events=9,
                     media_count=4,
                     activity_score=13,
-                    metadata_json={"score_version": "stale"},
                 )
             )
             session.commit()
@@ -431,7 +433,7 @@ def test_daily_aggregate_job_builds_connector_scoped_rows_with_semantic_summarie
                 "count": 1,
             },
         ]
-        assert mixed_overall.metadata_json == {
+        assert mixed_overall.daily_view.metadata_json == {
             "score_version": "v2",
             "score_formula": "activity_score = total_events + media_count",
             "summary_version": "v1",
@@ -527,12 +529,13 @@ def test_daily_aggregate_job_builds_connector_scoped_rows_with_semantic_summarie
                 daily_view.aggregate_scope,
                 daily_view.source_type,
                 daily_view.label,
+                daily_view.metadata_json["score_version"],
             )
             for daily_view in stored_views
         ] == [
-            ("overall", None, "Activity"),
-            ("source_type", "calendar", "Calendar"),
-            ("source_type", "photo", "Photo"),
+            ("overall", None, "Activity", "v2"),
+            ("source_type", "calendar", "Calendar", "v2"),
+            ("source_type", "photo", "Photo", "v2"),
         ]
     finally:
         if runtime is not None:
@@ -883,7 +886,7 @@ def _serialize_aggregate(aggregate: DailyAggregate) -> dict[str, object]:
         "tag_summary": aggregate.tag_summary_json,
         "person_summary": aggregate.person_summary_json,
         "location_summary": aggregate.location_summary_json,
-        "score_version": aggregate.metadata_json["score_version"],
+        "score_version": aggregate.daily_view.metadata_json["score_version"],
     }
 
 
@@ -904,7 +907,7 @@ def _serialize_snapshot(snapshot) -> dict[str, object]:
         "tag_summary": snapshot.tag_summary_json,
         "person_summary": snapshot.person_summary_json,
         "location_summary": snapshot.location_summary_json,
-        "score_version": snapshot.metadata_json["score_version"],
+        "score_version": snapshot.daily_view.metadata_json["score_version"],
     }
 
 

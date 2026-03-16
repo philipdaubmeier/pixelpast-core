@@ -23,14 +23,6 @@ from pixelpast.persistence.repositories.daily_aggregates import (
     DailyAggregateSnapshot,
 )
 
-_SCORE_METADATA = {
-    "score_version": "v2",
-    "score_formula": "activity_score = total_events + media_count",
-    "summary_version": "v1",
-    "source_partitioning": "events use source.type; assets use media_type",
-}
-
-
 @dataclass(slots=True)
 class _AggregateState:
     """Mutable accumulator for one derived aggregate row."""
@@ -123,7 +115,6 @@ def build_daily_aggregate_snapshots(
                 tag_summary_json=_build_tag_summary(state.tags),
                 person_summary_json=_build_person_summary(state.persons),
                 location_summary_json=_build_location_summary(state.locations),
-                metadata_json=dict(_SCORE_METADATA),
             )
         )
 

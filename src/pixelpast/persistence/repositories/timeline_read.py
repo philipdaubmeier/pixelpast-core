@@ -653,7 +653,7 @@ def _to_daily_aggregate_read_snapshot(
         tag_summary_json=list(aggregate.tag_summary_json),
         person_summary_json=list(aggregate.person_summary_json),
         location_summary_json=list(aggregate.location_summary_json),
-        metadata_json=dict(aggregate.metadata_json),
+        metadata_json=dict(daily_view.metadata_json),
     )
 
 

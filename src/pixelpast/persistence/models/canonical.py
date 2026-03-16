@@ -181,6 +181,12 @@ class DailyView(Base):
     source_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
     label: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str] = mapped_column(Text(), nullable=False)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(
+        "metadata",
+        JSON,
+        nullable=False,
+        default=dict,
+    )
     aggregates: Mapped[list["DailyAggregate"]] = relationship(
         back_populates="daily_view"
     )
@@ -220,12 +226,6 @@ class DailyAggregate(Base):
         JSON,
         nullable=False,
         default=list,
-    )
-    metadata_json: Mapped[dict[str, Any]] = mapped_column(
-        "metadata",
-        JSON,
-        nullable=False,
-        default=dict,
     )
     daily_view: Mapped[DailyView] = relationship(
         back_populates="aggregates",
