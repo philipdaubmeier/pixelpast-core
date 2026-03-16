@@ -228,10 +228,57 @@ def test_exploration_grid_endpoint_accepts_server_side_filter_parameters() -> No
                 _active_grid_day_payload(
                     "2024-01-02",
                     count=1,
-                    activity_score=12,
+                    activity_score=80,
                     color_value="high",
                 ),
                 _empty_grid_day_payload("2024-01-03"),
+            ],
+        }
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_exploration_grid_endpoint_selects_requested_daily_view_rows() -> None:
+    workspace_root = _create_workspace_dir(prefix="exploration-grid-view-selection")
+    runtime = None
+    try:
+        runtime = _create_runtime(workspace_root=workspace_root)
+        _seed_split_contract_scenario(runtime=runtime)
+
+        app = create_app(settings=runtime.settings)
+        with TestClient(app) as client:
+            activity_response = client.get(
+                "/api/exploration?start=2024-01-02&end=2024-01-02&view_mode=activity"
+            )
+            calendar_response = client.get(
+                "/api/exploration?start=2024-01-02&end=2024-01-02&view_mode=calendar"
+            )
+
+        assert activity_response.status_code == 200
+        assert activity_response.json() == {
+            "range": {"start": "2024-01-02", "end": "2024-01-02"},
+            "days": [
+                _active_grid_day_payload(
+                    "2024-01-02",
+                    count=2,
+                    activity_score=40,
+                    color_value="medium",
+                )
+            ],
+        }
+
+        assert calendar_response.status_code == 200
+        assert calendar_response.json() == {
+            "range": {"start": "2024-01-02", "end": "2024-01-02"},
+            "days": [
+                _active_grid_day_payload(
+                    "2024-01-02",
+                    count=1,
+                    activity_score=20,
+                    color_value="empty",
+                )
             ],
         }
     finally:
@@ -330,6 +377,38 @@ def test_exploration_grid_filtered_out_days_return_zero_count_and_empty_state() 
             "range": {"start": "2024-01-02", "end": "2024-01-03"},
             "days": [
                 _empty_grid_day_payload("2024-01-02"),
+                _empty_grid_day_payload("2024-01-03"),
+            ],
+        }
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_exploration_grid_returns_empty_day_when_selected_view_has_no_row() -> None:
+    workspace_root = _create_workspace_dir(prefix="exploration-grid-empty-selected-view")
+    runtime = None
+    try:
+        runtime = _create_runtime(workspace_root=workspace_root)
+        _seed_filter_scenario(runtime=runtime)
+
+        app = create_app(settings=runtime.settings)
+        with TestClient(app) as client:
+            response = client.get(
+                "/api/exploration?start=2024-01-02&end=2024-01-03&view_mode=photo"
+            )
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "range": {"start": "2024-01-02", "end": "2024-01-03"},
+            "days": [
+                _active_grid_day_payload(
+                    "2024-01-02",
+                    count=1,
+                    activity_score=80,
+                    color_value="high",
+                ),
                 _empty_grid_day_payload("2024-01-03"),
             ],
         }
@@ -591,7 +670,7 @@ def _seed_filter_scenario(*, runtime) -> None:
         session.add_all([source, anna, ben, travel_tag, family_tag])
         session.flush()
         overall_view = _create_daily_view(session=session)
-        _create_daily_view(
+        photo_view = _create_daily_view(
             session=session,
             aggregate_scope=DAILY_AGGREGATE_SCOPE_SOURCE_TYPE,
             source_type="photo",
@@ -658,6 +737,21 @@ def _seed_filter_scenario(*, runtime) -> None:
                     ],
                     location_summary_json=[],
                     metadata_json={},
+                ),
+                DailyAggregate(
+                    date=date(2024, 1, 2),
+                    daily_view_id=photo_view.id,
+                    total_events=0,
+                    media_count=1,
+                    activity_score=80,
+                    tag_summary_json=[
+                        {"path": "travel/europe", "label": "Europe", "count": 1}
+                    ],
+                    person_summary_json=[
+                        {"person_id": anna.id, "name": "Anna", "role": "Family", "count": 1}
+                    ],
+                    location_summary_json=[],
+                    metadata_json={"source_type": "photo"},
                 ),
             ]
         )

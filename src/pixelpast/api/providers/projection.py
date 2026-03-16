@@ -229,9 +229,10 @@ class DatabaseTimelineProjectionProvider:
         )
         aggregate_map = {
             aggregate.date: aggregate
-            for aggregate in self._daily_aggregate_repository.list_range(
+            for aggregate in self._daily_aggregate_repository.list_range_for_view(
                 start_date=range_start,
                 end_date=range_end,
+                view_id=filters.view_mode,
             )
         }
         return build_grid_response(

@@ -146,6 +146,31 @@ class DailyAggregateReadRepository:
             for aggregate, daily_view in rows
         ]
 
+    def list_range_for_view(
+        self,
+        *,
+        start_date: date,
+        end_date: date,
+        view_id: str,
+    ) -> list[DailyAggregateReadSnapshot]:
+        """Return aggregate rows for one API-facing daily-view identifier."""
+
+        statement = (
+            select(DailyAggregate, DailyView)
+            .join(DailyView, DailyView.id == DailyAggregate.daily_view_id)
+            .where(
+                DailyAggregate.date >= start_date,
+                DailyAggregate.date <= end_date,
+                *_build_daily_view_filters(view_id=view_id),
+            )
+            .order_by(DailyAggregate.date)
+        )
+        rows = self._session.execute(statement)
+        return [
+            _to_daily_aggregate_read_snapshot(aggregate=aggregate, daily_view=daily_view)
+            for aggregate, daily_view in rows
+        ]
+
     def list_source_type_range(
         self,
         *,
@@ -667,3 +692,18 @@ def _to_daily_view_catalog_id(view: DailyView) -> str:
         return view.source_type
 
     raise ValueError(f"unsupported daily view scope: {view.aggregate_scope}")
+
+
+def _build_daily_view_filters(view_id: str) -> tuple[Any, ...]:
+    """Return SQLAlchemy predicates for one API-facing daily-view identifier."""
+
+    if view_id == "activity":
+        return (
+            DailyView.aggregate_scope == DAILY_AGGREGATE_SCOPE_OVERALL,
+            DailyView.source_type.is_(None),
+        )
+
+    return (
+        DailyView.aggregate_scope == DAILY_AGGREGATE_SCOPE_SOURCE_TYPE,
+        DailyView.source_type == view_id,
+    )
