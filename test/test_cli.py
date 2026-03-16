@@ -26,7 +26,7 @@ from pixelpast.cli.main import (
     app,
 )
 from pixelpast.ingestion.entrypoints import list_supported_ingest_sources
-from pixelpast.persistence.models import Asset, DailyAggregate, Event, JobRun, Source
+from pixelpast.persistence.models import Asset, DailyAggregate, DailyView, Event, JobRun, Source
 from pixelpast.shared.progress import JobProgressSnapshot
 from pixelpast.shared.logging import KeyValueFormatter
 from pixelpast.shared.runtime import create_runtime_context, initialize_database
@@ -632,10 +632,12 @@ def test_cli_derive_daily_aggregate_rebuilds_rows(monkeypatch) -> None:
             with Session(engine) as session:
                 aggregates = list(
                     session.execute(
-                        select(DailyAggregate).order_by(
+                        select(DailyAggregate)
+                        .join(DailyView, DailyView.id == DailyAggregate.daily_view_id)
+                        .order_by(
                             DailyAggregate.date,
-                            DailyAggregate.aggregate_scope,
-                            DailyAggregate.source_type,
+                            DailyView.aggregate_scope,
+                            DailyView.source_type,
                         )
                     ).scalars()
                 )

@@ -377,10 +377,12 @@ def test_daily_aggregate_job_builds_connector_scoped_rows_with_semantic_summarie
         with runtime.session_factory() as session:
             stored_aggregates = list(
                 session.execute(
-                    select(DailyAggregate).order_by(
+                    select(DailyAggregate)
+                    .join(DailyView, DailyView.id == DailyAggregate.daily_view_id)
+                    .order_by(
                         DailyAggregate.date,
-                        DailyAggregate.aggregate_scope,
-                        DailyAggregate.source_type,
+                        DailyView.aggregate_scope,
+                        DailyView.source_type,
                     )
                 ).scalars()
             )
@@ -642,10 +644,12 @@ def test_daily_aggregate_job_recomputes_range_idempotently_for_v2_rows() -> None
             first_pass_rows = [
                 _serialize_aggregate(aggregate)
                 for aggregate in session.execute(
-                    select(DailyAggregate).order_by(
+                    select(DailyAggregate)
+                    .join(DailyView, DailyView.id == DailyAggregate.daily_view_id)
+                    .order_by(
                         DailyAggregate.date,
-                        DailyAggregate.aggregate_scope,
-                        DailyAggregate.source_type,
+                        DailyView.aggregate_scope,
+                        DailyView.source_type,
                     )
                 ).scalars()
             ]
@@ -659,10 +663,12 @@ def test_daily_aggregate_job_recomputes_range_idempotently_for_v2_rows() -> None
             second_pass_rows = [
                 _serialize_aggregate(aggregate)
                 for aggregate in session.execute(
-                    select(DailyAggregate).order_by(
+                    select(DailyAggregate)
+                    .join(DailyView, DailyView.id == DailyAggregate.daily_view_id)
+                    .order_by(
                         DailyAggregate.date,
-                        DailyAggregate.aggregate_scope,
-                        DailyAggregate.source_type,
+                        DailyView.aggregate_scope,
+                        DailyView.source_type,
                     )
                 ).scalars()
             ]

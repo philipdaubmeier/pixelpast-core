@@ -570,8 +570,6 @@ def _seed_split_contract_scenario(*, runtime) -> None:
                 ),
                 DailyAggregate(
                     date=date(2024, 1, 2),
-                    aggregate_scope=DAILY_AGGREGATE_SCOPE_SOURCE_TYPE,
-                    source_type="calendar",
                     daily_view_id=calendar_view.id,
                     total_events=1,
                     media_count=0,

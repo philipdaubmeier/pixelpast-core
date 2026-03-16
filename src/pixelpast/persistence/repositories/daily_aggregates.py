@@ -383,15 +383,8 @@ class DailyAggregateRepository:
         """Map one repository snapshot to an ORM aggregate row."""
 
         daily_view = view_repository.get_or_create(definition=aggregate.daily_view)
-        resolved_source_type = (
-            daily_view.source_type
-            if daily_view.source_type is not None
-            else DAILY_AGGREGATE_OVERALL_SOURCE_TYPE
-        )
         return DailyAggregate(
             date=aggregate.date,
-            aggregate_scope=daily_view.aggregate_scope,
-            source_type=resolved_source_type,
             daily_view_id=daily_view.id,
             total_events=aggregate.total_events,
             media_count=aggregate.media_count,

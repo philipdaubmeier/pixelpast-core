@@ -14,7 +14,6 @@ from pixelpast.api.app import create_app
 from pixelpast.persistence.base import Base
 from pixelpast.persistence.models import (
     Asset,
-    DAILY_AGGREGATE_OVERALL_SOURCE_TYPE,
     DAILY_AGGREGATE_SCOPE_OVERALL,
     DailyAggregate,
     DailyView,
@@ -135,8 +134,6 @@ def test_alembic_upgrade_head_runs() -> None:
             assert {"external_id", "name", "type", "config", "created_at"} <= source_columns
             assert {
                 "date",
-                "aggregate_scope",
-                "source_type",
                 "daily_view_id",
                 "total_events",
                 "media_count",
@@ -154,14 +151,9 @@ def test_alembic_upgrade_head_runs() -> None:
                 "description",
             }
             assert daily_aggregate_indexes == {
-                "ix_daily_aggregate_scope_date",
                 "ix_daily_aggregate_view_date",
             }
-            assert daily_aggregate_pk["constrained_columns"] == [
-                "date",
-                "aggregate_scope",
-                "source_type",
-            ]
+            assert daily_aggregate_pk["constrained_columns"] == ["date", "daily_view_id"]
         finally:
             engine.dispose()
     finally:
@@ -374,7 +366,7 @@ def test_daily_aggregate_date_roundtrip_uses_python_date() -> None:
 
     assert stored_aggregate.date.isoformat() == "2026-03-11"
     assert stored_aggregate.aggregate_scope == DAILY_AGGREGATE_SCOPE_OVERALL
-    assert stored_aggregate.source_type == DAILY_AGGREGATE_OVERALL_SOURCE_TYPE
+    assert stored_aggregate.daily_view.source_type is None
     assert stored_aggregate.tag_summary_json == []
     assert stored_aggregate.person_summary_json == []
     assert stored_aggregate.location_summary_json == []
@@ -424,10 +416,7 @@ def test_daily_aggregate_schema_v2_upgrade_backfills_legacy_rows() -> None:
 
             assert stored_aggregate.date.isoformat() == "2024-01-02"
             assert stored_aggregate.aggregate_scope == DAILY_AGGREGATE_SCOPE_OVERALL
-            assert (
-                stored_aggregate.source_type
-                == DAILY_AGGREGATE_OVERALL_SOURCE_TYPE
-            )
+            assert stored_aggregate.daily_view.source_type is None
             assert stored_aggregate.daily_view_id == stored_daily_view.id
             assert stored_aggregate.total_events == 2
             assert stored_aggregate.media_count == 1

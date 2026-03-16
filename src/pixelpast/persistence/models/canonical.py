@@ -191,41 +191,13 @@ class DailyAggregate(Base):
 
     __tablename__ = "daily_aggregate"
     __table_args__ = (
-        CheckConstraint(
-            "aggregate_scope IN ('overall', 'source_type')",
-            name="ck_daily_aggregate_scope",
-        ),
-        CheckConstraint(
-            "("
-            "aggregate_scope = 'overall' AND source_type = '__all__'"
-            ") OR ("
-            "aggregate_scope = 'source_type' AND source_type != '__all__'"
-            ")",
-            name="ck_daily_aggregate_scope_source_type",
-        ),
-        Index(
-            "ix_daily_aggregate_scope_date",
-            "aggregate_scope",
-            "source_type",
-            "date",
-        ),
         Index("ix_daily_aggregate_view_date", "daily_view_id", "date"),
-        UniqueConstraint("date", "daily_view_id", name="uq_daily_aggregate_date_view"),
     )
 
     date: Mapped[date] = mapped_column(Date(), primary_key=True)
-    aggregate_scope: Mapped[str] = mapped_column(
-        String(50),
-        primary_key=True,
-        default=DAILY_AGGREGATE_SCOPE_OVERALL,
-    )
-    source_type: Mapped[str] = mapped_column(
-        String(100),
-        primary_key=True,
-        default=DAILY_AGGREGATE_OVERALL_SOURCE_TYPE,
-    )
     daily_view_id: Mapped[int] = mapped_column(
         ForeignKey("daily_view.id"),
+        primary_key=True,
         nullable=False,
     )
     total_events: Mapped[int] = mapped_column(nullable=False, default=0)
@@ -255,7 +227,24 @@ class DailyAggregate(Base):
         nullable=False,
         default=dict,
     )
-    daily_view: Mapped[DailyView] = relationship(back_populates="aggregates")
+    daily_view: Mapped[DailyView] = relationship(
+        back_populates="aggregates",
+        lazy="joined",
+    )
+
+    @property
+    def aggregate_scope(self) -> str:
+        """Return the view scope through the normalized daily-view relationship."""
+
+        return self.daily_view.aggregate_scope
+
+    @property
+    def source_type(self) -> str:
+        """Return the legacy aggregate source identifier via the daily view."""
+
+        if self.daily_view.source_type is None:
+            return DAILY_AGGREGATE_OVERALL_SOURCE_TYPE
+        return self.daily_view.source_type
 
 
 class EventAsset(Base):
