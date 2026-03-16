@@ -15,6 +15,7 @@ DEFAULT_ACTIVITY_SCORE_COLOR_THRESHOLDS: tuple[dict[str, object], ...] = (
     {"activity_score": 35, "color_value": "medium"},
     {"activity_score": 70, "color_value": "high"},
 )
+WORKDAYS_VACATION_SOURCE_TYPE = "workdays_vacation"
 
 
 @dataclass(slots=True, frozen=True)
@@ -42,6 +43,15 @@ def build_default_daily_view_metadata() -> dict[str, object]:
     }
 
 
+def build_workdays_vacation_daily_view_metadata() -> dict[str, object]:
+    """Return metadata for the direct-color workdays-vacation view."""
+
+    metadata = build_default_daily_view_metadata()
+    metadata["activity_score_color_thresholds"] = []
+    metadata["direct_color"] = True
+    return metadata
+
+
 def build_daily_view(
     *,
     aggregate_scope: str,
@@ -66,10 +76,18 @@ def build_daily_view(
 
     normalized_source_type = source_type.replace("_", " ").strip()
     label = normalized_source_type.title()
+    metadata_json = build_default_daily_view_metadata()
+    description = f"Highlights days with {normalized_source_type} activity."
+    if source_type == WORKDAYS_VACATION_SOURCE_TYPE:
+        description = (
+            "Highlights days imported from the workdays vacation workbook "
+            "using per-day direct colors."
+        )
+        metadata_json = build_workdays_vacation_daily_view_metadata()
     return DailyView(
         aggregate_scope=aggregate_scope,
         source_type=source_type,
         label=label,
-        description=f"Highlights days with {normalized_source_type} activity.",
-        metadata_json=build_default_daily_view_metadata(),
+        description=description,
+        metadata_json=metadata_json,
     )

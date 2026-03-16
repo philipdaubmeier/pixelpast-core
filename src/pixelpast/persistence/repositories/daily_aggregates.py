@@ -52,6 +52,8 @@ class CanonicalEventAggregateInput:
     source_type: str
     event_type: str
     title: str
+    timestamp_start: datetime
+    raw_payload: dict[str, Any] | None
     latitude: float | None
     longitude: float | None
 
@@ -111,6 +113,7 @@ class CanonicalTimelineRepository:
                 Source.type,
                 Event.type,
                 Event.title,
+                Event.raw_payload,
                 Event.latitude,
                 Event.longitude,
             )
@@ -127,10 +130,20 @@ class CanonicalTimelineRepository:
                 source_type=source_type,
                 event_type=event_type,
                 title=title,
+                timestamp_start=timestamp,
+                raw_payload=raw_payload,
                 latitude=latitude,
                 longitude=longitude,
             )
-            for timestamp, source_type, event_type, title, latitude, longitude in rows
+            for (
+                timestamp,
+                source_type,
+                event_type,
+                title,
+                raw_payload,
+                latitude,
+                longitude,
+            ) in rows
         ]
 
     def list_asset_inputs(

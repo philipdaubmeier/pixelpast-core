@@ -6,12 +6,16 @@ from collections import Counter
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
+import re
 from typing import Any
 
 from pixelpast.analytics.daily_aggregate.loading import (
     DailyAggregateCanonicalInputs,
 )
-from pixelpast.analytics.daily_views import build_daily_view
+from pixelpast.analytics.daily_views import (
+    WORKDAYS_VACATION_SOURCE_TYPE,
+    build_daily_view,
+)
 from pixelpast.persistence.models import (
     DAILY_AGGREGATE_OVERALL_SOURCE_TYPE,
     DAILY_AGGREGATE_SCOPE_OVERALL,
@@ -23,6 +27,18 @@ from pixelpast.persistence.repositories.daily_aggregates import (
     DailyAggregateSnapshot,
 )
 
+_HEX_COLOR_PATTERN = re.compile(r"^#[0-9a-fA-F]{6}$")
+
+
+@dataclass(slots=True, frozen=True)
+class _DirectColorSelection:
+    """Deterministic workdays-vacation day payload chosen for one aggregate row."""
+
+    timestamp_start_sort_key: str
+    title: str
+    color_value: str
+
+
 @dataclass(slots=True)
 class _AggregateState:
     """Mutable accumulator for one derived aggregate row."""
@@ -32,6 +48,7 @@ class _AggregateState:
     tags: Counter[tuple[str, str]] | None = None
     persons: Counter[tuple[int, str, str | None]] | None = None
     locations: Counter[tuple[str, float, float]] | None = None
+    direct_color_selection: _DirectColorSelection | None = None
 
     def __post_init__(self) -> None:
         if self.tags is None:
@@ -56,6 +73,11 @@ def build_daily_aggregate_snapshots(
         ):
             state = states.setdefault(aggregate_key, _AggregateState())
             state.total_events += 1
+            _merge_direct_color_selection(
+                state=state,
+                aggregate_key=aggregate_key,
+                event_input=event_input,
+            )
             location_key = _build_event_location_key(event_input)
             if location_key is not None:
                 state.locations[location_key] += 1
@@ -111,6 +133,16 @@ def build_daily_aggregate_snapshots(
                 activity_score=_calculate_activity_score(
                     total_events=state.total_events,
                     media_count=state.media_count,
+                ),
+                color_value=(
+                    state.direct_color_selection.color_value
+                    if state.direct_color_selection is not None
+                    else None
+                ),
+                title=(
+                    state.direct_color_selection.title
+                    if state.direct_color_selection is not None
+                    else None
                 ),
                 tag_summary_json=_build_tag_summary(state.tags),
                 person_summary_json=_build_person_summary(state.persons),
@@ -218,6 +250,89 @@ def _build_event_location_key(
     title = event_input.title.strip()
     label = title if title else event_input.event_type
     return (label, event_input.latitude, event_input.longitude)
+
+
+def _merge_direct_color_selection(
+    *,
+    state: _AggregateState,
+    aggregate_key: tuple[date, str],
+    event_input: CanonicalEventAggregateInput,
+) -> None:
+    """Persist deterministic direct-color data for the workdays-vacation view only."""
+
+    _aggregate_date, source_type = aggregate_key
+    if source_type != WORKDAYS_VACATION_SOURCE_TYPE:
+        return
+    if event_input.event_type != WORKDAYS_VACATION_SOURCE_TYPE:
+        return
+
+    candidate = _build_direct_color_selection(event_input)
+    if candidate is None:
+        return
+
+    if (
+        state.direct_color_selection is None
+        or _direct_color_sort_key(candidate)
+        < _direct_color_sort_key(state.direct_color_selection)
+    ):
+        state.direct_color_selection = candidate
+
+
+def _build_direct_color_selection(
+    event_input: CanonicalEventAggregateInput,
+) -> _DirectColorSelection | None:
+    """Return one validated direct-color selection candidate from canonical event data."""
+
+    raw_payload = event_input.raw_payload
+    if not isinstance(raw_payload, dict):
+        return None
+
+    color_value = raw_payload.get("color_value")
+    if not isinstance(color_value, str):
+        return None
+
+    normalized_color_value = color_value.strip()
+    if not _HEX_COLOR_PATTERN.fullmatch(normalized_color_value):
+        return None
+
+    title = _resolve_direct_color_title(event_input)
+    if title is None:
+        return None
+
+    return _DirectColorSelection(
+        timestamp_start_sort_key=event_input.timestamp_start.isoformat(),
+        title=title,
+        color_value=normalized_color_value,
+    )
+
+
+def _resolve_direct_color_title(event_input: CanonicalEventAggregateInput) -> str | None:
+    """Return the short workdays-vacation label preserved in canonical event data."""
+
+    title = event_input.title.strip()
+    if title:
+        return title
+
+    raw_payload = event_input.raw_payload
+    if not isinstance(raw_payload, dict):
+        return None
+
+    short_code = raw_payload.get("short_code")
+    if isinstance(short_code, str) and short_code.strip():
+        return short_code.strip()
+    return None
+
+
+def _direct_color_sort_key(
+    selection: _DirectColorSelection,
+) -> tuple[str, str, str]:
+    """Sort same-day workdays-vacation conflicts by time, then title, then color."""
+
+    return (
+        selection.timestamp_start_sort_key,
+        selection.title.casefold(),
+        selection.color_value.casefold(),
+    )
 
 
 def _build_asset_location_key(

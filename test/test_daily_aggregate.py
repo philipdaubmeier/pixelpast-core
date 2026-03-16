@@ -16,6 +16,7 @@ from pixelpast.analytics.daily_aggregate import (
 )
 from pixelpast.analytics.daily_views import (
     DEFAULT_ACTIVITY_SCORE_COLOR_THRESHOLDS,
+    WORKDAYS_VACATION_SOURCE_TYPE,
     build_daily_view,
 )
 from pixelpast.persistence.models import (
@@ -55,6 +56,8 @@ def test_build_daily_aggregate_snapshots_is_deterministic_without_database() -> 
                 source_type="calendar",
                 event_type="calendar",
                 title="Planning",
+                timestamp_start=datetime(2024, 1, 2, 10, 0, tzinfo=UTC),
+                raw_payload={},
                 latitude=52.52,
                 longitude=13.405,
             )
@@ -160,6 +163,8 @@ def test_build_daily_aggregate_snapshots_is_deterministic_without_database() -> 
                 },
             ],
             "score_version": "v2",
+            "color_value": None,
+            "title": None,
         },
         {
             "date": "2024-01-02",
@@ -183,6 +188,8 @@ def test_build_daily_aggregate_snapshots_is_deterministic_without_database() -> 
                 }
             ],
             "score_version": "v2",
+            "color_value": None,
+            "title": None,
         },
         {
             "date": "2024-01-02",
@@ -206,6 +213,72 @@ def test_build_daily_aggregate_snapshots_is_deterministic_without_database() -> 
                 }
             ],
             "score_version": "v2",
+            "color_value": None,
+            "title": None,
+        },
+    ]
+
+
+def test_build_daily_aggregate_snapshots_builds_workdays_vacation_direct_color_row(
+) -> None:
+    snapshots = build_daily_aggregate_snapshots(
+        DailyAggregateCanonicalInputs(
+            event_inputs=[
+                CanonicalEventAggregateInput(
+                    day=date(2025, 1, 6),
+                    source_type=WORKDAYS_VACATION_SOURCE_TYPE,
+                    event_type=WORKDAYS_VACATION_SOURCE_TYPE,
+                    title="V",
+                    timestamp_start=datetime(2025, 1, 6, 0, 0, tzinfo=UTC),
+                    raw_payload={"color_value": "#2F2FAB", "short_code": "V"},
+                    latitude=None,
+                    longitude=None,
+                ),
+                CanonicalEventAggregateInput(
+                    day=date(2025, 1, 6),
+                    source_type=WORKDAYS_VACATION_SOURCE_TYPE,
+                    event_type=WORKDAYS_VACATION_SOURCE_TYPE,
+                    title="T",
+                    timestamp_start=datetime(2025, 1, 6, 0, 0, tzinfo=UTC),
+                    raw_payload={"color_value": "#66CCFF", "short_code": "T"},
+                    latitude=None,
+                    longitude=None,
+                ),
+            ],
+            asset_inputs=[],
+            tag_inputs=[],
+            person_inputs=[],
+        )
+    )
+
+    assert [_serialize_snapshot(snapshot) for snapshot in snapshots] == [
+        {
+            "date": "2025-01-06",
+            "scope": "overall",
+            "source_type": "__all__",
+            "total_events": 2,
+            "media_count": 0,
+            "activity_score": 2,
+            "tag_summary": [],
+            "person_summary": [],
+            "location_summary": [],
+            "score_version": "v2",
+            "color_value": None,
+            "title": None,
+        },
+        {
+            "date": "2025-01-06",
+            "scope": "source_type",
+            "source_type": "workdays_vacation",
+            "total_events": 2,
+            "media_count": 0,
+            "activity_score": 2,
+            "tag_summary": [],
+            "person_summary": [],
+            "location_summary": [],
+            "score_version": "v2",
+            "color_value": "#66CCFF",
+            "title": "T",
         },
     ]
 
@@ -215,6 +288,10 @@ def test_build_daily_view_returns_stable_metadata() -> None:
     photo_view = build_daily_view(
         aggregate_scope="source_type",
         source_type="photo",
+    )
+    workdays_vacation_view = build_daily_view(
+        aggregate_scope="source_type",
+        source_type=WORKDAYS_VACATION_SOURCE_TYPE,
     )
 
     assert overall_view.source_type is None
@@ -235,6 +312,11 @@ def test_build_daily_view_returns_stable_metadata() -> None:
         photo_view.metadata_json["activity_score_color_thresholds"]
         == [dict(threshold) for threshold in DEFAULT_ACTIVITY_SCORE_COLOR_THRESHOLDS]
     )
+    assert workdays_vacation_view.source_type == WORKDAYS_VACATION_SOURCE_TYPE
+    assert workdays_vacation_view.label == "Workdays Vacation"
+    assert workdays_vacation_view.metadata_json["score_version"] == "v2"
+    assert workdays_vacation_view.metadata_json["activity_score_color_thresholds"] == []
+    assert workdays_vacation_view.metadata_json["direct_color"] is True
 
 
 def test_daily_aggregate_job_clears_rows_for_empty_canonical_dataset() -> None:
@@ -604,6 +686,70 @@ def test_daily_aggregate_repository_persists_optional_color_and_title() -> None:
         shutil.rmtree(workspace_root, ignore_errors=True)
 
 
+def test_daily_aggregate_job_persists_workdays_vacation_direct_color_view() -> None:
+    workspace_root = _create_workspace_dir(prefix="daily-aggregate-workdays-vacation")
+    runtime = None
+    try:
+        runtime = _create_runtime(workspace_root=workspace_root)
+
+        with runtime.session_factory() as session:
+            source = Source(
+                name="Vacation Workbook",
+                type=WORKDAYS_VACATION_SOURCE_TYPE,
+                config={},
+            )
+            session.add(source)
+            session.flush()
+            session.add(
+                Event(
+                    source_id=source.id,
+                    type=WORKDAYS_VACATION_SOURCE_TYPE,
+                    timestamp_start=datetime(2025, 1, 7, 0, 0, tzinfo=UTC),
+                    timestamp_end=datetime(2025, 1, 8, 0, 0, tzinfo=UTC),
+                    title="V",
+                    summary=None,
+                    latitude=None,
+                    longitude=None,
+                    raw_payload={"color_value": "#2F2FAB", "short_code": "V"},
+                    derived_payload={},
+                )
+            )
+            session.commit()
+
+        result = DailyAggregateJob().run(runtime=runtime)
+
+        assert result.aggregate_count == 2
+        with runtime.session_factory() as session:
+            workdays_view = session.execute(
+                select(DailyView).where(
+                    DailyView.aggregate_scope == "source_type",
+                    DailyView.source_type == WORKDAYS_VACATION_SOURCE_TYPE,
+                )
+            ).scalar_one()
+            workdays_aggregate = session.execute(
+                select(DailyAggregate).where(
+                    DailyAggregate.date == date(2025, 1, 7),
+                    DailyAggregate.daily_view_id == workdays_view.id,
+                )
+            ).scalar_one()
+
+        assert workdays_view.metadata_json == {
+            "score_version": "v2",
+            "score_formula": "activity_score = total_events + media_count",
+            "summary_version": "v1",
+            "source_partitioning": "events use source.type; assets use media_type",
+            "activity_score_color_thresholds": [],
+            "direct_color": True,
+        }
+        assert workdays_aggregate.color_value == "#2F2FAB"
+        assert workdays_aggregate.title == "V"
+        assert workdays_aggregate.activity_score == 1
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
 def test_daily_aggregate_job_recomputes_range_idempotently_for_v2_rows() -> None:
     workspace_root = _create_workspace_dir(prefix="daily-aggregate-range")
     runtime = None
@@ -769,6 +915,8 @@ def test_daily_aggregate_job_recomputes_range_idempotently_for_v2_rows() -> None
                 "person_summary": [],
                 "location_summary": [],
                 "score_version": "v2",
+                "color_value": None,
+                "title": None,
             },
             {
                 "date": "2024-01-01",
@@ -781,6 +929,8 @@ def test_daily_aggregate_job_recomputes_range_idempotently_for_v2_rows() -> None
                 "person_summary": [],
                 "location_summary": [],
                 "score_version": "v2",
+                "color_value": None,
+                "title": None,
             },
             {
                 "date": "2024-01-02",
@@ -793,6 +943,8 @@ def test_daily_aggregate_job_recomputes_range_idempotently_for_v2_rows() -> None
                 "person_summary": [],
                 "location_summary": [],
                 "score_version": "v2",
+                "color_value": None,
+                "title": None,
             },
             {
                 "date": "2024-01-02",
@@ -805,6 +957,8 @@ def test_daily_aggregate_job_recomputes_range_idempotently_for_v2_rows() -> None
                 "person_summary": [],
                 "location_summary": [],
                 "score_version": "v2",
+                "color_value": None,
+                "title": None,
             },
             {
                 "date": "2024-01-02",
@@ -817,6 +971,8 @@ def test_daily_aggregate_job_recomputes_range_idempotently_for_v2_rows() -> None
                 "person_summary": [],
                 "location_summary": [],
                 "score_version": "v2",
+                "color_value": None,
+                "title": None,
             },
             {
                 "date": "2024-01-03",
@@ -829,6 +985,8 @@ def test_daily_aggregate_job_recomputes_range_idempotently_for_v2_rows() -> None
                 "person_summary": [],
                 "location_summary": [],
                 "score_version": "v2",
+                "color_value": None,
+                "title": None,
             },
             {
                 "date": "2024-01-03",
@@ -841,6 +999,8 @@ def test_daily_aggregate_job_recomputes_range_idempotently_for_v2_rows() -> None
                 "person_summary": [],
                 "location_summary": [],
                 "score_version": "v2",
+                "color_value": None,
+                "title": None,
             },
         ]
     finally:
@@ -948,6 +1108,8 @@ def _serialize_aggregate(aggregate: DailyAggregate) -> dict[str, object]:
         "person_summary": aggregate.person_summary_json,
         "location_summary": aggregate.location_summary_json,
         "score_version": aggregate.daily_view.metadata_json["score_version"],
+        "color_value": aggregate.color_value,
+        "title": aggregate.title,
     }
 
 
@@ -969,6 +1131,8 @@ def _serialize_snapshot(snapshot) -> dict[str, object]:
         "person_summary": snapshot.person_summary_json,
         "location_summary": snapshot.location_summary_json,
         "score_version": snapshot.daily_view.metadata_json["score_version"],
+        "color_value": snapshot.color_value,
+        "title": snapshot.title,
     }
 
 
