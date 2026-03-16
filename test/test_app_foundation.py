@@ -138,6 +138,8 @@ def test_alembic_upgrade_head_runs() -> None:
                 "total_events",
                 "media_count",
                 "activity_score",
+                "color_value",
+                "title",
                 "tag_summary",
                 "person_summary",
                 "location_summary",
@@ -357,6 +359,8 @@ def test_daily_aggregate_date_roundtrip_uses_python_date() -> None:
                 total_events=2,
                 media_count=1,
                 activity_score=3,
+                color_value="#2F2FAB",
+                title="V",
             )
         )
         session.commit()
@@ -366,6 +370,8 @@ def test_daily_aggregate_date_roundtrip_uses_python_date() -> None:
 
     assert stored_aggregate.date.isoformat() == "2026-03-11"
     assert stored_aggregate.aggregate_scope == DAILY_AGGREGATE_SCOPE_OVERALL
+    assert stored_aggregate.color_value == "#2F2FAB"
+    assert stored_aggregate.title == "V"
     assert stored_aggregate.daily_view.source_type is None
     assert stored_aggregate.tag_summary_json == []
     assert stored_aggregate.person_summary_json == []
@@ -421,6 +427,8 @@ def test_daily_aggregate_schema_v2_upgrade_backfills_legacy_rows() -> None:
             assert stored_aggregate.total_events == 2
             assert stored_aggregate.media_count == 1
             assert stored_aggregate.activity_score == 3
+            assert stored_aggregate.color_value is None
+            assert stored_aggregate.title is None
             assert stored_aggregate.tag_summary_json == []
             assert stored_aggregate.person_summary_json == []
             assert stored_aggregate.location_summary_json == []
@@ -439,6 +447,86 @@ def test_daily_aggregate_schema_v2_upgrade_backfills_legacy_rows() -> None:
                 stored_daily_view.description
                 == "Default heat intensity across all timeline sources."
             )
+        finally:
+            upgraded_engine.dispose()
+    finally:
+        if database_path.exists():
+            database_path.unlink()
+
+
+def test_daily_aggregate_color_title_schema_upgrade_backfills_existing_rows() -> None:
+    database_dir = Path("var")
+    database_dir.mkdir(exist_ok=True)
+    database_path = database_dir / f"test-daily-aggregate-color-title-{uuid4().hex}.db"
+    config = Config("alembic.ini")
+    config.attributes["database_url"] = f"sqlite:///{database_path.as_posix()}"
+
+    try:
+        command.upgrade(config, "20260316_0012")
+        engine = create_engine(f"sqlite:///{database_path.as_posix()}")
+        try:
+            with engine.begin() as connection:
+                connection.execute(
+                    text(
+                        """
+                        INSERT INTO daily_view (
+                            id,
+                            aggregate_scope,
+                            source_type,
+                            label,
+                            description,
+                            metadata
+                        )
+                        VALUES (
+                            1,
+                            'overall',
+                            NULL,
+                            'Activity',
+                            'Default heat intensity across all timeline sources.',
+                            '{"score_version": "v2", "activity_score_color_thresholds": []}'
+                        )
+                        """
+                    )
+                )
+                connection.execute(
+                    text(
+                        """
+                        INSERT INTO daily_aggregate (
+                            date,
+                            daily_view_id,
+                            total_events,
+                            media_count,
+                            activity_score,
+                            tag_summary,
+                            person_summary,
+                            location_summary
+                        )
+                        VALUES (
+                            '2024-01-02',
+                            1,
+                            2,
+                            1,
+                            3,
+                            '[]',
+                            '[]',
+                            '[]'
+                        )
+                        """
+                    )
+                )
+        finally:
+            engine.dispose()
+
+        command.upgrade(config, "head")
+        upgraded_engine = create_engine(f"sqlite:///{database_path.as_posix()}")
+        try:
+            with Session(upgraded_engine) as session:
+                stored_aggregate = session.query(DailyAggregate).one()
+
+            assert stored_aggregate.date.isoformat() == "2024-01-02"
+            assert stored_aggregate.color_value is None
+            assert stored_aggregate.title is None
+            assert stored_aggregate.activity_score == 3
         finally:
             upgraded_engine.dispose()
     finally:

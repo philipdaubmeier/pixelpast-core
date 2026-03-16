@@ -40,6 +40,8 @@ from pixelpast.persistence.repositories.daily_aggregates import (
     CanonicalEventAggregateInput,
     CanonicalPersonAggregateInput,
     CanonicalTagAggregateInput,
+    DailyAggregateRepository,
+    DailyAggregateSnapshot,
 )
 from pixelpast.shared.runtime import create_runtime_context, initialize_database
 from pixelpast.shared.settings import Settings
@@ -553,6 +555,49 @@ def test_daily_aggregate_job_builds_connector_scoped_rows_with_semantic_summarie
             ("source_type", "calendar", "Calendar", "v2"),
             ("source_type", "photo", "Photo", "v2"),
         ]
+        assert all(aggregate.color_value is None for aggregate in stored_aggregates)
+        assert all(aggregate.title is None for aggregate in stored_aggregates)
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_daily_aggregate_repository_persists_optional_color_and_title() -> None:
+    workspace_root = _create_workspace_dir(prefix="daily-aggregate-color-title")
+    runtime = None
+    try:
+        runtime = _create_runtime(workspace_root=workspace_root)
+
+        with runtime.session_factory() as session:
+            repository = DailyAggregateRepository(session)
+            repository.replace_all(
+                aggregates=[
+                    DailyAggregateSnapshot(
+                        date=date(2024, 1, 6),
+                        daily_view=build_daily_view(
+                            aggregate_scope="overall",
+                            source_type="__all__",
+                        ),
+                        total_events=1,
+                        media_count=0,
+                        activity_score=1,
+                        tag_summary_json=[],
+                        person_summary_json=[],
+                        location_summary_json=[],
+                        color_value="#2F2FAB",
+                        title="V",
+                    )
+                ]
+            )
+            session.commit()
+
+        with runtime.session_factory() as session:
+            stored_aggregate = session.execute(select(DailyAggregate)).scalar_one()
+
+        assert stored_aggregate.color_value == "#2F2FAB"
+        assert stored_aggregate.title == "V"
+        assert stored_aggregate.total_events == 1
     finally:
         if runtime is not None:
             runtime.engine.dispose()

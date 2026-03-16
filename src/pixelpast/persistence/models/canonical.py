@@ -209,6 +209,8 @@ class DailyAggregate(Base):
     total_events: Mapped[int] = mapped_column(nullable=False, default=0)
     media_count: Mapped[int] = mapped_column(nullable=False, default=0)
     activity_score: Mapped[int] = mapped_column(nullable=False, default=0)
+    color_value: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    title: Mapped[str | None] = mapped_column(String(255), nullable=True)
     tag_summary_json: Mapped[list[dict[str, Any]]] = mapped_column(
         "tag_summary",
         JSON,

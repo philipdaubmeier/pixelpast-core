@@ -40,6 +40,8 @@ class DailyAggregateSnapshot:
     tag_summary_json: list[dict[str, Any]]
     person_summary_json: list[dict[str, Any]]
     location_summary_json: list[dict[str, Any]]
+    color_value: str | None = None
+    title: str | None = None
 
 
 @dataclass(slots=True, frozen=True)
@@ -388,6 +390,8 @@ class DailyAggregateRepository:
             total_events=aggregate.total_events,
             media_count=aggregate.media_count,
             activity_score=aggregate.activity_score,
+            color_value=aggregate.color_value,
+            title=aggregate.title,
             tag_summary_json=list(aggregate.tag_summary_json),
             person_summary_json=list(aggregate.person_summary_json),
             location_summary_json=list(aggregate.location_summary_json),
