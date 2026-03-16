@@ -10,6 +10,7 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 
 from pixelpast.api.app import create_app
+from pixelpast.analytics.daily_views import build_default_daily_view_metadata
 from pixelpast.persistence.models import (
     Asset,
     AssetPerson,
@@ -276,7 +277,7 @@ def test_exploration_grid_endpoint_selects_requested_daily_view_rows() -> None:
                     "2024-01-02",
                     count=1,
                     activity_score=20,
-                    color_value="empty",
+                    color_value="low",
                 )
             ],
         }
@@ -409,6 +410,72 @@ def test_exploration_grid_returns_empty_day_when_selected_view_has_no_row() -> N
                     color_value="high",
                 ),
                 _empty_grid_day_payload("2024-01-03"),
+            ],
+        }
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_exploration_grid_uses_daily_view_metadata_thresholds_for_color_value() -> None:
+    workspace_root = _create_workspace_dir(prefix="exploration-grid-view-thresholds")
+    runtime = None
+    try:
+        runtime = _create_runtime(workspace_root=workspace_root)
+
+        with runtime.session_factory() as session:
+            custom_view = _create_daily_view(session=session)
+            custom_view.metadata_json = {
+                **build_default_daily_view_metadata(),
+                "activity_score_color_thresholds": [
+                    {"activity_score": 70, "color_value": "high"},
+                    {"activity_score": 10, "color_value": "low"},
+                    {"activity_score": 40, "color_value": "medium"},
+                ],
+            }
+            session.add(
+                DailyAggregate(
+                    date=date(2024, 1, 2),
+                    daily_view_id=custom_view.id,
+                    total_events=1,
+                    media_count=0,
+                    activity_score=12,
+                )
+            )
+            session.add(
+                DailyAggregate(
+                    date=date(2024, 1, 3),
+                    daily_view_id=custom_view.id,
+                    total_events=1,
+                    media_count=0,
+                    activity_score=5,
+                )
+            )
+            session.commit()
+
+        app = create_app(settings=runtime.settings)
+        with TestClient(app) as client:
+            response = client.get(
+                "/api/exploration?start=2024-01-02&end=2024-01-03&view_mode=activity"
+            )
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "range": {"start": "2024-01-02", "end": "2024-01-03"},
+            "days": [
+                _active_grid_day_payload(
+                    "2024-01-02",
+                    count=1,
+                    activity_score=12,
+                    color_value="low",
+                ),
+                _active_grid_day_payload(
+                    "2024-01-03",
+                    count=1,
+                    activity_score=5,
+                    color_value="empty",
+                ),
             ],
         }
     finally:
@@ -832,7 +899,7 @@ def _create_daily_view(
             source_type=None,
             label="Activity",
             description="Default heat intensity across all timeline sources.",
-            metadata_json={"score_version": "v2"},
+            metadata_json=build_default_daily_view_metadata(),
         )
     else:
         assert source_type is not None
@@ -842,7 +909,7 @@ def _create_daily_view(
             source_type=source_type,
             label=normalized_source_type.title(),
             description=f"Highlights days with {normalized_source_type} activity.",
-            metadata_json={"score_version": "v2", "source_type": source_type},
+            metadata_json=build_default_daily_view_metadata(),
         )
 
     session.add(daily_view)

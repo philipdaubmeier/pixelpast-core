@@ -10,6 +10,12 @@ from pixelpast.persistence.models import (
     DAILY_AGGREGATE_SCOPE_SOURCE_TYPE,
 )
 
+DEFAULT_ACTIVITY_SCORE_COLOR_THRESHOLDS: tuple[dict[str, object], ...] = (
+    {"activity_score": 1, "color_value": "low"},
+    {"activity_score": 35, "color_value": "medium"},
+    {"activity_score": 70, "color_value": "high"},
+)
+
 
 @dataclass(slots=True, frozen=True)
 class DailyView:
@@ -20,6 +26,20 @@ class DailyView:
     label: str
     description: str
     metadata_json: dict[str, object]
+
+
+def build_default_daily_view_metadata() -> dict[str, object]:
+    """Return the default backend-owned metadata for one daily view."""
+
+    return {
+        "score_version": "v2",
+        "score_formula": "activity_score = total_events + media_count",
+        "summary_version": "v1",
+        "source_partitioning": "events use source.type; assets use media_type",
+        "activity_score_color_thresholds": [
+            dict(threshold) for threshold in DEFAULT_ACTIVITY_SCORE_COLOR_THRESHOLDS
+        ],
+    }
 
 
 def build_daily_view(
@@ -35,12 +55,7 @@ def build_daily_view(
             source_type=None,
             label="Activity",
             description="Default heat intensity across all timeline sources.",
-            metadata_json={
-                "score_version": "v2",
-                "score_formula": "activity_score = total_events + media_count",
-                "summary_version": "v1",
-                "source_partitioning": "events use source.type; assets use media_type",
-            },
+            metadata_json=build_default_daily_view_metadata(),
         )
 
     if aggregate_scope != DAILY_AGGREGATE_SCOPE_SOURCE_TYPE:
@@ -56,10 +71,5 @@ def build_daily_view(
         source_type=source_type,
         label=label,
         description=f"Highlights days with {normalized_source_type} activity.",
-        metadata_json={
-            "score_version": "v2",
-            "score_formula": "activity_score = total_events + media_count",
-            "summary_version": "v1",
-            "source_partitioning": "events use source.type; assets use media_type",
-        },
+        metadata_json=build_default_daily_view_metadata(),
     )

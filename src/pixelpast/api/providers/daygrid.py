@@ -4,12 +4,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
+from typing import Any
 
 from pixelpast.api.schemas import (
     ExplorationGridDay,
     ExplorationGridResponse,
     ExplorationRange,
 )
+from pixelpast.analytics.daily_views import build_default_daily_view_metadata
 from pixelpast.persistence.repositories import DailyAggregateReadSnapshot
 
 
@@ -80,10 +82,8 @@ def build_grid_day_from_aggregate(
         count=aggregate.total_events + aggregate.media_count,
         activity_score=aggregate.activity_score,
         color_value=get_view_mode_color_value(
-            view_mode=filters.view_mode,
             activity_score=aggregate.activity_score,
-            person_ids=person_ids,
-            tag_paths=tag_paths,
+            metadata_json=aggregate.metadata_json,
         ),
         has_data=True,
     )
@@ -114,10 +114,8 @@ def build_grid_day_from_snapshot(
         count=event_count + asset_count,
         activity_score=activity_score,
         color_value=get_view_mode_color_value(
-            view_mode=filters.view_mode,
             activity_score=activity_score,
-            person_ids=person_ids,
-            tag_paths=tag_paths,
+            metadata_json=build_default_daily_view_metadata(),
         ),
         has_data=True,
     )
@@ -172,68 +170,67 @@ def tag_path_matches_selection(
 
 def get_view_mode_color_value(
     *,
-    view_mode: str,
     activity_score: int,
-    person_ids: list[int],
-    tag_paths: list[str],
+    metadata_json: dict[str, Any],
 ) -> str:
-    """Resolve the server-side color token for the requested exploration mode."""
+    """Resolve the server-side color token from daily-view metadata thresholds."""
 
-    if view_mode == "activity":
-        return get_activity_color_value(activity_score)
-
-    if view_mode in {"photo", "photos"}:
-        if any(tag_path.startswith("travel/") for tag_path in tag_paths):
-            return "high"
-        if person_ids:
-            return "medium"
-        return "low" if activity_score >= 55 else "empty"
-
-    if view_mode in {"video", "videos"}:
-        if any(tag_path.startswith("activity/") for tag_path in tag_paths):
-            return "high"
-        if activity_score >= 78:
-            return "medium"
-        return "low" if activity_score >= 60 else "empty"
-
-    if view_mode == "music":
-        if any(tag_path.startswith("people/") for tag_path in tag_paths):
-            return "high"
-        if len(person_ids) >= 2:
-            return "medium"
-        return "low" if len(person_ids) == 1 else "empty"
-
-    if view_mode == "calendar":
-        if len(person_ids) >= 2:
-            return "high"
-        if len(person_ids) == 1:
-            return "medium"
-        return (
-            "low"
-            if any(tag_path.startswith("people/") for tag_path in tag_paths)
-            else "empty"
+    thresholds = parse_activity_score_color_thresholds(metadata_json=metadata_json)
+    if thresholds is None:
+        thresholds = parse_activity_score_color_thresholds(
+            metadata_json=build_default_daily_view_metadata()
         )
+        assert thresholds is not None
 
-    if view_mode == "sports":
-        if any(tag_path == "activity/outdoors" for tag_path in tag_paths):
-            return "high"
-        if any(tag_path.startswith("activity/") for tag_path in tag_paths):
-            return "medium"
-        return "low" if activity_score >= 60 else "empty"
-
-    return get_activity_color_value(activity_score)
+    return resolve_color_value_from_thresholds(
+        activity_score=activity_score,
+        thresholds=thresholds,
+    )
 
 
-def get_activity_color_value(activity_score: int) -> str:
-    """Map an activity score to the shared heatmap intensity token."""
+def parse_activity_score_color_thresholds(
+    *,
+    metadata_json: dict[str, Any],
+) -> list[tuple[int, str]] | None:
+    """Return validated activity-score thresholds from daily-view metadata."""
 
-    if activity_score <= 0:
-        return "empty"
-    if activity_score < 35:
-        return "low"
-    if activity_score < 70:
-        return "medium"
-    return "high"
+    raw_thresholds = metadata_json.get("activity_score_color_thresholds")
+    if not isinstance(raw_thresholds, list):
+        return None
+
+    thresholds: list[tuple[int, str]] = []
+    for entry in raw_thresholds:
+        if not is_activity_score_color_threshold(entry):
+            return None
+        thresholds.append((entry["activity_score"], entry["color_value"]))
+
+    return sorted(thresholds, key=lambda threshold: (threshold[0], threshold[1]))
+
+
+def resolve_color_value_from_thresholds(
+    *,
+    activity_score: int,
+    thresholds: list[tuple[int, str]],
+) -> str:
+    """Map one activity score to the highest matching configured color value."""
+
+    matching_color = "empty"
+    for threshold_score, color_value in thresholds:
+        if activity_score >= threshold_score:
+            matching_color = color_value
+
+    return matching_color
+
+
+def is_activity_score_color_threshold(entry: object) -> bool:
+    """Return whether one metadata entry matches the threshold mapping shape."""
+
+    return (
+        isinstance(entry, dict)
+        and isinstance(entry.get("activity_score"), int)
+        and isinstance(entry.get("color_value"), str)
+        and entry["color_value"] in {"empty", "low", "medium", "high"}
+    )
 
 
 def extract_person_ids_from_summary(

@@ -14,7 +14,10 @@ from pixelpast.analytics.daily_aggregate import (
     DailyAggregateJob,
     build_daily_aggregate_snapshots,
 )
-from pixelpast.analytics.daily_views import build_daily_view
+from pixelpast.analytics.daily_views import (
+    DEFAULT_ACTIVITY_SCORE_COLOR_THRESHOLDS,
+    build_daily_view,
+)
 from pixelpast.persistence.models import (
     DAILY_AGGREGATE_OVERALL_SOURCE_TYPE,
     DAILY_AGGREGATE_SCOPE_SOURCE_TYPE,
@@ -218,10 +221,18 @@ def test_build_daily_view_returns_stable_metadata() -> None:
         "Default heat intensity across all timeline sources."
     )
     assert overall_view.metadata_json["score_version"] == "v2"
+    assert (
+        overall_view.metadata_json["activity_score_color_thresholds"]
+        == [dict(threshold) for threshold in DEFAULT_ACTIVITY_SCORE_COLOR_THRESHOLDS]
+    )
     assert photo_view.source_type == "photo"
     assert photo_view.label == "Photo"
     assert photo_view.description == "Highlights days with photo activity."
     assert photo_view.metadata_json["score_version"] == "v2"
+    assert (
+        photo_view.metadata_json["activity_score_color_thresholds"]
+        == [dict(threshold) for threshold in DEFAULT_ACTIVITY_SCORE_COLOR_THRESHOLDS]
+    )
 
 
 def test_daily_aggregate_job_clears_rows_for_empty_canonical_dataset() -> None:
@@ -438,6 +449,11 @@ def test_daily_aggregate_job_builds_connector_scoped_rows_with_semantic_summarie
             "score_formula": "activity_score = total_events + media_count",
             "summary_version": "v1",
             "source_partitioning": "events use source.type; assets use media_type",
+            "activity_score_color_thresholds": [
+                {"activity_score": 1, "color_value": "low"},
+                {"activity_score": 35, "color_value": "medium"},
+                {"activity_score": 70, "color_value": "high"},
+            ],
         }
 
         mixed_calendar = aggregates[("2024-01-02", "source_type", "calendar")]

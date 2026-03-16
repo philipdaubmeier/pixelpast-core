@@ -427,7 +427,14 @@ def test_daily_aggregate_schema_v2_upgrade_backfills_legacy_rows() -> None:
             assert stored_daily_view.aggregate_scope == DAILY_AGGREGATE_SCOPE_OVERALL
             assert stored_daily_view.source_type is None
             assert stored_daily_view.label == "Activity"
-            assert stored_daily_view.metadata_json == {"score_version": "v1"}
+            assert stored_daily_view.metadata_json == {
+                "score_version": "v1",
+                "activity_score_color_thresholds": [
+                    {"activity_score": 1, "color_value": "low"},
+                    {"activity_score": 35, "color_value": "medium"},
+                    {"activity_score": 70, "color_value": "high"},
+                ],
+            }
             assert (
                 stored_daily_view.description
                 == "Default heat intensity across all timeline sources."
