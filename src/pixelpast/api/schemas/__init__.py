@@ -22,6 +22,11 @@ from pixelpast.api.schemas.hovercontext import (
     DayContextResponse,
     DayContextSummaryCounts,
 )
+from pixelpast.api.schemas.social_graph import (
+    SocialGraphLink,
+    SocialGraphPerson,
+    SocialGraphResponse,
+)
 
 __all__ = [
     "DayAssetItem",
@@ -38,4 +43,7 @@ __all__ = [
     "ExplorationRange",
     "ExplorationTag",
     "ExplorationViewMode",
+    "SocialGraphLink",
+    "SocialGraphPerson",
+    "SocialGraphResponse",
 ]

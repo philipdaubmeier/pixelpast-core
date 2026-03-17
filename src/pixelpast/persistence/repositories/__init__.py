@@ -30,6 +30,13 @@ from pixelpast.persistence.repositories.timeline_read import (
     ExplorationReadRepository,
     TimelineBoundsSnapshot,
 )
+from pixelpast.persistence.repositories.social_graph_read import (
+    PersonAssetMembershipSnapshot,
+    SocialGraphLinkSnapshot,
+    SocialGraphPersonSnapshot,
+    SocialGraphReadRepository,
+    SocialGraphReadSnapshot,
+)
 
 __all__ = [
     "AssetRepository",
@@ -52,6 +59,11 @@ __all__ = [
     "ExplorationReadRepository",
     "JobRunRepository",
     "PersonRepository",
+    "PersonAssetMembershipSnapshot",
+    "SocialGraphLinkSnapshot",
+    "SocialGraphPersonSnapshot",
+    "SocialGraphReadRepository",
+    "SocialGraphReadSnapshot",
     "SourceRepository",
     "SourceUpsertResult",
     "TagRepository",
