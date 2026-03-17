@@ -57,16 +57,24 @@ type LayoutState = {
   links: GraphLink[];
   maxLinkWeight: number;
   totalKineticEnergy: number;
+  alpha: number;
+  tickCount: number;
+  isSettled: boolean;
 };
 
 const MIN_GRAPH_WIDTH = 320;
 const MIN_GRAPH_HEIGHT = 320;
 const FRAME_DURATION_SECONDS = 1 / 60;
-const REPULSION_FORCE = 9200;
-const SPRING_FORCE = 0.012;
-const CENTER_FORCE = 0.0032;
-const VELOCITY_DECAY = 0.88;
-const COLLISION_FORCE = 0.2;
+const CHARGE_FORCE = 160;
+const SPRING_FORCE = 0.024;
+const CENTER_FORCE = 0.008;
+const WALL_FORCE = 0.035;
+const OVERLAP_PUSH_FORCE = 0.45;
+const JITTER_FORCE = 0.85;
+const ALPHA_INITIAL = 1;
+const ALPHA_DECAY = 0.018;
+const ALPHA_MIN = 0.012;
+const MAX_SIMULATION_TICKS = 480;
 const MAX_FRAME_DELTA_MS = 32;
 
 function clamp(value: number, min: number, max: number): number {
@@ -94,11 +102,13 @@ function buildLinkLabel(
 function getNodeRadius(
   occurrenceCount: number,
   maxOccurrenceCount: number,
+  totalNodes: number,
 ): number {
   const safeMax = Math.max(maxOccurrenceCount, 1);
   const normalized =
     Math.log1p(occurrenceCount) / Math.log1p(safeMax);
-  return 11 + normalized * 18;
+  const densityScale = clamp(140 / Math.max(totalNodes, 24), 0.24, 1);
+  return 2.4 + densityScale * 2.4 + normalized * densityScale * 4.4;
 }
 
 function getLinkStrokeWidth(weight: number, maxWeight: number): number {
@@ -129,7 +139,11 @@ function createInitialLayout(
     id: person.id,
     name: person.name,
     occurrenceCount: person.occurrenceCount,
-    radius: getNodeRadius(person.occurrenceCount, maxOccurrenceCount),
+    radius: getNodeRadius(
+      person.occurrenceCount,
+      maxOccurrenceCount,
+      persons.length,
+    ),
     x: 0,
     y: 0,
     vx: 0,
@@ -143,7 +157,11 @@ function createInitialLayout(
   }));
   const centerX = dimensions.width / 2;
   const centerY = dimensions.height / 2;
-  const ringRadius = Math.min(dimensions.width, dimensions.height) * 0.28;
+  const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+  const spiralSpacing = Math.max(
+    8,
+    Math.min(dimensions.width, dimensions.height) * 0.018,
+  );
 
   preparedNodes
     .sort(
@@ -152,10 +170,10 @@ function createInitialLayout(
         left.name.localeCompare(right.name),
     )
     .forEach((node, index) => {
-      const angle = (index / Math.max(preparedNodes.length, 1)) * Math.PI * 2;
-      const jitter = (index % 3) * 9;
-      node.x = centerX + Math.cos(angle) * (ringRadius + jitter);
-      node.y = centerY + Math.sin(angle) * (ringRadius - jitter);
+      const angle = index * goldenAngle;
+      const distance = spiralSpacing * Math.sqrt(index + 1);
+      node.x = centerX + Math.cos(angle) * distance;
+      node.y = centerY + Math.sin(angle) * distance;
     });
 
   return {
@@ -163,6 +181,9 @@ function createInitialLayout(
     links: preparedLinks,
     maxLinkWeight: Math.max(...preparedLinks.map((link) => link.weight), 1),
     totalKineticEnergy: Number.POSITIVE_INFINITY,
+    alpha: ALPHA_INITIAL,
+    tickCount: 0,
+    isSettled: false,
   };
 }
 
@@ -177,6 +198,9 @@ function simulateLayoutStep(
   const centerX = dimensions.width / 2;
   const centerY = dimensions.height / 2;
   const safeDelta = deltaSeconds / FRAME_DURATION_SECONDS;
+  const effectiveAlpha = Math.max(currentLayout.alpha, ALPHA_MIN);
+  const damping = 0.82 - (1 - effectiveAlpha) * 0.16;
+  const maxVelocity = 2.2 + effectiveAlpha * 12;
 
   for (let leftIndex = 0; leftIndex < nodes.length; leftIndex += 1) {
     const leftNode = nodes[leftIndex];
@@ -198,7 +222,8 @@ function simulateLayoutStep(
       }
 
       const distance = Math.sqrt(distanceSquared);
-      const repulsion = (REPULSION_FORCE * safeDelta) / distanceSquared;
+      const repulsion =
+        (CHARGE_FORCE * effectiveAlpha * safeDelta) / Math.max(distanceSquared, 36);
       const repelX = (dx / distance) * repulsion;
       const repelY = (dy / distance) * repulsion;
 
@@ -207,16 +232,27 @@ function simulateLayoutStep(
       rightNode.vx += repelX;
       rightNode.vy += repelY;
 
-      const minimumDistance = leftNode.radius + rightNode.radius + 8;
+      const minimumDistance = leftNode.radius + rightNode.radius + 2;
       if (distance < minimumDistance) {
         const overlap = minimumDistance - distance;
-        const collisionX = (dx / distance) * overlap * COLLISION_FORCE * safeDelta;
-        const collisionY = (dy / distance) * overlap * COLLISION_FORCE * safeDelta;
+        const normalX = dx / distance;
+        const normalY = dy / distance;
+        const overlapRatio = overlap / minimumDistance;
+        const separationDistance =
+          overlap * (0.52 + overlapRatio * overlapRatio * 0.7);
+        const separationX = normalX * separationDistance * 0.5;
+        const separationY = normalY * separationDistance * 0.5;
+        const pushVelocity =
+          overlapRatio * overlapRatio * OVERLAP_PUSH_FORCE * effectiveAlpha;
 
-        leftNode.vx -= collisionX;
-        leftNode.vy -= collisionY;
-        rightNode.vx += collisionX;
-        rightNode.vy += collisionY;
+        leftNode.x -= separationX;
+        leftNode.y -= separationY;
+        rightNode.x += separationX;
+        rightNode.y += separationY;
+        leftNode.vx -= normalX * pushVelocity;
+        leftNode.vy -= normalY * pushVelocity;
+        rightNode.vx += normalX * pushVelocity;
+        rightNode.vy += normalY * pushVelocity;
       }
     }
   }
@@ -242,9 +278,17 @@ function simulateLayoutStep(
     }
 
     const idealDistance =
-      72 + (sourceNode.radius + targetNode.radius) * 1.2 - link.weight * 4;
+      clamp(
+        18 +
+          (sourceNode.radius + targetNode.radius) * 1.35 -
+          getLinkStrength(link.weight, currentLayout.maxLinkWeight) * 5.5,
+        sourceNode.radius + targetNode.radius + 2,
+        34,
+      );
     const springStrength =
-      SPRING_FORCE * getLinkStrength(link.weight, currentLayout.maxLinkWeight);
+      SPRING_FORCE *
+      getLinkStrength(link.weight, currentLayout.maxLinkWeight) *
+      effectiveAlpha;
     const springDelta = (distance - idealDistance) * springStrength * safeDelta;
     const springX = (dx / distance) * springDelta;
     const springY = (dy / distance) * springDelta;
@@ -258,25 +302,60 @@ function simulateLayoutStep(
   let totalKineticEnergy = 0;
 
   for (const node of nodes) {
-    node.vx += (centerX - node.x) * CENTER_FORCE * safeDelta;
-    node.vy += (centerY - node.y) * CENTER_FORCE * safeDelta;
-    node.vx *= VELOCITY_DECAY;
-    node.vy *= VELOCITY_DECAY;
+    node.vx += (centerX - node.x) * CENTER_FORCE * effectiveAlpha * safeDelta;
+    node.vy += (centerY - node.y) * CENTER_FORCE * effectiveAlpha * safeDelta;
+
+    const padding = node.radius + 8;
+    if (node.x < padding) {
+      node.vx += (padding - node.x) * WALL_FORCE * safeDelta;
+    } else if (node.x > dimensions.width - padding) {
+      node.vx -= (node.x - (dimensions.width - padding)) * WALL_FORCE * safeDelta;
+    }
+
+    if (node.y < padding) {
+      node.vy += (padding - node.y) * WALL_FORCE * safeDelta;
+    } else if (node.y > dimensions.height - padding) {
+      node.vy -= (node.y - (dimensions.height - padding)) * WALL_FORCE * safeDelta;
+    }
+
+    if (effectiveAlpha > 0.08) {
+      const jitterAmplitude = JITTER_FORCE * effectiveAlpha * effectiveAlpha;
+      node.vx += (Math.random() - 0.5) * jitterAmplitude;
+      node.vy += (Math.random() - 0.5) * jitterAmplitude;
+    }
+
+    node.vx = clamp(node.vx, -maxVelocity, maxVelocity);
+    node.vy = clamp(node.vy, -maxVelocity, maxVelocity);
+    node.vx *= damping;
+    node.vy *= damping;
     node.x += node.vx;
     node.y += node.vy;
 
-    const padding = node.radius + 10;
     node.x = clamp(node.x, padding, dimensions.width - padding);
     node.y = clamp(node.y, padding, dimensions.height - padding);
 
     totalKineticEnergy += Math.abs(node.vx) + Math.abs(node.vy);
   }
 
+  const nextAlpha =
+    currentLayout.alpha <= ALPHA_MIN
+      ? 0
+      : currentLayout.alpha * (1 - ALPHA_DECAY);
+  const nextTickCount = currentLayout.tickCount + 1;
+  const averageKineticEnergy =
+    nodes.length > 0 ? totalKineticEnergy / nodes.length : 0;
+  const isSettled =
+    nextTickCount >= MAX_SIMULATION_TICKS ||
+    (nextAlpha <= ALPHA_MIN && averageKineticEnergy < 0.05);
+
   return {
     nodes,
     links,
     maxLinkWeight: currentLayout.maxLinkWeight,
     totalKineticEnergy,
+    alpha: nextAlpha,
+    tickCount: nextTickCount,
+    isSettled,
   };
 }
 
@@ -347,6 +426,7 @@ function SocialGraphCanvas({
       height: MIN_GRAPH_HEIGHT,
     }),
   );
+  const layoutRef = useRef(layout);
   const [viewport, setViewport] = useState<GraphViewport>({
     scale: 1,
     x: 0,
@@ -368,7 +448,9 @@ function SocialGraphCanvas({
       return;
     }
 
-    setLayout(createInitialLayout(graph.persons, graph.links, dimensions));
+    const nextLayout = createInitialLayout(graph.persons, graph.links, dimensions);
+    layoutRef.current = nextLayout;
+    setLayout(nextLayout);
     setViewport({ scale: 1, x: 0, y: 0 });
     setHoveredNodeId(null);
     setHoveredLinkId(null);
@@ -376,10 +458,14 @@ function SocialGraphCanvas({
   }, [dimensions, graph]);
 
   useEffect(() => {
+    layoutRef.current = layout;
+  }, [layout]);
+
+  useEffect(() => {
     if (
       dimensions.width === 0 ||
       dimensions.height === 0 ||
-      layout.nodes.length === 0
+      layoutRef.current.nodes.length === 0
     ) {
       return;
     }
@@ -399,28 +485,17 @@ function SocialGraphCanvas({
           : Math.min(timestamp - previousTimestamp, MAX_FRAME_DELTA_MS);
       previousTimestamp = timestamp;
 
-      setLayout((currentLayout) => {
-        const nextLayout = simulateLayoutStep(
-          currentLayout,
-          dimensions,
-          deltaMilliseconds / 1000,
-        );
+      const nextLayout = simulateLayoutStep(
+        layoutRef.current,
+        dimensions,
+        deltaMilliseconds / 1000,
+      );
+      layoutRef.current = nextLayout;
+      setLayout(nextLayout);
 
-        if (nextLayout.totalKineticEnergy < 0.12) {
-          return {
-            ...nextLayout,
-            nodes: nextLayout.nodes.map((node) => ({
-              ...node,
-              vx: node.vx * 0.6,
-              vy: node.vy * 0.6,
-            })),
-          };
-        }
-
-        return nextLayout;
-      });
-
-      animationFrameId = window.requestAnimationFrame(animate);
+      if (!nextLayout.isSettled) {
+        animationFrameId = window.requestAnimationFrame(animate);
+      }
     };
 
     animationFrameId = window.requestAnimationFrame(animate);
@@ -429,19 +504,25 @@ function SocialGraphCanvas({
       isDisposed = true;
       window.cancelAnimationFrame(animationFrameId);
     };
-  }, [dimensions, graph, layout.nodes.length]);
+  }, [dimensions, graph]);
 
   const personNamesById = useMemo(
     () => new Map(graph.persons.map((person) => [person.id, person.name])),
     [graph.persons],
   );
+  const nodesById = useMemo(
+    () => new Map(layout.nodes.map((node) => [node.id, node])),
+    [layout.nodes],
+  );
   const selectedPersonIds = useMemo(
     () => new Set(selectedPersons.map((person) => person.id)),
     [selectedPersons],
   );
+  const showAllNodeLabels = graph.persons.length <= 80;
   const activeNodeId = hoveredNodeId ?? focusedNodeId;
 
-  const focusedNode = layout.nodes.find((node) => node.id === activeNodeId) ?? null;
+  const focusedNode =
+    (activeNodeId !== null ? nodesById.get(activeNodeId) : null) ?? null;
   const focusedLink =
     layout.links.find((link) => link.id === hoveredLinkId) ?? null;
 
@@ -596,10 +677,8 @@ function SocialGraphCanvas({
               />
               <g transform={getViewportTransform(viewport)}>
                 {layout.links.map((link) => {
-                  const sourceNode =
-                    layout.nodes.find((node) => node.id === link.sourceId) ?? null;
-                  const targetNode =
-                    layout.nodes.find((node) => node.id === link.targetId) ?? null;
+                  const sourceNode = nodesById.get(link.sourceId) ?? null;
+                  const targetNode = nodesById.get(link.targetId) ?? null;
 
                   if (sourceNode === null || targetNode === null) {
                     return null;
@@ -648,6 +727,8 @@ function SocialGraphCanvas({
                   const isFocused = focusedNodeId === node.id;
                   const isActive = isHovered || isFocused;
                   const strokeWidth = isSelected ? 4 : isActive ? 3 : 2;
+                  const shouldRenderLabel =
+                    showAllNodeLabels || isSelected || isActive;
 
                   return (
                     <g
@@ -679,14 +760,16 @@ function SocialGraphCanvas({
                         stroke={isSelected ? "#7c4b21" : "#8a6b43"}
                         strokeWidth={strokeWidth}
                       />
-                      <text
-                        y={node.radius + 18}
-                        textAnchor="middle"
-                        fill="#1c2430"
-                        className="pointer-events-none select-none text-[11px] font-semibold tracking-[0.02em]"
-                      >
-                        {node.name}
-                      </text>
+                      {shouldRenderLabel ? (
+                        <text
+                          y={node.radius + 14}
+                          textAnchor="middle"
+                          fill="#1c2430"
+                          className="pointer-events-none select-none text-[10px] font-semibold tracking-[0.02em]"
+                        >
+                          {node.name}
+                        </text>
+                      ) : null}
                     </g>
                   );
                 })}
