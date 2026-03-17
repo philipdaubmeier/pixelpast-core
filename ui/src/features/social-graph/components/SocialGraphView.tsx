@@ -56,6 +56,7 @@ type LayoutState = {
   nodes: GraphNode[];
   links: GraphLink[];
   maxLinkWeight: number;
+  linkWeightScale: number;
   totalKineticEnergy: number;
   alpha: number;
   tickCount: number;
@@ -65,12 +66,12 @@ type LayoutState = {
 const MIN_GRAPH_WIDTH = 320;
 const MIN_GRAPH_HEIGHT = 320;
 const FRAME_DURATION_SECONDS = 1 / 60;
-const CHARGE_FORCE = 160;
-const SPRING_FORCE = 0.024;
-const CENTER_FORCE = 0.008;
-const WALL_FORCE = 0.035;
-const OVERLAP_PUSH_FORCE = 0.45;
-const JITTER_FORCE = 0.85;
+const CHARGE_FORCE = 300;
+const SPRING_FORCE = 0.012;
+const CENTER_FORCE = 0.0045;
+const WALL_FORCE = 0.04;
+const OVERLAP_PUSH_FORCE = 0.6;
+const JITTER_FORCE = 0.75;
 const ALPHA_INITIAL = 1;
 const ALPHA_DECAY = 0.018;
 const ALPHA_MIN = 0.012;
@@ -121,9 +122,29 @@ function getLinkOpacity(weight: number, maxWeight: number): number {
   return 0.18 + normalized * 0.58;
 }
 
-function getLinkStrength(weight: number, maxWeight: number): number {
-  const normalized = maxWeight > 0 ? weight / maxWeight : 0;
-  return 0.5 + normalized * 1.8;
+function getQuantile(values: number[], quantile: number): number {
+  if (values.length === 0) {
+    return 1;
+  }
+
+  const sortedValues = [...values].sort((left, right) => left - right);
+  const index = Math.max(
+    0,
+    Math.min(
+      sortedValues.length - 1,
+      Math.floor((sortedValues.length - 1) * quantile),
+    ),
+  );
+  return sortedValues[index];
+}
+
+function getLinkStrength(weight: number, linkWeightScale: number): number {
+  const safeScale = Math.max(linkWeightScale, 1);
+  const normalized = Math.log1p(weight) / Math.log1p(safeScale);
+  const clampedNormalized = clamp(normalized, 0, 1);
+  const liftedNormalized = clamp((clampedNormalized - 0.08) / 0.5, 0, 1);
+  const saturatedNormalized = 1 - (1 - liftedNormalized) * (1 - liftedNormalized);
+  return 0.01 + saturatedNormalized * 1.2;
 }
 
 function createInitialLayout(
@@ -155,6 +176,13 @@ function createInitialLayout(
     targetId: link.personIds[1],
     weight: link.weight,
   }));
+  const linkWeightScale = Math.max(
+    getQuantile(
+      preparedLinks.map((link) => link.weight),
+      0.8,
+    ),
+    1,
+  );
   const centerX = dimensions.width / 2;
   const centerY = dimensions.height / 2;
   const goldenAngle = Math.PI * (3 - Math.sqrt(5));
@@ -180,6 +208,7 @@ function createInitialLayout(
     nodes: preparedNodes,
     links: preparedLinks,
     maxLinkWeight: Math.max(...preparedLinks.map((link) => link.weight), 1),
+    linkWeightScale,
     totalKineticEnergy: Number.POSITIVE_INFINITY,
     alpha: ALPHA_INITIAL,
     tickCount: 0,
@@ -281,13 +310,13 @@ function simulateLayoutStep(
       clamp(
         18 +
           (sourceNode.radius + targetNode.radius) * 1.35 -
-          getLinkStrength(link.weight, currentLayout.maxLinkWeight) * 5.5,
+          getLinkStrength(link.weight, currentLayout.linkWeightScale) * 4.2,
         sourceNode.radius + targetNode.radius + 2,
         34,
       );
     const springStrength =
       SPRING_FORCE *
-      getLinkStrength(link.weight, currentLayout.maxLinkWeight) *
+      getLinkStrength(link.weight, currentLayout.linkWeightScale) *
       effectiveAlpha;
     const springDelta = (distance - idealDistance) * springStrength * safeDelta;
     const springX = (dx / distance) * springDelta;
@@ -352,6 +381,7 @@ function simulateLayoutStep(
     nodes,
     links,
     maxLinkWeight: currentLayout.maxLinkWeight,
+    linkWeightScale: currentLayout.linkWeightScale,
     totalKineticEnergy,
     alpha: nextAlpha,
     tickCount: nextTickCount,
