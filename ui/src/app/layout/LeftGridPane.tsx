@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { memo, useState } from "react";
 import { YearGridStack } from "../../features/timeline/components/YearGridStack";
 import type { HeatmapDayRenderProjection } from "../../projections/exploration";
 import type { DateRange } from "../../projections/timeline";
@@ -6,15 +6,13 @@ import type { DateRange } from "../../projections/timeline";
 type LeftGridPaneProps = {
   days: HeatmapDayRenderProjection[];
   viewColorToken: string;
-  hoveredDate: string | null;
   onVisibleRangesChange: (ranges: DateRange[]) => void;
   onHover: (date: string | null) => void;
 };
 
-export function LeftGridPane({
+export const LeftGridPane = memo(function LeftGridPane({
   days,
   viewColorToken,
-  hoveredDate,
   onVisibleRangesChange,
   onHover,
 }: LeftGridPaneProps) {
@@ -39,7 +37,6 @@ export function LeftGridPane({
         <YearGridStack
           days={days}
           viewColorToken={viewColorToken}
-          hoveredDate={hoveredDate}
           scrollRoot={scrollContainer}
           onVisibleRangesChange={onVisibleRangesChange}
           onHover={onHover}
@@ -47,4 +44,4 @@ export function LeftGridPane({
       </div>
     </section>
   );
-}
+});

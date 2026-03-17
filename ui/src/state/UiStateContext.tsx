@@ -1,8 +1,10 @@
 import {
   createContext,
   type PropsWithChildren,
+  useCallback,
   useContext,
   useEffect,
+  useMemo,
   useState,
 } from "react";
 import {
@@ -63,60 +65,101 @@ export function UiStateProvider({ children }: PropsWithChildren) {
     return () => window.removeEventListener("popstate", handlePopState);
   }, []);
 
-  const value: UiStateContextValue = {
-    state,
-    setHoveredDate(date) {
-      setState((currentState) => ({
+  const setHoveredDate = useCallback((date: string | null) => {
+    setState((currentState) => {
+      if (currentState.hoveredDate === date) {
+        return currentState;
+      }
+
+      return {
         ...currentState,
         hoveredDate: date,
-      }));
-    },
-    setHoveredPanelItem(item) {
-      setState((currentState) => ({
-        ...currentState,
-        hoveredPanelItem: item,
-      }));
-    },
-    setViewMode(viewMode) {
-      setState((currentState) => ({
+      };
+    });
+  }, []);
+
+  const setHoveredPanelItem = useCallback((item: HoveredPanelItem | null) => {
+    setState((currentState) => ({
+      ...currentState,
+      hoveredPanelItem: item,
+    }));
+  }, []);
+
+  const setViewMode = useCallback((viewMode: ViewMode) => {
+    setState((currentState) => {
+      if (currentState.viewMode === viewMode) {
+        return currentState;
+      }
+
+      return {
         ...currentState,
         viewMode,
-      }));
-    },
-    togglePerson(personId) {
-      setState((currentState) => {
-        const nextSelection = currentState.selectedPersons.includes(personId)
-          ? currentState.selectedPersons.filter(
-              (candidate) => candidate !== personId,
-            )
-          : [...currentState.selectedPersons, personId];
+      };
+    });
+  }, []);
 
-        return {
-          ...currentState,
-          selectedPersons: nextSelection,
-        };
-      });
-    },
-    toggleTag(tagPath) {
-      setState((currentState) => {
-        const nextSelection = currentState.selectedTags.includes(tagPath)
-          ? currentState.selectedTags.filter((candidate) => candidate !== tagPath)
-          : [...currentState.selectedTags, tagPath];
+  const togglePerson = useCallback((personId: string) => {
+    setState((currentState) => {
+      const nextSelection = currentState.selectedPersons.includes(personId)
+        ? currentState.selectedPersons.filter(
+            (candidate) => candidate !== personId,
+          )
+        : [...currentState.selectedPersons, personId];
 
-        return {
-          ...currentState,
-          selectedTags: nextSelection,
-        };
-      });
-    },
-    clearSelections() {
-      setState((currentState) => ({
+      return {
+        ...currentState,
+        selectedPersons: nextSelection,
+      };
+    });
+  }, []);
+
+  const toggleTag = useCallback((tagPath: string) => {
+    setState((currentState) => {
+      const nextSelection = currentState.selectedTags.includes(tagPath)
+        ? currentState.selectedTags.filter((candidate) => candidate !== tagPath)
+        : [...currentState.selectedTags, tagPath];
+
+      return {
+        ...currentState,
+        selectedTags: nextSelection,
+      };
+    });
+  }, []);
+
+  const clearSelections = useCallback(() => {
+    setState((currentState) => {
+      if (
+        currentState.selectedPersons.length === 0 &&
+        currentState.selectedTags.length === 0
+      ) {
+        return currentState;
+      }
+
+      return {
         ...currentState,
         selectedPersons: [],
         selectedTags: [],
-      }));
-    },
-  };
+      };
+    });
+  }, []);
+
+  const value = useMemo<UiStateContextValue>(() => ({
+    state,
+    setHoveredDate,
+    setHoveredPanelItem,
+    setViewMode,
+    togglePerson,
+    toggleTag,
+    clearSelections,
+  }), [
+    clearSelections,
+    setHoveredDate,
+    setHoveredPanelItem,
+    setViewMode,
+    state,
+    togglePerson,
+    toggleTag,
+  ]);
 
   return (
     <UiStateContext.Provider value={value}>{children}</UiStateContext.Provider>

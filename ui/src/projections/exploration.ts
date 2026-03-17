@@ -81,7 +81,7 @@ function createFallbackTag(path: string): TagProjection {
   };
 }
 
-function resolveSelectedPersons(
+export function resolveSelectedPersons(
   selectedPersons: string[],
   allPersons: PersonProjection[],
 ): PersonProjection[] {
@@ -92,7 +92,7 @@ function resolveSelectedPersons(
   });
 }
 
-function resolveSelectedTags(
+export function resolveSelectedTags(
   selectedTags: string[],
   allTags: TagProjection[],
 ): TagProjection[] {
@@ -103,7 +103,7 @@ function resolveSelectedTags(
   });
 }
 
-function buildVisiblePersons(
+export function buildVisiblePersons(
   selectedPersons: PersonProjection[],
   hoveredPersons: PersonProjection[],
   allPersons: PersonProjection[],
@@ -123,7 +123,7 @@ function buildVisiblePersons(
   }));
 }
 
-function buildVisibleTags(
+export function buildVisibleTags(
   selectedTags: TagProjection[],
   hoveredTags: TagProjection[],
   allTags: TagProjection[],
@@ -141,7 +141,7 @@ function buildVisibleTags(
   }));
 }
 
-function buildGridDays(
+export function buildGridDays(
   heatmapDays: HeatmapDayProjection[],
   selectedPersons: string[],
   selectedTags: string[],
@@ -162,7 +162,7 @@ function buildGridDays(
   });
 }
 
-function buildMapProjection(
+export function buildMapProjection(
   hoveredDate: string | null,
   activeDayContext: DayContextProjection | null,
   gridDays: HeatmapDayRenderProjection[],

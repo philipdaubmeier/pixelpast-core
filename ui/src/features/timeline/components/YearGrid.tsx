@@ -1,4 +1,4 @@
-import { forwardRef } from "react";
+import { forwardRef, memo, useMemo } from "react";
 import type { HeatmapDayRenderProjection } from "../../../projections/exploration";
 import { DayCell } from "./DayCell";
 
@@ -6,22 +6,21 @@ type YearGridProps = {
   year: number;
   days: HeatmapDayRenderProjection[];
   viewColorToken: string;
-  hoveredDate: string | null;
   onHover: (date: string | null) => void;
 };
 
-export const YearGrid = forwardRef<HTMLElement, YearGridProps>(function YearGrid(
-  { year, days, viewColorToken, hoveredDate, onHover },
+const YearGridBase = forwardRef<HTMLElement, YearGridProps>(function YearGrid(
+  { year, days, viewColorToken, onHover },
   ref,
 ) {
-  const orderedDays = [...days].sort((leftDay, rightDay) =>
-    leftDay.date.localeCompare(rightDay.date),
-  );
-  const weekCount =
-    orderedDays.reduce(
+  const weekCount = useMemo(
+    () =>
+      days.reduce(
       (maxWeekIndex, day) => Math.max(maxWeekIndex, day.weekIndex),
       0,
-    ) + 1;
+      ) + 1,
+    [days],
+  );
 
   return (
     <section
@@ -40,12 +39,11 @@ export const YearGrid = forwardRef<HTMLElement, YearGridProps>(function YearGrid
           className="grid grid-rows-7 justify-start gap-1"
           style={{ gridTemplateColumns: `repeat(${weekCount}, max-content)` }}
         >
-          {orderedDays.map((day) => (
+          {days.map((day) => (
             <DayCell
               key={day.date}
               day={day}
               viewColorToken={viewColorToken}
-              isHovered={hoveredDate === day.date}
               onHover={onHover}
             />
           ))}
@@ -54,3 +52,5 @@ export const YearGrid = forwardRef<HTMLElement, YearGridProps>(function YearGrid
     </section>
   );
 });
+
+export const YearGrid = memo(YearGridBase);

@@ -1,9 +1,9 @@
+import { memo } from "react";
 import type { HeatmapDayRenderProjection } from "../../../projections/exploration";
 
 type DayCellProps = {
   day: HeatmapDayRenderProjection;
   viewColorToken: string;
-  isHovered: boolean;
   onHover: (date: string | null) => void;
 };
 
@@ -35,7 +35,11 @@ function getTone(
   return { backgroundColor: viewColorToken, opacity: 1 };
 }
 
-export function DayCell({ day, viewColorToken, isHovered, onHover }: DayCellProps) {
+export const DayCell = memo(function DayCell({
+  day,
+  viewColorToken,
+  onHover,
+}: DayCellProps) {
   const tone = getTone(day.renderColorValue, viewColorToken);
   const opacity = day.isDimmed ? Math.max(0.16, tone.opacity * 0.26) : tone.opacity;
   const title = [
@@ -61,9 +65,7 @@ export function DayCell({ day, viewColorToken, isHovered, onHover }: DayCellProp
         day.color !== "empty"
           ? "border-white/50 shadow-[0_1px_0_rgba(255,255,255,0.45)]"
           : "border-[color:rgba(98,80,46,0.14)]",
-        isHovered
-          ? "scale-110 ring-2 ring-slate-900/55 ring-offset-1"
-          : "hover:scale-105 hover:border-slate-800/20",
+        "hover:scale-105 hover:border-slate-800/20 hover:ring-2 hover:ring-slate-900/55 hover:ring-offset-1",
       ].join(" ")}
       style={{
         backgroundColor: tone.backgroundColor,
@@ -75,4 +77,4 @@ export function DayCell({ day, viewColorToken, isHovered, onHover }: DayCellProp
       title={title}
     />
   );
-}
+});

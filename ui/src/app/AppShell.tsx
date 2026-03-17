@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { LeftGridPane } from "./layout/LeftGridPane";
 import { MainSplitLayout } from "./layout/MainSplitLayout";
 import { RightContextPane } from "./layout/RightContextPane";
@@ -5,7 +6,14 @@ import { TopBar } from "./layout/TopBar";
 import { MapPanel } from "../features/context/components/MapPanel";
 import { PersonsPanel } from "../features/context/components/PersonsPanel";
 import { TagsPanel } from "../features/context/components/TagsPanel";
-import { buildExplorationProjection } from "../projections/exploration";
+import {
+  buildGridDays,
+  buildMapProjection,
+  buildVisiblePersons,
+  buildVisibleTags,
+  resolveSelectedPersons,
+  resolveSelectedTags,
+} from "../projections/exploration";
 import type {
   DateRange,
   DayContextProjection,
@@ -56,14 +64,46 @@ export function AppShell({
     toggleTag,
   } = useUiState();
 
-  const exploration = buildExplorationProjection({
-    heatmapDays,
-    dayContextsByDate,
-    activeDayContext,
-    allPersons: persons,
-    allTags: tags,
-    state,
-  });
+  const gridDays = useMemo(
+    () => buildGridDays(heatmapDays, state.selectedPersons, state.selectedTags),
+    [heatmapDays, state.selectedPersons, state.selectedTags],
+  );
+  const selectedPersons = useMemo(
+    () => resolveSelectedPersons(state.selectedPersons, persons),
+    [persons, state.selectedPersons],
+  );
+  const selectedTags = useMemo(
+    () => resolveSelectedTags(state.selectedTags, tags),
+    [state.selectedTags, tags],
+  );
+  const hoveredPersons =
+    state.hoveredDate !== null ? activeDayContext?.persons ?? [] : [];
+  const hoveredTags =
+    state.hoveredDate !== null ? activeDayContext?.tags ?? [] : [];
+  const visiblePersons = useMemo(
+    () => buildVisiblePersons(selectedPersons, hoveredPersons, persons),
+    [hoveredPersons, persons, selectedPersons],
+  );
+  const visibleTags = useMemo(
+    () => buildVisibleTags(selectedTags, hoveredTags, tags),
+    [hoveredTags, selectedTags, tags],
+  );
+  const matchingDayCount = useMemo(
+    () => gridDays.filter((day) => day.color !== "empty").length,
+    [gridDays],
+  );
+  const mapProjection = useMemo(
+    () =>
+      buildMapProjection(
+        state.hoveredDate,
+        activeDayContext,
+        gridDays,
+        dayContextsByDate,
+      ),
+    [activeDayContext, dayContextsByDate, gridDays, state.hoveredDate],
+  );
+  const hasPersistentFilters =
+    state.selectedPersons.length > 0 || state.selectedTags.length > 0;
   const activeViewMode =
     viewModes.find((viewMode) => viewMode.id === state.viewMode) ?? null;
   const activeViewColorToken = getViewModeColorToken(viewModes, state.viewMode);
@@ -74,10 +114,10 @@ export function AppShell({
         viewModes={viewModes}
         activeViewMode={state.viewMode}
         activeViewModeLabel={activeViewMode?.label ?? state.viewMode}
-        selectedPersons={exploration.selectedPersons}
-        selectedTags={exploration.selectedTags}
-        matchingDayCount={exploration.matchingDayCount}
-        hasPersistentFilters={exploration.hasPersistentFilters}
+        selectedPersons={selectedPersons}
+        selectedTags={selectedTags}
+        matchingDayCount={matchingDayCount}
+        hasPersistentFilters={hasPersistentFilters}
         gridState={gridState}
         gridError={gridError}
         hoveredDate={state.hoveredDate}
@@ -90,9 +130,8 @@ export function AppShell({
         <MainSplitLayout
           left={
             <LeftGridPane
-              days={exploration.gridDays}
+              days={gridDays}
               viewColorToken={activeViewColorToken}
-              hoveredDate={state.hoveredDate}
               onVisibleRangesChange={onVisibleRangesChange}
               onHover={setHoveredDate}
             />
@@ -100,14 +139,14 @@ export function AppShell({
           right={
             <RightContextPane>
               <PersonsPanel
-                persons={exploration.visiblePersons}
+                persons={visiblePersons}
                 hoveredDate={state.hoveredDate}
                 hoverContextStatus={hoverContextStatus}
                 hoverContextError={hoverContextError}
                 onTogglePerson={togglePerson}
               />
               <TagsPanel
-                tags={exploration.visibleTags}
+                tags={visibleTags}
                 hoveredDate={state.hoveredDate}
                 hoverContextStatus={hoverContextStatus}
                 hoverContextError={hoverContextError}
@@ -115,9 +154,9 @@ export function AppShell({
               />
               <MapPanel
                 hoveredDate={state.hoveredDate}
-                mapPoints={exploration.mapPoints}
-                summary={exploration.mapSummary}
-                hasPersistentFilters={exploration.hasPersistentFilters}
+                mapPoints={mapProjection.mapPoints}
+                summary={mapProjection.mapSummary}
+                hasPersistentFilters={hasPersistentFilters}
                 hoverContextStatus={hoverContextStatus}
                 hoverContextError={hoverContextError}
               />

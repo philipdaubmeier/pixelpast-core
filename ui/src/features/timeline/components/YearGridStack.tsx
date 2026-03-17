@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { memo, useEffect, useMemo, useRef } from "react";
 import type { HeatmapDayRenderProjection } from "../../../projections/exploration";
 import type { DateRange } from "../../../projections/timeline";
 import { YearGrid } from "./YearGrid";
@@ -6,16 +6,20 @@ import { YearGrid } from "./YearGrid";
 type YearGridStackProps = {
   days: HeatmapDayRenderProjection[];
   viewColorToken: string;
-  hoveredDate: string | null;
   scrollRoot: HTMLDivElement | null;
   onVisibleRangesChange: (ranges: DateRange[]) => void;
   onHover: (date: string | null) => void;
 };
 
-export function YearGridStack({
+type YearEntry = {
+  year: number;
+  days: HeatmapDayRenderProjection[];
+  range: DateRange;
+};
+
+export const YearGridStack = memo(function YearGridStack({
   days,
   viewColorToken,
-  hoveredDate,
   scrollRoot,
   onVisibleRangesChange,
   onHover,
@@ -23,39 +27,47 @@ export function YearGridStack({
   const yearRefs = useRef<Record<number, HTMLElement | null>>({});
   const hasInitializedViewport = useRef(false);
   const visibleYearsRef = useRef<Map<number, boolean>>(new Map());
-  const groupedYears = days.reduce<Map<number, HeatmapDayRenderProjection[]>>(
-    (accumulator, day) => {
-      const entry = accumulator.get(day.year);
+  const yearEntries = useMemo<YearEntry[]>(() => {
+    const groupedYears = days.reduce<Map<number, HeatmapDayRenderProjection[]>>(
+      (accumulator, day) => {
+        const entry = accumulator.get(day.year);
 
-      if (entry) {
-        entry.push(day);
-      } else {
-        accumulator.set(day.year, [day]);
-      }
+        if (entry) {
+          entry.push(day);
+        } else {
+          accumulator.set(day.year, [day]);
+        }
 
-      return accumulator;
-    },
-    new Map(),
-  );
+        return accumulator;
+      },
+      new Map(),
+    );
 
-  const orderedYears = Array.from(groupedYears.keys()).sort(
-    (leftYear, rightYear) => leftYear - rightYear,
+    return Array.from(groupedYears.entries())
+      .sort(([leftYear], [rightYear]) => leftYear - rightYear)
+      .map(([year, yearDays]) => {
+        const orderedDays = [...yearDays].sort((leftDay, rightDay) =>
+          leftDay.date.localeCompare(rightDay.date),
+        );
+
+        return {
+          year,
+          days: orderedDays,
+          range: {
+            start: orderedDays[0]?.date ?? `${year}-01-01`,
+            end: orderedDays[orderedDays.length - 1]?.date ?? `${year}-12-31`,
+          },
+        };
+      });
+  }, [days]);
+  const orderedYears = useMemo(
+    () => yearEntries.map((entry) => entry.year),
+    [yearEntries],
   );
   const orderedYearsKey = orderedYears.join(",");
-  const yearRanges = new Map<number, DateRange>(
-    orderedYears.map((year) => {
-      const yearDays = [...(groupedYears.get(year) ?? [])].sort((leftDay, rightDay) =>
-        leftDay.date.localeCompare(rightDay.date),
-      );
-
-      return [
-        year,
-        {
-          start: yearDays[0]?.date ?? `${year}-01-01`,
-          end: yearDays[yearDays.length - 1]?.date ?? `${year}-12-31`,
-        },
-      ];
-    }),
+  const yearRanges = useMemo(
+    () => new Map(yearEntries.map((entry) => [entry.year, entry.range])),
+    [yearEntries],
   );
 
   useEffect(() => {
@@ -121,19 +133,18 @@ export function YearGridStack({
 
   return (
     <div className="space-y-[0.9rem]">
-      {orderedYears.map((year) => (
+      {yearEntries.map((entry) => (
         <YearGrid
-          key={year}
+          key={entry.year}
           ref={(node) => {
-            yearRefs.current[year] = node;
+            yearRefs.current[entry.year] = node;
           }}
-          year={year}
-          days={groupedYears.get(year) ?? []}
+          year={entry.year}
+          days={entry.days}
           viewColorToken={viewColorToken}
-          hoveredDate={hoveredDate}
           onHover={onHover}
         />
       ))}
     </div>
   );
-}
+});
