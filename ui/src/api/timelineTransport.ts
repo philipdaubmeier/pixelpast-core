@@ -1,9 +1,9 @@
-import type { DateRange, ViewModeOption } from "../projections/timeline";
+import type { DateRange, GridViewOption } from "../projections/timeline";
 
 export type ApiExplorationBootstrapResponse = {
   range: DateRange;
   view_modes: Array<{
-    id: ViewModeOption["id"];
+    id: GridViewOption["id"];
     label: string;
     description: string;
   }>;
@@ -31,7 +31,7 @@ export type ApiExplorationGridResponse = {
 export type ApiExplorationGridRequest = {
   start?: string;
   end?: string;
-  viewMode: ViewModeOption["id"];
+  gridView: GridViewOption["id"];
   personIds: string[];
   tagPaths: string[];
   locationGeometry?: string;
@@ -71,7 +71,7 @@ export type ApiDayContextResponse = {
 export type ApiDayContextRequest = {
   start: string;
   end: string;
-  viewMode: ViewModeOption["id"];
+  gridView: GridViewOption["id"];
   personIds: string[];
   tagPaths: string[];
   locationGeometry?: string;
@@ -150,7 +150,7 @@ export const timelineTransport = {
       `/exploration${buildQueryString({
         start: request.start,
         end: request.end,
-        view_mode: request.viewMode,
+        view_mode: request.gridView,
         person_ids: request.personIds,
         tag_paths: request.tagPaths,
         location_geometry: request.locationGeometry,
@@ -169,7 +169,7 @@ export const timelineTransport = {
       `/days/context${buildQueryString({
         start: request.start,
         end: request.end,
-        view_mode: request.viewMode,
+        view_mode: request.gridView,
         person_ids: request.personIds,
         tag_paths: request.tagPaths,
         location_geometry: request.locationGeometry,

@@ -3,10 +3,10 @@ import { timelineApi } from "../api/timeline";
 import type {
   DateRange,
   DayContextProjection,
+  GridViewOption,
   HeatmapDayProjection,
   PersonProjection,
   TagProjection,
-  ViewModeOption,
 } from "../projections/timeline";
 import { UiStateProvider, useUiState } from "../state/UiStateContext";
 import { AppShell } from "./AppShell";
@@ -72,7 +72,7 @@ function resolveHoverContextStatus(
 }
 
 function AppBootstrap() {
-  const { state, setHoveredDate, setViewMode } = useUiState();
+  const { state, setGridView, setHoveredDate } = useUiState();
   const isMountedRef = useRef(true);
   const latestGridRequestIdRef = useRef(0);
   const latestDayContextScopeRef = useRef("");
@@ -82,7 +82,7 @@ function AppBootstrap() {
   const [gridError, setGridError] = useState<string | null>(null);
   const [explorationRange, setExplorationRange] = useState<DateRange | null>(null);
   const [heatmapDays, setHeatmapDays] = useState<HeatmapDayProjection[]>([]);
-  const [viewModes, setViewModes] = useState<ViewModeOption[]>([]);
+  const [gridViews, setGridViews] = useState<GridViewOption[]>([]);
   const [persons, setPersons] = useState<PersonProjection[]>([]);
   const [tags, setTags] = useState<TagProjection[]>([]);
   const [visibleRanges, setVisibleRanges] = useState<DateRange[]>([]);
@@ -100,7 +100,7 @@ function AppBootstrap() {
   );
   const [hoverContextError, setHoverContextError] = useState<string | null>(null);
   const dayContextScope = JSON.stringify({
-    viewMode: state.viewMode,
+    gridView: state.gridView,
     selectedPersons: [...state.selectedPersons].sort(),
     selectedTags: [...state.selectedTags].sort(),
   });
@@ -124,7 +124,7 @@ function AppBootstrap() {
 
         startTransition(() => {
           setExplorationRange(bootstrap.range);
-          setViewModes(bootstrap.viewModes);
+          setGridViews(bootstrap.gridViews);
           setPersons(bootstrap.persons);
           setTags(bootstrap.tags);
           setShellState("ready");
@@ -150,23 +150,23 @@ function AppBootstrap() {
   }, []);
 
   useEffect(() => {
-    if (shellState !== "ready" || viewModes.length === 0) {
+    if (shellState !== "ready" || gridViews.length === 0) {
       return;
     }
 
-    if (viewModes.some((viewMode) => viewMode.id === state.viewMode)) {
+    if (gridViews.some((gridView) => gridView.id === state.gridView)) {
       return;
     }
 
-    setViewMode(viewModes[0].id);
-  }, [setViewMode, shellState, state.viewMode, viewModes]);
+    setGridView(gridViews[0].id);
+  }, [gridViews, setGridView, shellState, state.gridView]);
 
   useEffect(() => {
     if (
       shellState !== "ready" ||
       explorationRange === null ||
-      viewModes.length === 0 ||
-      !viewModes.some((viewMode) => viewMode.id === state.viewMode)
+      gridViews.length === 0 ||
+      !gridViews.some((gridView) => gridView.id === state.gridView)
     ) {
       return;
     }
@@ -183,7 +183,7 @@ function AppBootstrap() {
     void (async () => {
       try {
         const grid = await timelineApi.getExplorationGrid(explorationRange, {
-          viewMode: state.viewMode,
+          gridView: state.gridView,
           selectedPersons: state.selectedPersons,
           selectedTags: state.selectedTags,
         });
@@ -223,7 +223,7 @@ function AppBootstrap() {
     shellState,
     state.selectedPersons,
     state.selectedTags,
-    state.viewMode,
+    state.gridView,
   ]);
 
   useEffect(() => {
@@ -266,7 +266,7 @@ function AppBootstrap() {
       void (async () => {
         try {
           const response = await timelineApi.getDayContextRange(range, {
-            viewMode: state.viewMode,
+            gridView: state.gridView,
             selectedPersons: state.selectedPersons,
             selectedTags: state.selectedTags,
           });
@@ -327,7 +327,7 @@ function AppBootstrap() {
     shellState,
     state.selectedPersons,
     state.selectedTags,
-    state.viewMode,
+    state.gridView,
     visibleRanges,
     dayContextScope,
   ]);
@@ -394,9 +394,9 @@ function AppBootstrap() {
   }
 
   return (
-    <AppShell
+      <AppShell
       heatmapDays={heatmapDays}
-      viewModes={viewModes}
+      gridViews={gridViews}
       persons={persons}
       tags={tags}
       gridState={gridState}

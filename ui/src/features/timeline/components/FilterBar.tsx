@@ -4,7 +4,7 @@ import type {
 } from "../../../projections/timeline";
 
 type FilterBarProps = {
-  activeViewModeLabel: string;
+  activeGridViewLabel: string;
   selectedPersons: PersonProjection[];
   selectedTags: TagProjection[];
   matchingDayCount: number;
@@ -18,7 +18,7 @@ type FilterBarProps = {
 };
 
 export function FilterBar({
-  activeViewModeLabel,
+  activeGridViewLabel,
   selectedPersons,
   selectedTags,
   matchingDayCount,
@@ -33,7 +33,7 @@ export function FilterBar({
   return (
     <div className="flex items-center gap-2">
       <div className="rounded-full bg-white/70 px-3 py-1.5 text-[12px] text-slate-700">
-        View: {activeViewModeLabel}
+        Grid view: {activeGridViewLabel}
       </div>
       <div className="rounded-full bg-white/70 px-3 py-1.5 text-[12px] text-slate-700">
         {hasPersistentFilters

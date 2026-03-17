@@ -1,4 +1,4 @@
-import type { ViewMode } from "../state/ui-state";
+import type { GridView } from "../state/ui-state";
 
 export type DateRange = {
   start: string;
@@ -45,8 +45,8 @@ export type DayContextProjection = {
   };
 };
 
-export type ViewModeOption = {
-  id: ViewMode;
+export type GridViewOption = {
+  id: GridView;
   label: string;
   description: string;
 };
@@ -59,15 +59,15 @@ export const viewColorTokens = [
   "var(--pp-grid-viewcolor5)",
 ] as const;
 
-export function getViewModeColorToken(
-  options: ViewModeOption[],
-  viewModeId: ViewMode,
+export function getGridViewColorToken(
+  options: GridViewOption[],
+  gridViewId: GridView,
 ): string {
   if (options.length === 0) {
     return viewColorTokens[0];
   }
 
-  const viewIndex = options.findIndex((option) => option.id === viewModeId);
+  const viewIndex = options.findIndex((option) => option.id === gridViewId);
   const normalizedIndex = viewIndex >= 0 ? viewIndex : 0;
 
   return viewColorTokens[normalizedIndex % viewColorTokens.length];

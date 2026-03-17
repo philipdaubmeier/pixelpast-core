@@ -17,12 +17,12 @@ import {
 import type {
   DateRange,
   DayContextProjection,
+  GridViewOption,
   HeatmapDayProjection,
   PersonProjection,
   TagProjection,
-  ViewModeOption,
 } from "../projections/timeline";
-import { getViewModeColorToken } from "../projections/timeline";
+import { getGridViewColorToken } from "../projections/timeline";
 import { useUiState } from "../state/UiStateContext";
 
 type HoverContextStatus = "idle" | "loading" | "ready" | "error";
@@ -30,7 +30,7 @@ type GridLoadState = "loading" | "ready" | "error";
 
 type AppShellProps = {
   heatmapDays: HeatmapDayProjection[];
-  viewModes: ViewModeOption[];
+  gridViews: GridViewOption[];
   persons: PersonProjection[];
   tags: TagProjection[];
   gridState: GridLoadState;
@@ -44,7 +44,7 @@ type AppShellProps = {
 
 export function AppShell({
   heatmapDays,
-  viewModes,
+  gridViews,
   persons,
   tags,
   gridState,
@@ -59,7 +59,8 @@ export function AppShell({
     state,
     clearSelections,
     setHoveredDate,
-    setViewMode,
+    setGridView,
+    setMainView,
     togglePerson,
     toggleTag,
   } = useUiState();
@@ -104,16 +105,17 @@ export function AppShell({
   );
   const hasPersistentFilters =
     state.selectedPersons.length > 0 || state.selectedTags.length > 0;
-  const activeViewMode =
-    viewModes.find((viewMode) => viewMode.id === state.viewMode) ?? null;
-  const activeViewColorToken = getViewModeColorToken(viewModes, state.viewMode);
+  const activeGridView =
+    gridViews.find((gridView) => gridView.id === state.gridView) ?? null;
+  const activeGridColorToken = getGridViewColorToken(gridViews, state.gridView);
 
   return (
     <main className="h-screen overflow-hidden">
       <TopBar
-        viewModes={viewModes}
-        activeViewMode={state.viewMode}
-        activeViewModeLabel={activeViewMode?.label ?? state.viewMode}
+        mainView={state.mainView}
+        gridViews={gridViews}
+        activeGridView={state.gridView}
+        activeGridViewLabel={activeGridView?.label ?? state.gridView}
         selectedPersons={selectedPersons}
         selectedTags={selectedTags}
         matchingDayCount={matchingDayCount}
@@ -121,17 +123,18 @@ export function AppShell({
         gridState={gridState}
         gridError={gridError}
         hoveredDate={state.hoveredDate}
-        onSelectViewMode={setViewMode}
+        onSelectMainView={setMainView}
+        onSelectGridView={setGridView}
         onTogglePerson={togglePerson}
         onToggleTag={toggleTag}
         onClearSelections={clearSelections}
       />
-      <div className="h-full px-2 pb-2 pt-[5rem] lg:px-2.5 lg:pb-2.5 lg:pt-[4.9rem]">
+      <div className="h-full px-2 pb-2 pt-[7.3rem] lg:px-2.5 lg:pb-2.5 lg:pt-[7.2rem]">
         <MainSplitLayout
           left={
             <LeftGridPane
               days={gridDays}
-              viewColorToken={activeViewColorToken}
+              viewColorToken={activeGridColorToken}
               onVisibleRangesChange={onVisibleRangesChange}
               onHover={setHoveredDate}
             />

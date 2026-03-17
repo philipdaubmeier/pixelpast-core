@@ -1,4 +1,5 @@
-export type ViewMode = string;
+export type MainView = "day_grid";
+export type GridView = string;
 
 export type HoveredPanelItem =
   | { kind: "person"; id: string }
@@ -28,7 +29,8 @@ export type GeoFilter =
 export type PixelPastUiState = {
   hoveredDate: string | null;
   hoveredPanelItem: HoveredPanelItem | null;
-  viewMode: ViewMode;
+  mainView: MainView;
+  gridView: GridView;
   selectedPersons: string[];
   selectedTags: string[];
   selectedGeoFilter: GeoFilter | null;
@@ -37,13 +39,14 @@ export type PixelPastUiState = {
 
 export type PersistentUiState = Pick<
   PixelPastUiState,
-  "viewMode" | "selectedPersons" | "selectedTags"
+  "mainView" | "gridView" | "selectedPersons" | "selectedTags"
 >;
 
 export const defaultUiState: PixelPastUiState = {
   hoveredDate: null,
   hoveredPanelItem: null,
-  viewMode: "activity",
+  mainView: "day_grid",
+  gridView: "activity",
   selectedPersons: [],
   selectedTags: [],
   selectedGeoFilter: null,

@@ -9,9 +9,10 @@ import {
 } from "react";
 import {
   defaultUiState,
+  type GridView,
   type HoveredPanelItem,
+  type MainView,
   type PixelPastUiState,
-  type ViewMode,
 } from "./ui-state";
 import { readPersistentUiState, writePersistentUiState } from "./urlState";
 
@@ -19,7 +20,8 @@ type UiStateContextValue = {
   state: PixelPastUiState;
   setHoveredDate: (date: string | null) => void;
   setHoveredPanelItem: (item: HoveredPanelItem | null) => void;
-  setViewMode: (viewMode: ViewMode) => void;
+  setMainView: (mainView: MainView) => void;
+  setGridView: (gridView: GridView) => void;
   togglePerson: (personId: string) => void;
   toggleTag: (tagPath: string) => void;
   clearSelections: () => void;
@@ -43,14 +45,15 @@ export function UiStateProvider({ children }: PropsWithChildren) {
 
   useEffect(() => {
     const nextSearch = writePersistentUiState({
-      viewMode: state.viewMode,
+      mainView: state.mainView,
+      gridView: state.gridView,
       selectedPersons: state.selectedPersons,
       selectedTags: state.selectedTags,
     });
     const nextUrl = `${window.location.pathname}${nextSearch}${window.location.hash}`;
 
     window.history.replaceState(null, "", nextUrl);
-  }, [state.selectedPersons, state.selectedTags, state.viewMode]);
+  }, [state.gridView, state.mainView, state.selectedPersons, state.selectedTags]);
 
   useEffect(() => {
     function handlePopState() {
@@ -85,15 +88,28 @@ export function UiStateProvider({ children }: PropsWithChildren) {
     }));
   }, []);
 
-  const setViewMode = useCallback((viewMode: ViewMode) => {
+  const setMainView = useCallback((mainView: MainView) => {
     setState((currentState) => {
-      if (currentState.viewMode === viewMode) {
+      if (currentState.mainView === mainView) {
         return currentState;
       }
 
       return {
         ...currentState,
-        viewMode,
+        mainView,
+      };
+    });
+  }, []);
+
+  const setGridView = useCallback((gridView: GridView) => {
+    setState((currentState) => {
+      if (currentState.gridView === gridView) {
+        return currentState;
+      }
+
+      return {
+        ...currentState,
+        gridView,
       };
     });
   }, []);
@@ -147,15 +163,17 @@ export function UiStateProvider({ children }: PropsWithChildren) {
     state,
     setHoveredDate,
     setHoveredPanelItem,
-    setViewMode,
+    setMainView,
+    setGridView,
     togglePerson,
     toggleTag,
     clearSelections,
   }), [
     clearSelections,
+    setGridView,
     setHoveredDate,
     setHoveredPanelItem,
-    setViewMode,
+    setMainView,
     state,
     togglePerson,
     toggleTag,

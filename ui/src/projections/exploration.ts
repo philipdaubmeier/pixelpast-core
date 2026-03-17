@@ -18,7 +18,7 @@ type ExplorationProjectionInput = {
   allTags: TagProjection[];
   state: Pick<
     PixelPastUiState,
-    "hoveredDate" | "viewMode" | "selectedPersons" | "selectedTags"
+    "hoveredDate" | "gridView" | "selectedPersons" | "selectedTags"
   >;
 };
 

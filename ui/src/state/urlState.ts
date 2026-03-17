@@ -17,10 +17,15 @@ function parseList(value: string | null): string[] {
 
 export function readPersistentUiState(search: string): PersistentUiState {
   const params = new URLSearchParams(search);
-  const viewModeParam = params.get("viewMode");
+  const mainViewParam = params.get("mainView");
+  const gridViewParam = params.get("gridView") ?? params.get("viewMode");
 
   return {
-    viewMode: viewModeParam?.trim() || defaultUiState.viewMode,
+    mainView:
+      mainViewParam?.trim() === "day_grid"
+        ? "day_grid"
+        : defaultUiState.mainView,
+    gridView: gridViewParam?.trim() || defaultUiState.gridView,
     selectedPersons: parseList(params.get("persons")),
     selectedTags: parseList(params.get("tags")),
   };
@@ -29,8 +34,12 @@ export function readPersistentUiState(search: string): PersistentUiState {
 export function writePersistentUiState(state: PersistentUiState): string {
   const params = new URLSearchParams();
 
-  if (state.viewMode !== defaultUiState.viewMode) {
-    params.set("viewMode", state.viewMode);
+  if (state.mainView !== defaultUiState.mainView) {
+    params.set("mainView", state.mainView);
+  }
+
+  if (state.gridView !== defaultUiState.gridView) {
+    params.set("gridView", state.gridView);
   }
 
   if (state.selectedPersons.length > 0) {

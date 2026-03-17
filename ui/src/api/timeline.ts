@@ -1,10 +1,10 @@
 import type {
   DateRange,
   DayContextProjection,
+  GridViewOption,
   HeatmapDayProjection,
   PersonProjection,
   TagProjection,
-  ViewModeOption,
 } from "../projections/timeline";
 import type { PixelPastUiState } from "../state/ui-state";
 import {
@@ -16,7 +16,7 @@ import {
 
 export type ExplorationBootstrapProjection = {
   range: DateRange;
-  viewModes: ViewModeOption[];
+  gridViews: GridViewOption[];
   persons: PersonProjection[];
   tags: TagProjection[];
 };
@@ -28,7 +28,7 @@ export type ExplorationGridProjection = {
 
 export type ExplorationGridFilters = Pick<
   PixelPastUiState,
-  "viewMode" | "selectedPersons" | "selectedTags"
+  "gridView" | "selectedPersons" | "selectedTags"
 >;
 
 let explorationBootstrapPromise: Promise<ExplorationBootstrapProjection> | null =
@@ -123,7 +123,7 @@ export const timelineApi = {
         .getExplorationBootstrap()
         .then((bootstrap) => ({
           range: bootstrap.range,
-          viewModes: bootstrap.view_modes,
+          gridViews: bootstrap.view_modes,
           persons: bootstrap.persons.map(mapPerson),
           tags: bootstrap.tags.map(mapTag),
         }));
@@ -139,7 +139,7 @@ export const timelineApi = {
     const response = await timelineTransport.getExplorationGrid({
       start: range.start,
       end: range.end,
-      viewMode: filters.viewMode,
+      gridView: filters.gridView,
       personIds: filters.selectedPersons,
       tagPaths: filters.selectedTags,
     });
@@ -160,7 +160,7 @@ export const timelineApi = {
     const response = await timelineTransport.getDayContextRange({
       start: range.start,
       end: range.end,
-      viewMode: filters.viewMode,
+      gridView: filters.gridView,
       personIds: filters.selectedPersons,
       tagPaths: filters.selectedTags,
     });
