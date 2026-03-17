@@ -214,7 +214,7 @@ def test_exploration_grid_endpoint_accepts_server_side_filter_parameters() -> No
             "range": {"start": "2024-01-01", "end": "2024-01-03"},
             "days": [
                 _empty_grid_day_payload("2024-01-01"),
-                _active_grid_day_payload("2024-01-02", count=1, color="high"),
+                _active_grid_day_payload("2024-01-02", count=1, color="low"),
                 _empty_grid_day_payload("2024-01-03"),
             ],
         }
@@ -375,6 +375,34 @@ def test_exploration_grid_returns_empty_day_when_selected_view_has_no_row() -> N
             "days": [
                 _active_grid_day_payload("2024-01-02", count=1, color="high"),
                 _empty_grid_day_payload("2024-01-03"),
+            ],
+        }
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_exploration_grid_recomputes_day_count_from_canonical_items_when_person_filter_is_active() -> None:
+    workspace_root = _create_workspace_dir(prefix="exploration-grid-canonical-filtered-count")
+    runtime = None
+    try:
+        runtime = _create_runtime(workspace_root=workspace_root)
+        _seed_canonical_filtered_count_scenario(runtime=runtime)
+
+        app = create_app(settings=runtime.settings)
+        with TestClient(app) as client:
+            response = client.get(
+                "/api/exploration"
+                "?start=2020-01-01&end=2020-01-02&view_mode=photo&person_ids=1"
+            )
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "range": {"start": "2020-01-01", "end": "2020-01-02"},
+            "days": [
+                _active_grid_day_payload("2020-01-01", count=1, color="low"),
+                _empty_grid_day_payload("2020-01-02"),
             ],
         }
     finally:
@@ -608,7 +636,20 @@ def test_day_context_endpoint_remains_separate_from_grid_activity_loading() -> N
                                 "count": 2,
                             }
                         ],
-                        location_summary_json=[],
+                        location_summary_json=[
+                            {
+                                "label": "City walk",
+                                "latitude": 52.52,
+                                "longitude": 13.405,
+                                "count": 1,
+                            },
+                            {
+                                "label": "Museum",
+                                "latitude": 48.8566,
+                                "longitude": 2.3522,
+                                "count": 1,
+                            },
+                        ],
                     ),
                 ]
             )
@@ -630,13 +671,13 @@ def test_day_context_endpoint_remains_separate_from_grid_activity_loading() -> N
             "tags": [{"path": "travel/europe", "label": "Travel"}],
             "map_points": [
                 {
-                    "id": "event:1",
+                    "id": "location:2024-01-02:1",
                     "label": "City walk",
                     "latitude": 52.52,
                     "longitude": 13.405,
                 },
                 {
-                    "id": "asset:1",
+                    "id": "location:2024-01-02:2",
                     "label": "Museum",
                     "latitude": 48.8566,
                     "longitude": 2.3522,
@@ -644,6 +685,92 @@ def test_day_context_endpoint_remains_separate_from_grid_activity_loading() -> N
             ],
             "summary_counts": {"events": 1, "assets": 1, "places": 2},
         }
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_day_context_endpoint_selects_requested_daily_view_rows() -> None:
+    workspace_root = _create_workspace_dir(prefix="exploration-day-context-view-selection")
+    runtime = None
+    try:
+        runtime = _create_runtime(workspace_root=workspace_root)
+        _seed_split_contract_scenario(runtime=runtime)
+
+        app = create_app(settings=runtime.settings)
+        with TestClient(app) as client:
+            activity_response = client.get(
+                "/api/days/context?start=2024-01-02&end=2024-01-02&view_mode=activity"
+            )
+            calendar_response = client.get(
+                "/api/days/context?start=2024-01-02&end=2024-01-02&view_mode=calendar"
+            )
+
+        assert activity_response.status_code == 200
+        assert activity_response.json()["days"] == [
+            {
+                "date": "2024-01-02",
+                "persons": [
+                    {"id": 1, "name": "Anna", "role": "Family"},
+                    {"id": 2, "name": "Milo", "role": "Travel buddy"},
+                ],
+                "tags": [
+                    {"path": "family/anna", "label": "Family Anna"},
+                    {"path": "projects/apollo", "label": "Project Apollo"},
+                ],
+                "map_points": [],
+                "summary_counts": {"events": 1, "assets": 1, "places": 0},
+            }
+        ]
+
+        assert calendar_response.status_code == 200
+        assert calendar_response.json()["days"] == [
+            {
+                "date": "2024-01-02",
+                "persons": [],
+                "tags": [],
+                "map_points": [],
+                "summary_counts": {"events": 1, "assets": 0, "places": 0},
+            }
+        ]
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_day_context_recomputes_filtered_person_context_from_canonical_items() -> None:
+    workspace_root = _create_workspace_dir(prefix="exploration-day-context-canonical-filtered")
+    runtime = None
+    try:
+        runtime = _create_runtime(workspace_root=workspace_root)
+        _seed_canonical_filtered_count_scenario(runtime=runtime)
+
+        app = create_app(settings=runtime.settings)
+        with TestClient(app) as client:
+            response = client.get(
+                "/api/days/context"
+                "?start=2020-01-01&end=2020-01-02&view_mode=photo&person_ids=1"
+            )
+
+        assert response.status_code == 200
+        assert response.json()["days"] == [
+            {
+                "date": "2020-01-01",
+                "persons": [{"id": 1, "name": "Leo", "role": "Family"}],
+                "tags": [],
+                "map_points": [],
+                "summary_counts": {"events": 0, "assets": 1, "places": 0},
+            },
+            {
+                "date": "2020-01-02",
+                "persons": [],
+                "tags": [],
+                "map_points": [],
+                "summary_counts": {"events": 0, "assets": 0, "places": 0},
+            },
+        ]
     finally:
         if runtime is not None:
             runtime.engine.dispose()
@@ -777,14 +904,24 @@ def _seed_filter_scenario(*, runtime) -> None:
             raw_payload={},
             derived_payload={},
         )
-        session.add_all([first_event, second_event])
+        first_photo_asset = Asset(
+            external_id="photo-1",
+            media_type="photo",
+            timestamp=datetime(2024, 1, 2, 13, 0, tzinfo=UTC),
+            latitude=None,
+            longitude=None,
+            metadata_json={},
+        )
+        session.add_all([first_event, second_event, first_photo_asset])
         session.flush()
         session.add_all(
             [
                 EventPerson(event_id=first_event.id, person_id=anna.id),
                 EventPerson(event_id=second_event.id, person_id=ben.id),
+                AssetPerson(asset_id=first_photo_asset.id, person_id=anna.id),
                 EventTag(event_id=first_event.id, tag_id=travel_tag.id),
                 EventTag(event_id=second_event.id, tag_id=family_tag.id),
+                AssetTag(asset_id=first_photo_asset.id, tag_id=travel_tag.id),
                 DailyAggregate(
                     date=date(2024, 1, 2),
                     daily_view_id=overall_view.id,
@@ -824,6 +961,79 @@ def _seed_filter_scenario(*, runtime) -> None:
                     ],
                     person_summary_json=[
                         {"person_id": anna.id, "name": "Anna", "role": "Family", "count": 1}
+                    ],
+                    location_summary_json=[],
+                ),
+            ]
+        )
+        session.commit()
+
+
+def _seed_canonical_filtered_count_scenario(*, runtime) -> None:
+    with runtime.session_factory() as session:
+        leo = Person(name="Leo", aliases=None, metadata_json={"role": "Family"})
+        nora = Person(name="Nora", aliases=None, metadata_json={"role": "Friend"})
+        session.add_all([leo, nora])
+        session.flush()
+        photo_view = _create_daily_view(
+            session=session,
+            aggregate_scope=DAILY_AGGREGATE_SCOPE_SOURCE_TYPE,
+            source_type="photo",
+        )
+
+        day_one_leo_asset = Asset(
+            external_id="leo-photo",
+            media_type="photo",
+            timestamp=datetime(2020, 1, 1, 9, 0, tzinfo=UTC),
+            latitude=None,
+            longitude=None,
+            metadata_json={},
+        )
+        day_one_nora_asset = Asset(
+            external_id="nora-photo",
+            media_type="photo",
+            timestamp=datetime(2020, 1, 1, 10, 0, tzinfo=UTC),
+            latitude=None,
+            longitude=None,
+            metadata_json={},
+        )
+        day_two_nora_asset = Asset(
+            external_id="nora-photo-day-two",
+            media_type="photo",
+            timestamp=datetime(2020, 1, 2, 10, 0, tzinfo=UTC),
+            latitude=None,
+            longitude=None,
+            metadata_json={},
+        )
+        session.add_all([day_one_leo_asset, day_one_nora_asset, day_two_nora_asset])
+        session.flush()
+        session.add_all(
+            [
+                AssetPerson(asset_id=day_one_leo_asset.id, person_id=leo.id),
+                AssetPerson(asset_id=day_one_nora_asset.id, person_id=nora.id),
+                AssetPerson(asset_id=day_two_nora_asset.id, person_id=nora.id),
+                DailyAggregate(
+                    date=date(2020, 1, 1),
+                    daily_view_id=photo_view.id,
+                    total_events=0,
+                    media_count=2,
+                    activity_score=2,
+                    tag_summary_json=[],
+                    person_summary_json=[
+                        {"person_id": leo.id, "name": "Leo", "role": "Family", "count": 1},
+                        {"person_id": nora.id, "name": "Nora", "role": "Friend", "count": 1},
+                    ],
+                    location_summary_json=[],
+                ),
+                DailyAggregate(
+                    date=date(2020, 1, 2),
+                    daily_view_id=photo_view.id,
+                    total_events=0,
+                    media_count=1,
+                    activity_score=1,
+                    tag_summary_json=[],
+                    person_summary_json=[
+                        {"person_id": nora.id, "name": "Nora", "role": "Friend", "count": 1}
                     ],
                     location_summary_json=[],
                 ),

@@ -75,6 +75,7 @@ function AppBootstrap() {
   const { state, setHoveredDate, setViewMode } = useUiState();
   const isMountedRef = useRef(true);
   const latestGridRequestIdRef = useRef(0);
+  const latestDayContextScopeRef = useRef("");
   const [shellState, setShellState] = useState<ShellLoadState>("loading");
   const [shellError, setShellError] = useState<string | null>(null);
   const [gridState, setGridState] = useState<GridLoadState>("loading");
@@ -98,6 +99,11 @@ function AppBootstrap() {
     [],
   );
   const [hoverContextError, setHoverContextError] = useState<string | null>(null);
+  const dayContextScope = JSON.stringify({
+    viewMode: state.viewMode,
+    selectedPersons: [...state.selectedPersons].sort(),
+    selectedTags: [...state.selectedTags].sort(),
+  });
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -221,6 +227,17 @@ function AppBootstrap() {
   ]);
 
   useEffect(() => {
+    latestDayContextScopeRef.current = dayContextScope;
+    startTransition(() => {
+      setDayContextsByDate({});
+      setLoadedDayContextRanges([]);
+      setLoadingDayContextRanges([]);
+      setFailedDayContextRanges([]);
+      setHoverContextError(null);
+    });
+  }, [dayContextScope]);
+
+  useEffect(() => {
     if (shellState !== "ready" || visibleRanges.length === 0) {
       return;
     }
@@ -236,6 +253,7 @@ function AppBootstrap() {
     }
 
     for (const range of rangesToLoad) {
+      const requestScope = dayContextScope;
       startTransition(() => {
         setLoadingDayContextRanges((currentValue) =>
           appendRange(currentValue, range),
@@ -247,9 +265,16 @@ function AppBootstrap() {
 
       void (async () => {
         try {
-          const response = await timelineApi.getDayContextRange(range);
+          const response = await timelineApi.getDayContextRange(range, {
+            viewMode: state.viewMode,
+            selectedPersons: state.selectedPersons,
+            selectedTags: state.selectedTags,
+          });
 
-          if (!isMountedRef.current) {
+          if (
+            !isMountedRef.current ||
+            latestDayContextScopeRef.current !== requestScope
+          ) {
             return;
           }
 
@@ -272,7 +297,10 @@ function AppBootstrap() {
             setHoverContextError(null);
           });
         } catch (error) {
-          if (!isMountedRef.current) {
+          if (
+            !isMountedRef.current ||
+            latestDayContextScopeRef.current !== requestScope
+          ) {
             return;
           }
 
@@ -297,7 +325,11 @@ function AppBootstrap() {
     loadedDayContextRanges,
     loadingDayContextRanges,
     shellState,
+    state.selectedPersons,
+    state.selectedTags,
+    state.viewMode,
     visibleRanges,
+    dayContextScope,
   ]);
 
   const activeDayContext =

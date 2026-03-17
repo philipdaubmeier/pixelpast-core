@@ -14,6 +14,10 @@ from pixelpast.api.providers.daygrid import (
     ExplorationGridFilters,
     build_grid_day_from_snapshot,
     build_grid_response,
+    extract_person_ids_from_summary,
+    extract_tag_paths_from_summary,
+    has_item_level_filters,
+    matches_grid_filters,
 )
 from pixelpast.api.providers.hovercontext import build_day_context_response
 from pixelpast.api.schemas import (
@@ -106,7 +110,13 @@ class _DemoDaySnapshot:
 class TimelineProjectionProvider(Protocol):
     """Provide API-ready exploration and hover projections."""
 
-    def get_day_context(self, *, start: date, end: date) -> DayContextResponse:
+    def get_day_context(
+        self,
+        *,
+        start: date,
+        end: date,
+        filters: ExplorationGridFilters,
+    ) -> DayContextResponse:
         """Return dense hover-context data for an inclusive date range."""
         ...
 
@@ -148,32 +158,55 @@ class DatabaseTimelineProjectionProvider:
         self._daily_aggregate_repository = daily_aggregate_repository
         self._exploration_repository = exploration_repository
 
-    def get_day_context(self, *, start: date, end: date) -> DayContextResponse:
-        """Return canonical hover-context data for an inclusive date range."""
+    def get_day_context(
+        self,
+        *,
+        start: date,
+        end: date,
+        filters: ExplorationGridFilters,
+    ) -> DayContextResponse:
+        """Return derived hover-context data for an inclusive date range."""
+
+        aggregate_map = {
+            aggregate.date: aggregate
+            for aggregate in self._daily_aggregate_repository.list_range_for_view(
+                start_date=start,
+                end_date=end,
+                view_id=filters.view_mode,
+            )
+        }
+        if has_item_level_filters(filters=filters):
+            candidate_days = {
+                current_day
+                for current_day, aggregate in aggregate_map.items()
+                if matches_grid_filters(
+                    filters=filters,
+                    person_ids=extract_person_ids_from_summary(
+                        aggregate.person_summary_json
+                    ),
+                    tag_paths=extract_tag_paths_from_summary(
+                        aggregate.tag_summary_json
+                    ),
+                )
+            }
+            aggregate_map = {
+                aggregate.date: aggregate
+                for aggregate in self._exploration_repository.list_filtered_day_aggregates(
+                    start_date=start,
+                    end_date=end,
+                    view_id=filters.view_mode,
+                    candidate_days=candidate_days,
+                    person_ids=filters.person_ids,
+                    tag_paths=filters.tag_paths,
+                    base_aggregates_by_day=aggregate_map,
+                )
+            }
 
         return build_day_context_response(
             start=start,
             end=end,
-            event_days=self._exploration_repository.list_event_days(
-                start_date=start,
-                end_date=end,
-            ),
-            asset_days=self._exploration_repository.list_asset_days(
-                start_date=start,
-                end_date=end,
-            ),
-            person_links=self._exploration_repository.list_person_links(
-                start_date=start,
-                end_date=end,
-            ),
-            tag_links=self._exploration_repository.list_tag_links(
-                start_date=start,
-                end_date=end,
-            ),
-            map_points=self._exploration_repository.list_map_points(
-                start_date=start,
-                end_date=end,
-            ),
+            aggregates_by_day=aggregate_map,
+            filters=filters,
             days=iter_inclusive_dates(start, end),
         )
 
@@ -235,6 +268,32 @@ class DatabaseTimelineProjectionProvider:
                 view_id=filters.view_mode,
             )
         }
+        if has_item_level_filters(filters=filters):
+            candidate_days = {
+                current_day
+                for current_day, aggregate in aggregate_map.items()
+                if matches_grid_filters(
+                    filters=filters,
+                    person_ids=extract_person_ids_from_summary(
+                        aggregate.person_summary_json
+                    ),
+                    tag_paths=extract_tag_paths_from_summary(
+                        aggregate.tag_summary_json
+                    ),
+                )
+            }
+            aggregate_map = {
+                aggregate.date: aggregate
+                for aggregate in self._exploration_repository.list_filtered_day_aggregates(
+                    start_date=range_start,
+                    end_date=range_end,
+                    view_id=filters.view_mode,
+                    candidate_days=candidate_days,
+                    person_ids=filters.person_ids,
+                    tag_paths=filters.tag_paths,
+                    base_aggregates_by_day=aggregate_map,
+                )
+            }
         return build_grid_response(
             start=range_start,
             end=range_end,
@@ -278,8 +337,16 @@ class DatabaseTimelineProjectionProvider:
 class DemoTimelineProjectionProvider:
     """Generate deterministic demo projections without reading production data."""
 
-    def get_day_context(self, *, start: date, end: date) -> DayContextResponse:
-        """Return canonical-style hover-context data for an inclusive date range."""
+    def get_day_context(
+        self,
+        *,
+        start: date,
+        end: date,
+        filters: ExplorationGridFilters,
+    ) -> DayContextResponse:
+        """Return demo hover-context data for an inclusive date range."""
+
+        del filters
 
         days = [
             self._build_day_context_day(current_day)

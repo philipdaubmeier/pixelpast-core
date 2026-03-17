@@ -29,6 +29,12 @@ class ExplorationGridFilters:
     filename_query: str | None = None
 
 
+def has_item_level_filters(*, filters: ExplorationGridFilters) -> bool:
+    """Return whether persistent filters require canonical item-level evaluation."""
+
+    return bool(filters.person_ids or filters.tag_paths)
+
+
 def build_grid_response(
     *,
     start: date,

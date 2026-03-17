@@ -17,6 +17,15 @@ def test_timeline_transport_builds_server_side_filter_query() -> None:
     assert "tag_paths: request.tagPaths" in source
     assert "location_geometry: request.locationGeometry" in source
     assert "filename_query: request.filenameQuery" in source
+    assert "`/days/context${buildQueryString({" in source
+
+
+def test_timeline_transport_builds_day_context_query_from_persistent_filters() -> None:
+    source = (UI_ROOT / "api" / "timelineTransport.ts").read_text(encoding="utf-8")
+
+    assert "view_mode: request.viewMode" in source
+    assert "person_ids: request.personIds" in source
+    assert "tag_paths: request.tagPaths" in source
 
 
 def test_app_bootstrap_separates_bootstrap_and_grid_loading() -> None:
@@ -26,6 +35,16 @@ def test_app_bootstrap_separates_bootstrap_and_grid_loading() -> None:
     assert "timelineApi.getExplorationGrid(explorationRange, {" in source
     assert "latestGridRequestIdRef" in source
     assert "setGridState(\"loading\")" in source
+
+
+def test_app_bootstrap_resets_hover_context_when_persistent_scope_changes() -> None:
+    source = (UI_ROOT / "app" / "App.tsx").read_text(encoding="utf-8")
+
+    assert "latestDayContextScopeRef" in source
+    assert "setDayContextsByDate({})" in source
+    assert "setLoadedDayContextRanges([])" in source
+    assert "setLoadingDayContextRanges([])" in source
+    assert "setFailedDayContextRanges([])" in source
 
 
 def test_exploration_projection_uses_server_grid_as_source_of_truth() -> None:

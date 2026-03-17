@@ -22,6 +22,7 @@ from pixelpast.persistence.models import (
     EventPerson,
     EventTag,
     Person,
+    Source,
     Tag,
 )
 from pixelpast.persistence.repositories.daily_aggregates import _apply_datetime_range
@@ -115,6 +116,21 @@ class DayTimelineItemSnapshot:
     title: str | None
     summary: str | None
     external_id: str | None
+
+
+@dataclass(slots=True, frozen=True)
+class _FilterableTimelineItemSnapshot:
+    """Serializable canonical item used for item-level persistent filtering."""
+
+    day: date
+    item_type: str
+    item_id: int
+    timestamp: datetime
+    source_type: str
+    display_label: str
+    fallback_identifier: str | None
+    latitude: float | None
+    longitude: float | None
 
 
 class DailyAggregateReadRepository:
@@ -237,6 +253,109 @@ class ExplorationReadRepository:
             )
             for view in views
         ]
+
+    def list_filtered_day_aggregates(
+        self,
+        *,
+        start_date: date,
+        end_date: date,
+        view_id: str,
+        candidate_days: set[date],
+        person_ids: tuple[int, ...],
+        tag_paths: tuple[str, ...],
+        base_aggregates_by_day: dict[date, DailyAggregateReadSnapshot],
+    ) -> list[DailyAggregateReadSnapshot]:
+        """Return canonical item-filtered day aggregates for candidate days only."""
+
+        if not candidate_days:
+            return []
+
+        event_items = self._list_filterable_event_items(
+            start_date=start_date,
+            end_date=end_date,
+            view_id=view_id,
+            candidate_days=candidate_days,
+        )
+        asset_items = self._list_filterable_asset_items(
+            start_date=start_date,
+            end_date=end_date,
+            view_id=view_id,
+            candidate_days=candidate_days,
+        )
+        all_items = [*event_items, *asset_items]
+        if not all_items:
+            return []
+
+        event_ids = [item.item_id for item in event_items]
+        asset_ids = [item.item_id for item in asset_items]
+        event_persons = self._list_event_person_links_by_item(event_ids=event_ids)
+        asset_persons = self._list_asset_person_links_by_item(asset_ids=asset_ids)
+        event_tags = self._list_event_tag_links_by_item(event_ids=event_ids)
+        asset_tags = self._list_asset_tag_links_by_item(asset_ids=asset_ids)
+
+        filtered_by_day: dict[date, list[_FilterableTimelineItemSnapshot]] = {}
+        matched_persons: dict[tuple[str, int], list[tuple[int, str, str | None]]] = {}
+        matched_tags: dict[tuple[str, int], list[tuple[str, str]]] = {}
+        for item in all_items:
+            item_key = (item.item_type, item.item_id)
+            item_persons = (
+                event_persons[item.item_id]
+                if item.item_type == "event"
+                else asset_persons[item.item_id]
+            )
+            item_tags = (
+                event_tags[item.item_id]
+                if item.item_type == "event"
+                else asset_tags[item.item_id]
+            )
+            if person_ids and not set(person_ids).intersection(
+                person_id for person_id, _name, _role in item_persons
+            ):
+                continue
+            if tag_paths and not any(
+                _tag_path_matches_selection(day_tag_path=item_tag_path, selected_tag_path=selected_tag_path)
+                for item_tag_path, _label in item_tags
+                for selected_tag_path in tag_paths
+            ):
+                continue
+            filtered_by_day.setdefault(item.day, []).append(item)
+            matched_persons[item_key] = item_persons
+            matched_tags[item_key] = item_tags
+
+        snapshots: list[DailyAggregateReadSnapshot] = []
+        for current_day, items in sorted(filtered_by_day.items()):
+            base_aggregate = base_aggregates_by_day.get(current_day)
+            if base_aggregate is None:
+                continue
+            total_events = sum(1 for item in items if item.item_type == "event")
+            media_count = sum(1 for item in items if item.item_type == "asset")
+            person_summaries = _build_person_summary_from_items(
+                items=items,
+                persons_by_item=matched_persons,
+            )
+            tag_summaries = _build_tag_summary_from_items(
+                items=items,
+                tags_by_item=matched_tags,
+            )
+            location_summaries = _build_location_summary_from_items(items)
+            snapshots.append(
+                DailyAggregateReadSnapshot(
+                    date=current_day,
+                    total_events=total_events,
+                    media_count=media_count,
+                    activity_score=total_events + media_count,
+                    color_value=base_aggregate.color_value,
+                    title=base_aggregate.title,
+                    aggregate_scope=base_aggregate.aggregate_scope,
+                    source_type=base_aggregate.source_type,
+                    tag_summary_json=tag_summaries,
+                    person_summary_json=person_summaries,
+                    location_summary_json=location_summaries,
+                    metadata_json=dict(base_aggregate.metadata_json),
+                )
+            )
+
+        return snapshots
 
     def list_event_days(
         self,
@@ -392,6 +511,29 @@ class ExplorationReadRepository:
             for timestamp, person_id, person_name, metadata_json in rows
         ]
 
+    def _list_event_person_links_by_item(
+        self,
+        *,
+        event_ids: list[int],
+    ) -> dict[int, list[tuple[int, str, str | None]]]:
+        """Return event-linked people keyed by event identifier."""
+
+        if not event_ids:
+            return {}
+
+        rows = self._session.execute(
+            select(EventPerson.event_id, Person.id, Person.name, Person.metadata_json)
+            .join(Person, Person.id == EventPerson.person_id)
+            .where(EventPerson.event_id.in_(event_ids))
+            .order_by(EventPerson.event_id, Person.name, Person.id)
+        )
+        links: dict[int, list[tuple[int, str, str | None]]] = {event_id: [] for event_id in event_ids}
+        for event_id, person_id, person_name, metadata_json in rows:
+            links.setdefault(event_id, []).append(
+                (person_id, person_name, _extract_person_role(metadata_json))
+            )
+        return links
+
     def _list_asset_person_links(
         self,
         *,
@@ -425,6 +567,29 @@ class ExplorationReadRepository:
             for timestamp, person_id, person_name, metadata_json in rows
         ]
 
+    def _list_asset_person_links_by_item(
+        self,
+        *,
+        asset_ids: list[int],
+    ) -> dict[int, list[tuple[int, str, str | None]]]:
+        """Return asset-linked people keyed by asset identifier."""
+
+        if not asset_ids:
+            return {}
+
+        rows = self._session.execute(
+            select(AssetPerson.asset_id, Person.id, Person.name, Person.metadata_json)
+            .join(Person, Person.id == AssetPerson.person_id)
+            .where(AssetPerson.asset_id.in_(asset_ids))
+            .order_by(AssetPerson.asset_id, Person.name, Person.id)
+        )
+        links: dict[int, list[tuple[int, str, str | None]]] = {asset_id: [] for asset_id in asset_ids}
+        for asset_id, person_id, person_name, metadata_json in rows:
+            links.setdefault(asset_id, []).append(
+                (person_id, person_name, _extract_person_role(metadata_json))
+            )
+        return links
+
     def _list_event_tag_links(
         self,
         *,
@@ -453,6 +618,30 @@ class ExplorationReadRepository:
             for timestamp, tag_path, tag_label in rows
         ]
 
+    def _list_event_tag_links_by_item(
+        self,
+        *,
+        event_ids: list[int],
+    ) -> dict[int, list[tuple[str, str]]]:
+        """Return event-linked tags keyed by event identifier."""
+
+        if not event_ids:
+            return {}
+
+        rows = self._session.execute(
+            select(EventTag.event_id, Tag.path, Tag.label)
+            .join(Tag, Tag.id == EventTag.tag_id)
+            .where(
+                EventTag.event_id.in_(event_ids),
+                Tag.path.is_not(None),
+            )
+            .order_by(EventTag.event_id, Tag.path, Tag.id)
+        )
+        links: dict[int, list[tuple[str, str]]] = {event_id: [] for event_id in event_ids}
+        for event_id, tag_path, tag_label in rows:
+            links.setdefault(event_id, []).append((tag_path, tag_label))
+        return links
+
     def _list_asset_tag_links(
         self,
         *,
@@ -479,6 +668,132 @@ class ExplorationReadRepository:
                 tag_label=tag_label,
             )
             for timestamp, tag_path, tag_label in rows
+        ]
+
+    def _list_asset_tag_links_by_item(
+        self,
+        *,
+        asset_ids: list[int],
+    ) -> dict[int, list[tuple[str, str]]]:
+        """Return asset-linked tags keyed by asset identifier."""
+
+        if not asset_ids:
+            return {}
+
+        rows = self._session.execute(
+            select(AssetTag.asset_id, Tag.path, Tag.label)
+            .join(Tag, Tag.id == AssetTag.tag_id)
+            .where(
+                AssetTag.asset_id.in_(asset_ids),
+                Tag.path.is_not(None),
+            )
+            .order_by(AssetTag.asset_id, Tag.path, Tag.id)
+        )
+        links: dict[int, list[tuple[str, str]]] = {asset_id: [] for asset_id in asset_ids}
+        for asset_id, tag_path, tag_label in rows:
+            links.setdefault(asset_id, []).append((tag_path, tag_label))
+        return links
+
+    def _list_filterable_event_items(
+        self,
+        *,
+        start_date: date,
+        end_date: date,
+        view_id: str,
+        candidate_days: set[date],
+    ) -> list[_FilterableTimelineItemSnapshot]:
+        """Return canonical events eligible for item-level filter evaluation."""
+
+        statement = _apply_datetime_range(
+            select(
+                Event.id,
+                Event.timestamp_start,
+                Source.type,
+                Event.title,
+                Event.latitude,
+                Event.longitude,
+            )
+            .join(Source, Source.id == Event.source_id)
+            .order_by(Event.timestamp_start, Event.id),
+            column=Event.timestamp_start,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        if view_id != "activity":
+            statement = statement.where(Source.type == view_id)
+        rows = self._session.execute(statement)
+        return [
+            _FilterableTimelineItemSnapshot(
+                day=timestamp.date(),
+                item_type="event",
+                item_id=event_id,
+                timestamp=timestamp,
+                source_type=source_type,
+                display_label=title,
+                fallback_identifier=None,
+                latitude=latitude,
+                longitude=longitude,
+            )
+            for event_id, timestamp, source_type, title, latitude, longitude in rows
+            if timestamp.date() in candidate_days
+        ]
+
+    def _list_filterable_asset_items(
+        self,
+        *,
+        start_date: date,
+        end_date: date,
+        view_id: str,
+        candidate_days: set[date],
+    ) -> list[_FilterableTimelineItemSnapshot]:
+        """Return canonical assets eligible for item-level filter evaluation."""
+
+        statement = _apply_datetime_range(
+            select(
+                Asset.id,
+                Asset.timestamp,
+                Asset.media_type,
+                Asset.external_id,
+                Asset.summary,
+                Asset.metadata_json,
+                Asset.latitude,
+                Asset.longitude,
+            ).order_by(Asset.timestamp, Asset.id),
+            column=Asset.timestamp,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        if view_id != "activity":
+            statement = statement.where(Asset.media_type == view_id)
+        rows = self._session.execute(statement)
+        return [
+            _FilterableTimelineItemSnapshot(
+                day=timestamp.date(),
+                item_type="asset",
+                item_id=asset_id,
+                timestamp=timestamp,
+                source_type=media_type,
+                display_label=_resolve_asset_display_label(
+                    summary=summary,
+                    metadata_json=metadata_json,
+                    external_id=external_id,
+                    media_type=media_type,
+                ),
+                fallback_identifier=external_id,
+                latitude=latitude,
+                longitude=longitude,
+            )
+            for (
+                asset_id,
+                timestamp,
+                media_type,
+                external_id,
+                summary,
+                metadata_json,
+                latitude,
+                longitude,
+            ) in rows
+            if timestamp.date() in candidate_days
         ]
 
     def _list_event_map_points(
@@ -658,6 +973,93 @@ def _to_daily_aggregate_read_snapshot(
         person_summary_json=list(aggregate.person_summary_json),
         location_summary_json=list(aggregate.location_summary_json),
         metadata_json=dict(daily_view.metadata_json),
+    )
+
+
+def _build_person_summary_from_items(
+    items: list[_FilterableTimelineItemSnapshot],
+    *,
+    persons_by_item: dict[tuple[str, int], list[tuple[int, str, str | None]]],
+) -> list[dict[str, Any]]:
+    counter: dict[tuple[int, str, str | None], int] = {}
+    for item in items:
+        for person in persons_by_item.get((item.item_type, item.item_id), []):
+            counter[person] = counter.get(person, 0) + 1
+    return [
+        {"person_id": person_id, "name": name, "role": role, "count": count}
+        for (person_id, name, role), count in sorted(
+            counter.items(),
+            key=lambda item: (-item[1], item[0][1].casefold(), item[0][0]),
+        )
+    ]
+
+
+def _build_tag_summary_from_items(
+    items: list[_FilterableTimelineItemSnapshot],
+    *,
+    tags_by_item: dict[tuple[str, int], list[tuple[str, str]]],
+) -> list[dict[str, Any]]:
+    counter: dict[tuple[str, str], int] = {}
+    for item in items:
+        for tag in tags_by_item.get((item.item_type, item.item_id), []):
+            counter[tag] = counter.get(tag, 0) + 1
+    return [
+        {"path": path, "label": label, "count": count}
+        for (path, label), count in sorted(
+            counter.items(),
+            key=lambda item: (-item[1], item[0][0], item[0][1].casefold()),
+        )
+    ]
+
+
+def _build_location_summary_from_items(
+    items: list[_FilterableTimelineItemSnapshot],
+) -> list[dict[str, Any]]:
+    counter: dict[tuple[str, float, float], int] = {}
+    for item in items:
+        if item.latitude is None or item.longitude is None:
+            continue
+        key = (item.display_label, item.latitude, item.longitude)
+        counter[key] = counter.get(key, 0) + 1
+    return [
+        {
+            "label": label,
+            "latitude": latitude,
+            "longitude": longitude,
+            "count": count,
+        }
+        for (label, latitude, longitude), count in sorted(
+            counter.items(),
+            key=lambda item: (-item[1], item[0][0].casefold(), item[0][1], item[0][2]),
+        )
+    ]
+
+
+def _resolve_asset_display_label(
+    *,
+    summary: str | None,
+    metadata_json: object,
+    external_id: str,
+    media_type: str,
+) -> str:
+    if isinstance(summary, str) and summary.strip():
+        return summary.strip()
+
+    extracted = _extract_asset_label(metadata_json)
+    if extracted is not None:
+        return extracted
+
+    normalized_external_id = external_id.strip()
+    if normalized_external_id:
+        return normalized_external_id
+    return media_type
+
+
+def _tag_path_matches_selection(*, day_tag_path: str, selected_tag_path: str) -> bool:
+    return (
+        day_tag_path == selected_tag_path
+        or day_tag_path.startswith(f"{selected_tag_path}/")
+        or selected_tag_path.startswith(f"{day_tag_path}/")
     )
 
 

@@ -10,10 +10,13 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 
 from pixelpast.api.app import create_app
+from pixelpast.analytics.daily_views import build_default_daily_view_metadata
 from pixelpast.persistence.models import (
     Asset,
     AssetPerson,
     AssetTag,
+    DailyAggregate,
+    DailyView,
     Event,
     EventPerson,
     EventTag,
@@ -174,6 +177,15 @@ def test_day_context_endpoint_returns_dense_mixed_context_range() -> None:
                 ]
             )
             session.flush()
+            overall_view = DailyView(
+                aggregate_scope="overall",
+                source_type=None,
+                label="Activity",
+                description="Default heat intensity across all timeline sources.",
+                metadata_json=build_default_daily_view_metadata(),
+            )
+            session.add(overall_view)
+            session.flush()
 
             mixed_event = Event(
                 source_id=source.id,
@@ -246,6 +258,56 @@ def test_day_context_endpoint_returns_dense_mixed_context_range() -> None:
                     AssetTag(asset_id=mixed_asset_unlabeled.id, tag_id=project_tag.id),
                     EventTag(event_id=event_only_day.id, tag_id=travel_tag.id),
                     AssetTag(asset_id=asset_only_day.id, tag_id=family_tag.id),
+                    DailyAggregate(
+                        date=datetime(2024, 1, 2, tzinfo=UTC).date(),
+                        daily_view_id=overall_view.id,
+                        total_events=1,
+                        media_count=2,
+                        activity_score=3,
+                        tag_summary_json=[
+                            {"path": "projects/apollo", "label": "Project Apollo", "count": 2},
+                            {"path": "travel", "label": "Travel", "count": 1},
+                        ],
+                        person_summary_json=[
+                            {"person_id": 1, "name": "Anna", "role": "Family", "count": 2},
+                            {"person_id": 2, "name": "Ben", "role": "Friend", "count": 1},
+                        ],
+                        location_summary_json=[
+                            {"label": "City walk", "latitude": 52.52, "longitude": 13.405, "count": 1},
+                            {"label": "Museum", "latitude": 48.8566, "longitude": 2.3522, "count": 1},
+                            {"label": "asset-unlabeled", "latitude": 41.9028, "longitude": 12.4964, "count": 1},
+                        ],
+                    ),
+                    DailyAggregate(
+                        date=datetime(2024, 1, 3, tzinfo=UTC).date(),
+                        daily_view_id=overall_view.id,
+                        total_events=1,
+                        media_count=0,
+                        activity_score=1,
+                        tag_summary_json=[
+                            {"path": "travel", "label": "Travel", "count": 1}
+                        ],
+                        person_summary_json=[
+                            {"person_id": 1, "name": "Anna", "role": "Family", "count": 1}
+                        ],
+                        location_summary_json=[],
+                    ),
+                    DailyAggregate(
+                        date=datetime(2024, 1, 4, tzinfo=UTC).date(),
+                        daily_view_id=overall_view.id,
+                        total_events=0,
+                        media_count=1,
+                        activity_score=1,
+                        tag_summary_json=[
+                            {"path": "people/family", "label": "Family", "count": 1}
+                        ],
+                        person_summary_json=[
+                            {"person_id": 3, "name": "Milo", "role": None, "count": 1}
+                        ],
+                        location_summary_json=[
+                            {"label": "asset-day-four", "latitude": 40.7128, "longitude": -74.006, "count": 1}
+                        ],
+                    ),
                 ]
             )
             session.commit()
@@ -298,19 +360,19 @@ def test_day_context_endpoint_returns_dense_mixed_context_range() -> None:
                     ],
                     "map_points": [
                         {
-                            "id": "event:1",
+                            "id": "location:2024-01-02:1",
                             "label": "City walk",
                             "latitude": 52.52,
                             "longitude": 13.405,
                         },
                         {
-                            "id": "asset:1",
+                            "id": "location:2024-01-02:2",
                             "label": "Museum",
                             "latitude": 48.8566,
                             "longitude": 2.3522,
                         },
                         {
-                            "id": "asset:2",
+                            "id": "location:2024-01-02:3",
                             "label": "asset-unlabeled",
                             "latitude": 41.9028,
                             "longitude": 12.4964,
@@ -361,7 +423,7 @@ def test_day_context_endpoint_returns_dense_mixed_context_range() -> None:
                     ],
                     "map_points": [
                         {
-                            "id": "asset:3",
+                            "id": "location:2024-01-04:1",
                             "label": "asset-day-four",
                             "latitude": 40.7128,
                             "longitude": -74.006,

@@ -152,11 +152,18 @@ export const timelineApi = {
 
   async getDayContextRange(
     range: DateRange,
+    filters: ExplorationGridFilters,
   ): Promise<{
     range: DateRange;
     days: DayContextProjection[];
   }> {
-    const response = await timelineTransport.getDayContextRange(range);
+    const response = await timelineTransport.getDayContextRange({
+      start: range.start,
+      end: range.end,
+      viewMode: filters.viewMode,
+      personIds: filters.selectedPersons,
+      tagPaths: filters.selectedTags,
+    });
 
     return {
       range: response.range,

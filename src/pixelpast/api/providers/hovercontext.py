@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
-from collections import defaultdict
 from datetime import date
 
+from pixelpast.api.providers.daygrid import (
+    ExplorationGridFilters,
+    extract_person_ids_from_summary,
+    extract_tag_paths_from_summary,
+    matches_grid_filters,
+)
 from pixelpast.api.schemas import (
     DayContextDay,
     DayContextMapPoint,
@@ -14,149 +19,156 @@ from pixelpast.api.schemas import (
     ExplorationRange,
     ExplorationTag,
 )
-from pixelpast.persistence.repositories import (
-    DayActivityItemSnapshot,
-    DayMapPointSnapshot,
-    DayPersonLinkSnapshot,
-    DayTagLinkSnapshot,
-)
+from pixelpast.persistence.repositories import DailyAggregateReadSnapshot
 
 
 def build_day_context_response(
     *,
     start: date,
     end: date,
-    event_days: list[DayActivityItemSnapshot],
-    asset_days: list[DayActivityItemSnapshot],
-    person_links: list[DayPersonLinkSnapshot],
-    tag_links: list[DayTagLinkSnapshot],
-    map_points: list[DayMapPointSnapshot],
+    aggregates_by_day: dict[date, DailyAggregateReadSnapshot],
+    filters: ExplorationGridFilters,
     days: list[date],
 ) -> DayContextResponse:
     """Compose the hover-context payload for an inclusive date range."""
 
-    event_counts = count_items_by_day(event_days)
-    asset_counts = count_items_by_day(asset_days)
-    persons_by_day = build_day_context_persons(person_links)
-    tags_by_day = build_day_context_tags(tag_links)
-    map_points_by_day = build_day_context_map_points(map_points)
-
     return DayContextResponse(
         range=ExplorationRange(start=start, end=end),
         days=[
-            DayContextDay(
-                date=current_day,
-                persons=persons_by_day.get(current_day, []),
-                tags=tags_by_day.get(current_day, []),
-                map_points=map_points_by_day.get(current_day, []),
-                summary_counts=DayContextSummaryCounts(
-                    events=event_counts.get(current_day, 0),
-                    assets=asset_counts.get(current_day, 0),
-                    places=len(map_points_by_day.get(current_day, [])),
-                ),
+            build_day_context_day(
+                day=current_day,
+                aggregate=aggregates_by_day.get(current_day),
+                filters=filters,
             )
             for current_day in days
         ],
     )
 
 
-def count_items_by_day(snapshots: list[DayActivityItemSnapshot]) -> dict[date, int]:
-    """Count canonical timeline items per UTC day."""
+def build_day_context_day(
+    *,
+    day: date,
+    aggregate: DailyAggregateReadSnapshot | None,
+    filters: ExplorationGridFilters,
+) -> DayContextDay:
+    """Return one hover-context day constrained to the active derived view."""
 
-    counts: dict[date, int] = defaultdict(int)
-    for snapshot in snapshots:
-        counts[snapshot.day] += 1
-    return dict(counts)
+    if aggregate is None:
+        return empty_day_context(day)
+
+    person_ids = extract_person_ids_from_summary(aggregate.person_summary_json)
+    tag_paths = extract_tag_paths_from_summary(aggregate.tag_summary_json)
+    has_data = (
+        aggregate.total_events > 0
+        or aggregate.media_count > 0
+        or aggregate.activity_score > 0
+    )
+    if not has_data or not matches_grid_filters(
+        filters=filters,
+        person_ids=person_ids,
+        tag_paths=tag_paths,
+    ):
+        return empty_day_context(day)
+
+    map_points = build_day_context_map_points(
+        day=day,
+        summaries=aggregate.location_summary_json,
+    )
+    return DayContextDay(
+        date=day,
+        persons=build_day_context_persons(aggregate.person_summary_json),
+        tags=build_day_context_tags(aggregate.tag_summary_json),
+        map_points=map_points,
+        summary_counts=DayContextSummaryCounts(
+            events=aggregate.total_events,
+            assets=aggregate.media_count,
+            places=len(map_points),
+        ),
+    )
+
+
+def empty_day_context(day: date) -> DayContextDay:
+    """Return the canonical empty hover-context payload."""
+
+    return DayContextDay(
+        date=day,
+        persons=[],
+        tags=[],
+        map_points=[],
+        summary_counts=DayContextSummaryCounts(events=0, assets=0, places=0),
+    )
 
 
 def build_day_context_persons(
-    links: list[DayPersonLinkSnapshot],
-) -> dict[date, list[ExplorationPerson]]:
-    """Build sorted per-day person payloads for hover context."""
+    summaries: list[dict[str, object]],
+) -> list[ExplorationPerson]:
+    """Build sorted person payloads from one derived aggregate summary."""
 
-    persons_by_day: dict[date, dict[int, ExplorationPerson]] = defaultdict(dict)
-
-    for link in links:
-        persons_by_day[link.day].setdefault(
-            link.person_id,
+    persons: dict[int, ExplorationPerson] = {}
+    for summary in summaries:
+        person_id = summary.get("person_id")
+        name = summary.get("name")
+        role = summary.get("role")
+        if not isinstance(person_id, int) or not isinstance(name, str):
+            continue
+        if role is not None and not isinstance(role, str):
+            continue
+        persons.setdefault(
+            person_id,
             ExplorationPerson(
-                id=link.person_id,
-                name=link.person_name,
-                role=link.person_role,
+                id=person_id,
+                name=name,
+                role=role,
             ),
         )
 
-    return {
-        day: sorted(
-            persons.values(),
-            key=lambda person: (person.name.casefold(), person.id),
-        )
-        for day, persons in persons_by_day.items()
-    }
+    return sorted(persons.values(), key=lambda person: (person.name.casefold(), person.id))
 
 
 def build_day_context_tags(
-    links: list[DayTagLinkSnapshot],
-) -> dict[date, list[ExplorationTag]]:
-    """Build sorted per-day tag payloads for hover context."""
+    summaries: list[dict[str, object]],
+) -> list[ExplorationTag]:
+    """Build sorted tag payloads from one derived aggregate summary."""
 
-    tags_by_day: dict[date, dict[str, ExplorationTag]] = defaultdict(dict)
-
-    for link in links:
-        tags_by_day[link.day].setdefault(
-            link.tag_path,
-            ExplorationTag(path=link.tag_path, label=link.tag_label),
+    tags: dict[str, ExplorationTag] = {}
+    for summary in summaries:
+        path = summary.get("path")
+        label = summary.get("label")
+        if not isinstance(path, str) or not isinstance(label, str):
+            continue
+        tags.setdefault(
+            path,
+            ExplorationTag(path=path, label=label),
         )
 
-    return {
-        day: sorted(
-            tags.values(),
-            key=lambda tag: (tag.path, tag.label.casefold()),
-        )
-        for day, tags in tags_by_day.items()
-    }
+    return sorted(tags.values(), key=lambda tag: (tag.path, tag.label.casefold()))
 
 
 def build_day_context_map_points(
-    snapshots: list[DayMapPointSnapshot],
-) -> dict[date, list[DayContextMapPoint]]:
-    """Build sorted per-day map points for hover context."""
+    *,
+    day: date,
+    summaries: list[dict[str, object]],
+) -> list[DayContextMapPoint]:
+    """Build sorted map points from one derived aggregate location summary."""
 
-    points_by_day: dict[date, list[DayContextMapPoint]] = defaultdict(list)
-
-    for snapshot in snapshots:
-        points_by_day[snapshot.day].append(
+    points: list[DayContextMapPoint] = []
+    for index, summary in enumerate(summaries, start=1):
+        label = summary.get("label")
+        latitude = summary.get("latitude")
+        longitude = summary.get("longitude")
+        if (
+            not isinstance(label, str)
+            or not isinstance(latitude, (int, float))
+            or not isinstance(longitude, (int, float))
+        ):
+            continue
+        points.append(
             DayContextMapPoint(
-                id=f"{snapshot.item_type}:{snapshot.item_id}",
-                label=resolve_map_point_label(snapshot),
-                latitude=snapshot.latitude,
-                longitude=snapshot.longitude,
+                id=f"location:{day.isoformat()}:{index}",
+                label=label.strip() or "Location",
+                latitude=float(latitude),
+                longitude=float(longitude),
             )
         )
 
-    return dict(points_by_day)
-
-
-def resolve_map_point_label(snapshot: DayMapPointSnapshot) -> str:
-    """Return a stable display label for a coordinate-bearing canonical item."""
-
-    if snapshot.label is not None:
-        normalized = snapshot.label.strip()
-        if normalized:
-            return normalized
-
-    if snapshot.fallback_identifier is not None:
-        normalized_identifier = snapshot.fallback_identifier.strip()
-        if normalized_identifier:
-            return normalized_identifier
-
-    return f"{humanize_label(snapshot.fallback_type)} #{snapshot.item_id}"
-
-
-def humanize_label(value: str) -> str:
-    """Convert a canonical type token into a lightweight display label."""
-
-    parts = [part for part in value.replace("-", "_").split("_") if part]
-    if not parts:
-        return "Item"
-    return " ".join(part.capitalize() for part in parts)
+    return points

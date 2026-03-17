@@ -68,6 +68,19 @@ export type ApiDayContextResponse = {
   }>;
 };
 
+export type ApiDayContextRequest = {
+  start: string;
+  end: string;
+  viewMode: ViewModeOption["id"];
+  personIds: string[];
+  tagPaths: string[];
+  locationGeometry?: string;
+  distanceLatitude?: number;
+  distanceLongitude?: number;
+  distanceRadiusMeters?: number;
+  filenameQuery?: string;
+};
+
 function normalizeConfiguredApiBaseUrl(value: string): string {
   const trimmedValue = value.replace(/\/$/, "");
 
@@ -149,9 +162,22 @@ export const timelineTransport = {
     );
   },
 
-  getDayContextRange(range: DateRange): Promise<ApiDayContextResponse> {
+  getDayContextRange(
+    request: ApiDayContextRequest,
+  ): Promise<ApiDayContextResponse> {
     return requestJson<ApiDayContextResponse>(
-      `/days/context?start=${range.start}&end=${range.end}`,
+      `/days/context${buildQueryString({
+        start: request.start,
+        end: request.end,
+        view_mode: request.viewMode,
+        person_ids: request.personIds,
+        tag_paths: request.tagPaths,
+        location_geometry: request.locationGeometry,
+        distance_latitude: request.distanceLatitude,
+        distance_longitude: request.distanceLongitude,
+        distance_radius_meters: request.distanceRadiusMeters,
+        filename_query: request.filenameQuery,
+      })}`,
     );
   },
 };
