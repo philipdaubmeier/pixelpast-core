@@ -58,12 +58,14 @@ class SocialGraphReadRepository:
         *,
         start_date: date | None = None,
         end_date: date | None = None,
+        person_ids: tuple[int, ...] = (),
     ) -> SocialGraphReadSnapshot:
         """Return a stable social-graph projection for qualifying assets."""
 
         memberships = self._list_person_asset_memberships(
             start_date=start_date,
             end_date=end_date,
+            person_ids=person_ids,
         )
         return SocialGraphReadSnapshot(
             persons=self._count_person_occurrences(memberships=memberships),
@@ -75,6 +77,7 @@ class SocialGraphReadRepository:
         *,
         start_date: date | None,
         end_date: date | None,
+        person_ids: tuple[int, ...],
     ) -> list[PersonAssetMembershipSnapshot]:
         """Load all qualifying canonical person memberships across assets."""
 
@@ -91,6 +94,13 @@ class SocialGraphReadRepository:
                 start_date=start_date,
                 end_date=end_date,
             )
+        if person_ids:
+            qualifying_asset_ids = (
+                select(AssetPerson.asset_id)
+                .where(AssetPerson.person_id.in_(person_ids))
+                .distinct()
+            )
+            statement = statement.where(AssetPerson.asset_id.in_(qualifying_asset_ids))
 
         rows = self._session.execute(statement)
         return [
@@ -145,5 +155,8 @@ class SocialGraphReadRepository:
 
         return [
             SocialGraphLinkSnapshot(person_ids=person_ids, weight=weight)
-            for person_ids, weight in sorted(pair_counts.items(), key=lambda item: item[0])
+            for person_ids, weight in sorted(
+                pair_counts.items(),
+                key=lambda item: item[0],
+            )
         ]

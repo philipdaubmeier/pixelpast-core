@@ -6,10 +6,20 @@ from pixelpast.api.providers.projection import (
     DemoTimelineProjectionProvider,
     TimelineProjectionProvider,
 )
+from pixelpast.api.providers.social_graph import (
+    DatabaseSocialGraphProjectionProvider,
+    DemoSocialGraphProjectionProvider,
+    SocialGraphFilters,
+    SocialGraphProjectionProvider,
+)
 
 __all__ = [
     "DatabaseTimelineProjectionProvider",
+    "DatabaseSocialGraphProjectionProvider",
     "DemoTimelineProjectionProvider",
+    "DemoSocialGraphProjectionProvider",
     "ExplorationGridFilters",
+    "SocialGraphFilters",
+    "SocialGraphProjectionProvider",
     "TimelineProjectionProvider",
 ]

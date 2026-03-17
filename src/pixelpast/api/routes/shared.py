@@ -10,9 +10,13 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from pixelpast.api.dependencies import get_app_settings, get_db_session
 from pixelpast.api.providers import (
+    DatabaseSocialGraphProjectionProvider,
     DatabaseTimelineProjectionProvider,
+    DemoSocialGraphProjectionProvider,
     DemoTimelineProjectionProvider,
     ExplorationGridFilters,
+    SocialGraphFilters,
+    SocialGraphProjectionProvider,
     TimelineProjectionProvider,
 )
 from pixelpast.api.services import TimelineQueryService
@@ -20,6 +24,7 @@ from pixelpast.persistence.repositories import (
     DailyAggregateReadRepository,
     DayTimelineRepository,
     ExplorationReadRepository,
+    SocialGraphReadRepository,
 )
 from pixelpast.shared.settings import Settings
 
@@ -50,6 +55,26 @@ def get_timeline_projection_provider(
         yield DatabaseTimelineProjectionProvider(
             daily_aggregate_repository=DailyAggregateReadRepository(session),
             exploration_repository=ExplorationReadRepository(session),
+        )
+    finally:
+        session.close()
+
+
+def get_social_graph_projection_provider(
+    request: Request,
+    settings: Settings = Depends(get_app_settings),
+) -> Generator[SocialGraphProjectionProvider, None, None]:
+    """Build the projection provider selected for social-graph endpoints."""
+
+    if settings.timeline_projection_provider == "demo":
+        yield DemoSocialGraphProjectionProvider()
+        return
+
+    session_factory: sessionmaker[Session] = request.app.state.session_factory
+    session = session_factory()
+    try:
+        yield DatabaseSocialGraphProjectionProvider(
+            social_graph_repository=SocialGraphReadRepository(session),
         )
     finally:
         session.close()
@@ -101,3 +126,42 @@ def build_exploration_grid_filters(
         distance_radius_meters=distance_radius_meters,
         filename_query=filename_query,
     )
+
+
+def build_social_graph_filters(
+    *,
+    person_ids: list[int],
+    tag_paths: list[str],
+    location_geometry: str | None,
+    distance_latitude: float | None,
+    distance_longitude: float | None,
+    distance_radius_meters: int | None,
+    filename_query: str | None,
+) -> SocialGraphFilters:
+    """Normalize supported filters and reject unsupported social-graph filters."""
+
+    unsupported_filters: list[str] = []
+    if tag_paths:
+        unsupported_filters.append("tag_paths")
+    if location_geometry is not None:
+        unsupported_filters.append("location_geometry")
+    if distance_latitude is not None:
+        unsupported_filters.append("distance_latitude")
+    if distance_longitude is not None:
+        unsupported_filters.append("distance_longitude")
+    if distance_radius_meters is not None:
+        unsupported_filters.append("distance_radius_meters")
+    if filename_query is not None:
+        unsupported_filters.append("filename_query")
+
+    if unsupported_filters:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "unsupported social graph filters: "
+                + ", ".join(sorted(unsupported_filters))
+                + "; supported filters: start, end, person_ids"
+            ),
+        )
+
+    return SocialGraphFilters(person_ids=tuple(sorted(set(person_ids))))
