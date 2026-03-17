@@ -5,63 +5,188 @@
 This document defines the UI state model for PixelPast.
 
 Its goal is to make interaction behavior explicit before implementation.
-It separates ephemeral exploration state from persistent exploration state and provides a stable mental model for the first UI increment and later extensions.
+It separates:
 
-The state model must preserve these core rules:
+- global persistent state shared across main views
+- persistent state that belongs to one main view only
+- ephemeral interaction state
 
-- the calendar grid is the primary exploration surface
+The state model must preserve these rules:
+
+- chronology remains the product backbone
+- the day grid is the default main view
+- global filters survive main-view switches
 - hover provides temporary context
-- selection provides persistent filtering
-- time remains the central organizing dimension
+- heavy inactive runtimes should be torn down without losing durable state
 
 ---
 
 ## 2. State Categories
 
-PixelPast uses two primary categories of UI state:
+PixelPast uses three primary categories of UI state.
 
-### A. Ephemeral Interaction State
+### A. Global Persistent State
 
-Short-lived state used for temporary contextual exploration.
+Long-lived state shared across main views.
+
+Characteristics:
+
+- stored in the URL where reasonable
+- survives refresh and main-view switching
+- belongs to the app shell rather than one feature module
+
+Examples:
+
+- active main view
+- selected persons
+- selected tags
+- selected date range
+- selected geographic filter
+
+### B. View-Local Persistent State
+
+Long-lived state that belongs to one main view.
+
+Characteristics:
+
+- may be stored in the URL
+- survives leaving and re-entering the same main view
+- should not be interpreted by unrelated main views
+
+Examples:
+
+- active `gridView` inside `Day Grid`
+- future social-graph layout preferences
+
+### C. Ephemeral Interaction State
+
+Short-lived state used for immediate interaction feedback.
 
 Characteristics:
 
 - not stored in the URL
-- cleared automatically when interaction ends
-- must not change persistent filter logic
-- should be cheap to update
+- cleared automatically when interaction ends or the view unmounts
+- must not silently change persistent filter logic
 
 Examples:
 
 - currently hovered date
 - currently hovered person chip
-- currently hovered tag chip
-- currently hovered map point
-
-### B. Persistent Exploration State
-
-Longer-lived state used to shape the meaning and coloring of the grid.
-
-Characteristics:
-
-- stored in the URL where reasonable
-- survives refresh and navigation
-- drives server requests for filtered grid data
-- must be explicit and composable
-
-Examples:
-
-- selected persons
-- selected tags
-- selected view mode
-- selected date range
-- selected geographic filter
+- currently hovered graph node
+- currently hovered graph link
 
 ---
 
 ## 3. Core State Model
 
-### 3.1 Ephemeral State
+### 3.1 Global Persistent State
+
+#### `mainView: MainView`
+
+The active product-level projection.
+
+Initial values:
+
+- `day_grid`
+- `social_graph`
+
+Responsibilities:
+
+- determine which main view is mounted
+- shape top-bar secondary controls
+- influence which query path is active
+
+Rules:
+
+- must always have a value
+- should be represented in the URL
+- defaults to `day_grid`
+
+#### `selectedPersons: string[]`
+
+The currently selected person identifiers.
+
+Responsibilities:
+
+- persist a person-based global exploration filter or focus
+- remain stable across main-view switches
+- visually mark active person selections in shared controls
+
+Rules:
+
+- multi-select is allowed
+- order is not semantically meaningful
+- should be represented in the URL
+- an empty array means no person selection
+
+#### `selectedTags: string[]`
+
+The currently selected tag paths.
+
+Responsibilities:
+
+- persist a tag-based global exploration filter
+- remain stable across main-view switches
+- visually mark active tag selections in shared controls
+
+Rules:
+
+- values are hierarchical paths
+- multi-select is allowed
+- should be represented in the URL
+- an empty array means no tag selection
+
+Examples:
+
+- `place/italy`
+- `travel/summer`
+- `people/family`
+
+#### `selectedGeoFilter: GeoFilter | null`
+
+Optional geographic filter applied where a main view can interpret it cleanly.
+
+This remains future-facing, but the state model should leave space for it.
+
+#### `selectedDateRange: DateRange | null`
+
+Optional date range restriction for exploration.
+
+Responsibilities:
+
+- restrict or focus the active projection
+- remain durable across main-view switches
+
+Rules:
+
+- should be represented in the URL when active
+- should remain independent from hover state
+
+### 3.2 View-Local Persistent State
+
+#### `gridView: string`
+
+The active day-grid coloring mode.
+
+Examples:
+
+- `activity`
+- `calendar`
+- `vacation`
+
+Responsibilities:
+
+- determine the day-grid color strategy
+- influence day-grid data requests
+- remain stable when leaving and returning to `Day Grid`
+
+Rules:
+
+- must always have a value
+- should be represented in the URL
+- is meaningful only when `mainView=day_grid`
+
+### 3.3 Ephemeral State
 
 #### `hoveredDate: string | null`
 
@@ -75,13 +200,13 @@ Responsibilities:
 
 Rules:
 
+- belongs only to `Day Grid`
 - must be `null` when no day cell is hovered
 - must not be encoded in the URL
-- must not affect persistent recoloring logic
 
 #### `hoveredPanelItem: HoveredPanelItem | null`
 
-Represents an optional hovered contextual item.
+Represents an optional hovered timeline-context item.
 
 Possible kinds:
 
@@ -92,131 +217,25 @@ Possible kinds:
 Purpose:
 
 - temporary cross-panel highlighting
-- optional visual feedback for future interactions
+- optional visual feedback for timeline interactions
 
-This is not required for the first increment but should fit naturally into the model.
+#### `hoveredSocialNodeId: string | null`
 
-Example shape:
-
-```ts
-type HoveredPanelItem =
-  | { kind: "person"; id: string }
-  | { kind: "tag"; path: string }
-  | { kind: "map_point"; id: string };
-```
-
-### 3.2 Persistent State
-
-#### `viewMode: string`
-
-The active grid coloring mode.
-
-Examples:
-
-- `activity`
-- `travel`
-- `sports`
-- `party_probability`
-
-Responsibilities:
-
-- determine the grid color strategy
-- influence contextual interpretation
-- define which projection data is requested
+Optional hovered person id inside the social graph.
 
 Rules:
 
-- must always have a value
-- should be represented in the URL
-- defaults to `activity`
+- belongs only to `Social Graph`
+- must be cleared when the view unmounts
 
-#### `selectedPersons: string[]`
+#### `hoveredSocialLink: [string, string] | null`
 
-The currently selected person identifiers.
-
-Responsibilities:
-
-- persist a people-based filter
-- recolor matching days
-- visually mark active person selections
+Optional hovered social-graph link represented by its person-id pair.
 
 Rules:
 
-- multi-select is allowed
-- order is not semantically meaningful
-- should be represented in the URL
-- an empty array means no person filter
-
-#### `selectedTags: string[]`
-
-The currently selected tag paths.
-
-Responsibilities:
-
-- persist tag-based filtering
-- recolor matching days
-- visually mark active tag selections
-
-Rules:
-
-- values are hierarchical paths
-- multi-select is allowed
-- should be represented in the URL
-- an empty array means no tag filter
-
-Examples:
-
-- `place/italy`
-- `travel/summer`
-- `people/family`
-
-#### `selectedGeoFilter: GeoFilter | null`
-
-Optional geographic filter applied to events or assets with coordinates.
-
-This is out of scope for the first increment, but the model should leave space for it.
-
-Example shape:
-
-```ts
-type GeoFilter =
-  | {
-      kind: "radius";
-      latitude: number;
-      longitude: number;
-      radiusMeters: number;
-    }
-  | {
-      kind: "bbox";
-      minLatitude: number;
-      maxLatitude: number;
-      minLongitude: number;
-      maxLongitude: number;
-    };
-```
-
-#### `selectedDateRange: DateRange | null`
-
-Optional date range restriction for exploration.
-
-Example shape:
-
-```ts
-type DateRange = {
-  from: string;
-  to: string;
-};
-```
-
-Responsibilities:
-
-- restrict visible or highlighted days
-- allow focused exploration across long histories
-
-Rules:
-
-- should be represented in the URL when active
-- should remain independent from `hoveredDate`
+- belongs only to `Social Graph`
+- must be cleared when the view unmounts
 
 ---
 
@@ -238,26 +257,34 @@ Derived from:
 
 Derived from:
 
-- `viewMode`
+- `mainView`
+- `gridView`
 - `selectedPersons`
 - `selectedTags`
 - `selectedGeoFilter`
 - `selectedDateRange`
 
-This derived value identifies the server request for the current persistent
-exploration frame.
+This identifies the server request for the current day-grid frame.
 
-### `activeFilterSummary`
+### `socialGraphQueryKey`
 
 Derived from:
 
-- persistent exploration state
+- `mainView`
+- supported global filter dimensions for the social graph
+- optional graph-specific query inputs if later introduced
 
-Examples:
+This identifies the server request for the current social-graph frame.
 
-- `2 persons selected`
-- `Tag filter: place/italy`
-- `View: travel`
+### `isGridViewSelectorVisible`
+
+Derived from:
+
+- `mainView`
+
+Rules:
+
+- `true` only when `mainView=day_grid`
 
 Derived state must never become a second source of truth.
 
@@ -267,16 +294,22 @@ Derived state must never become a second source of truth.
 
 State should be owned at the lowest level that still preserves coherence.
 
-Recommended shared state ownership:
+Recommended shared state ownership in the app shell:
 
-- `viewMode`
+- `mainView`
 - `selectedPersons`
 - `selectedTags`
 - `selectedGeoFilter`
 - `selectedDateRange`
-- `hoveredDate`
+- `gridView`
 
-These values affect multiple panels and the grid simultaneously.
+Recommended feature-level ephemeral state:
+
+- `hoveredDate`
+- `hoveredPanelItem`
+- `hoveredSocialNodeId`
+- `hoveredSocialLink`
+- graph simulation internals
 
 Recommended local component state:
 
@@ -292,7 +325,8 @@ Do not duplicate persistent state across multiple components.
 
 The following state should be URL-addressable:
 
-- `viewMode`
+- `mainView`
+- `gridView`
 - `selectedPersons`
 - `selectedTags`
 - `selectedGeoFilter`
@@ -300,7 +334,9 @@ The following state should be URL-addressable:
 
 Suggested query parameter examples:
 
-- `viewMode=travel`
+- `mainView=day_grid`
+- `mainView=social_graph`
+- `gridView=calendar`
 - `persons=john,jimmy`
 - `tags=place/italy,travel/summer`
 - `from=2018-01-01`
@@ -312,12 +348,32 @@ The following state must not be URL-backed:
 
 - `hoveredDate`
 - `hoveredPanelItem`
+- `hoveredSocialNodeId`
+- `hoveredSocialLink`
+- graph simulation velocity, coordinates, or tick state
 
 ---
 
 ## 7. Interaction Rules
 
-### 7.1 Hover Rules
+### 7.1 Main-View Switch Rules
+
+Main-view switching is persistent and structural.
+
+When a user switches main view:
+
+- update `mainView`
+- update the URL
+- preserve global persistent filters
+- preserve view-local persistent state for the view being left
+- clear or unmount ephemeral state owned by the inactive view
+
+One important runtime rule:
+
+- leaving `Social Graph` should stop the force simulation and tear down
+  graph-local listeners
+
+### 7.2 Hover Rules
 
 Hover is ephemeral and contextual.
 
@@ -329,75 +385,83 @@ When a user hovers a day cell:
 - do not change persistent filters
 - do not change URL state
 
+When a user hovers a graph node or link:
+
+- update the relevant graph-local hover state
+- do not mutate timeline hover state
+- do not change URL state
+
 When hover ends:
 
-- clear `hoveredDate`
-- clear any hover-based contextual highlights
+- clear the corresponding hover state
 
-### 7.2 Selection Rules
+### 7.3 Selection Rules
 
 Selection is persistent and analytical.
 
-When a user selects a person, tag, or view mode:
+When a user selects a person, tag, main view, or grid view:
 
 - update persistent state
 - update the URL
-- request filtered grid data from the backend
+- trigger the active view's relevant data path
 - visually mark active selections
-- preserve state across refresh where possible
 
 Selections remain active until explicitly changed or cleared.
 
-### 7.3 Hover vs. Selection Precedence
+### 7.4 Hover vs. Selection Precedence
 
 Hover never overrides persistent selection.
 It only adds temporary focus.
 
 Examples:
 
-- if a person filter is active and a day is hovered, the hovered day context is shown within the already filtered interpretation
-- if a tag filter is active, hover must not remove or replace that filter
+- if person filters are active and a day is hovered, the hovered day context is
+  shown inside the already selected exploration frame
+- if a person is selected globally and a graph node is hovered, the hover adds
+  temporary emphasis without clearing the durable selection
 
 Persistent state defines the exploration frame.
 Hover defines the temporary inspection target.
-
-One practical visual rule for v1:
-
-- persistent matches are shown through fill color
-- hover is shown through outline, ring, or glow
 
 ---
 
 ## 8. Data Fetching Implications
 
-The state model implies two broad categories of data fetching:
+The state model implies three broad categories of data fetching.
 
-### A. Grid Projection Fetching
+### A. Day-Grid Projection Fetching
 
 Depends on persistent state such as:
 
-- `viewMode`
+- `mainView`
+- `gridView`
 - `selectedPersons`
 - `selectedTags`
 - `selectedGeoFilter`
 - `selectedDateRange`
 
-This data should be requested from the backend using query-keyed caching.
+This data should be requested only when `mainView=day_grid`.
 
-### B. Day Context Fetching
+### B. Day-Context Fetching
 
 Depends primarily on:
 
 - `hoveredDate`
 - the currently visible preloaded day-context range
 
-This data may be:
+This data is timeline-specific and should not be fetched while another main
+view is active.
 
-- prefetched per bounded range
-- cached client-side for immediate hover response
-- reused locally while the pointer moves across many day cells
+### C. Social-Graph Fetching
 
-The first UI increment can stay fully mocked, but the data-fetching split should remain visible in the design.
+Depends on:
+
+- `mainView`
+- supported global filter dimensions for the social graph
+
+This data should be requested only when `mainView=social_graph`.
+
+The active main view determines which projection fetch path is live.
 
 ---
 
@@ -406,11 +470,7 @@ The first UI increment can stay fully mocked, but the data-fetching split should
 Example TypeScript model:
 
 ```ts
-type ViewMode =
-  | "activity"
-  | "travel"
-  | "sports"
-  | "party_probability";
+type MainView = "day_grid" | "social_graph";
 
 type DateRange = {
   from: string;
@@ -438,13 +498,16 @@ type HoveredPanelItem =
   | { kind: "map_point"; id: string };
 
 type PixelPastUiState = {
-  hoveredDate: string | null;
-  hoveredPanelItem: HoveredPanelItem | null;
-  viewMode: ViewMode;
+  mainView: MainView;
+  gridView: string;
   selectedPersons: string[];
   selectedTags: string[];
   selectedGeoFilter: GeoFilter | null;
   selectedDateRange: DateRange | null;
+  hoveredDate: string | null;
+  hoveredPanelItem: HoveredPanelItem | null;
+  hoveredSocialNodeId: string | null;
+  hoveredSocialLink: [string, string] | null;
 };
 ```
 
@@ -452,30 +515,36 @@ type PixelPastUiState = {
 
 ## 10. First Increment Scope
 
-For the first UI implementation, the minimum required shared state is:
+For the first main-view-navigation increment, the minimum required shared state
+is:
 
-- `hoveredDate`
-- `viewMode`
+- `mainView`
+- `gridView`
 - `selectedPersons`
 - `selectedTags`
+
+For the first social-graph increment, the minimum additional ephemeral state is:
+
+- `hoveredSocialNodeId`
+- `hoveredSocialLink`
 
 Optional and intentionally deferred:
 
 - `selectedGeoFilter`
 - `selectedDateRange`
-- `hoveredPanelItem`
+- persisted graph-local preferences
 
-This keeps the first UI slice small while preserving future extensibility.
+This keeps the first multi-view slice small while preserving future
+extensibility.
 
 ---
 
 ## 11. Non-Negotiable State Principles
 
-- Hover state is ephemeral.
-- Filter state is persistent.
-- Persistent state should be URL-representable.
-- The grid reacts to persistent state.
-- Context panels react to both hover and persistent state.
-- Persistent filtering should not rely on client-side full-grid scans.
-- There must be no duplicated source of truth.
-- Derived state must remain derived.
+- global filter state is persistent
+- view-local state must not leak across unrelated main views
+- hover state is ephemeral
+- persistent state should be URL-representable
+- inactive heavy runtimes must be torn down without losing durable state
+- there must be no duplicated source of truth
+- derived state must remain derived

@@ -7,8 +7,15 @@ The PixelPast UI is a desktop-first visual exploration interface centered on chr
 Its primary responsibility is not editing or data management.
 Its primary responsibility is to make time explorable.
 
-The calendar grid is the core projection surface.
+The day grid is the core projection surface.
 All other UI elements exist to contextualize, filter, and reinterpret that surface.
+
+For additional projections the architecture must support:
+
+- one shared shell
+- multiple main exploration views
+- persistent global filters across those views
+- explicit data contracts per projection
 
 ---
 
@@ -17,11 +24,13 @@ All other UI elements exist to contextualize, filter, and reinterpret that surfa
 The UI architecture must support:
 
 - stable rendering of multi-year calendar grids
+- a separate social-graph projection with its own rendering runtime
 - explicit separation between backend domain data and frontend projection data
-- lightweight hover-driven context updates
-- persistent filter state and reproducible views
 - server-side execution of persistent timeline filters
-- incremental feature growth without architectural rewrites
+- persistent global filter state and reproducible URLs
+- view-local interaction state that does not leak across main views
+- incremental feature growth without forcing unrelated projections into one
+  layout model
 
 The architecture should optimize for clarity, predictability, and composability.
 
@@ -36,30 +45,37 @@ Recommended stack:
 - Vite
 - Tailwind CSS
 - TanStack Query for server data fetching
-- a small dedicated UI state layer such as Zustand or React Context
-- D3 only for calendar math or color scales when React and plain TypeScript are not enough
+- a small dedicated UI state layer such as React Context or Zustand
+- D3 only where it materially helps, such as force simulation for the social
+  graph or tightly scoped grid math
 
-No heavy charting framework should control the main grid.
+No heavy charting framework should own the application shell.
+React should own view switching and application structure.
 
 ---
 
 ## 4. Workspace and Module Boundaries
 
-The UI should live in a dedicated frontend workspace at the repository root.
-Recommended directory name: `ui/`.
+The UI should live in a dedicated frontend workspace at the repository root:
+`ui/`.
 
 Within that workspace, organize code by responsibility:
 
-- `app/` for shell, layout, routing, and bootstrapping
+- `app/` for shell, main-view navigation, layout, and bootstrapping
 - `components/` for reusable presentational building blocks
-- `features/timeline/` for the grid and timeline-focused interaction logic
-- `features/context/` for persons, tags, and map panels
+- `features/timeline/` for the day-grid projection and timeline-specific
+  interactions
+- `features/context/` for timeline context panels such as persons, tags, and
+  map
+- `features/social-graph/` for graph-specific transport adapters, view logic,
+  and rendering
 - `api/` for HTTP clients and request wiring
 - `projections/` for UI-facing DTOs and transformation helpers
 - `state/` for shared UI state and URL synchronization
 - `mocks/` for static fixtures used before real API integration
 
-Avoid mixing transport DTOs, UI projection DTOs, and local component state into one generic folder.
+Avoid mixing transport DTOs, UI projection DTOs, and local component state into
+one generic folder.
 
 ---
 
@@ -69,11 +85,20 @@ The UI should be organized into four conceptual layers:
 
 ### A. App Shell
 
-Responsible for layout, routing, top bar, and persistent panels.
+Responsible for:
+
+- top bar
+- main-view navigation
+- persistent global filters
+- URL synchronization
+- selecting which primary view is mounted
 
 ### B. View Layer
 
-Responsible for rendering the grid and contextual panels.
+Responsible for rendering one mounted main view at a time, for example:
+
+- `DayGridView`
+- `SocialGraphView`
 
 ### C. Projection Layer
 
@@ -85,16 +110,19 @@ Responsible for transforming API responses into UI-ready structures such as:
 - person highlight state
 - tag highlight state
 - map point projections
+- social-graph nodes
+- social-graph links
 
 ### D. State Layer
 
 Responsible for cross-component UI state such as:
 
-- hovered date
-- selected filters
-- active view mode
+- active main view
+- active grid view
+- selected global filters
 - selected date range
-- panel state
+- timeline hover state
+- graph-local hover and focus state where needed
 
 Backend domain models must not be used directly as rendering contracts.
 The UI should consume explicit projection DTOs.
@@ -103,10 +131,14 @@ The UI should consume explicit projection DTOs.
 
 ## 6. Primary UI Modules
 
-Recommended first-pass component structure:
+Recommended main modules:
 
 - `AppShell`
 - `TopBar`
+- `MainViewSelector`
+- `GlobalFilterBar`
+- `GridViewSelector`
+- `DayGridView`
 - `MainSplitLayout`
 - `LeftGridPane`
 - `RightContextPane`
@@ -116,8 +148,8 @@ Recommended first-pass component structure:
 - `PersonsPanel`
 - `TagsPanel`
 - `MapPanel`
-- `ViewModeSelector`
-- `FilterBar`
+- `SocialGraphView`
+- `SocialGraphCanvas` or `SocialGraphSurface`
 
 `TimelinePreview` or richer day storytelling can be added later.
 
@@ -125,18 +157,17 @@ Recommended first-pass component structure:
 
 ## 7. Data Contracts
 
-The UI should consume explicit projection endpoints instead of raw database entities.
-
-Initial projection contracts should include:
+The UI should consume explicit projection endpoints instead of raw database
+entities.
 
 ### `ExplorationBootstrapProjection`
 
-Represents lightweight shell/bootstrap metadata.
+Represents lightweight shell/bootstrap metadata for the day-grid mode.
 
 Suggested fields:
 
 - `range`
-- `view_modes`
+- `grid_views`
 - `persons`
 - `tags`
 
@@ -155,8 +186,8 @@ Suggested fields:
 - `has_data`
 
 The grid projection should stay intentionally small.
-Persistent filtering should be applied server-side before this data reaches the
-browser.
+Persistent timeline filtering should be applied server-side before this data
+reaches the browser.
 
 ### `DayContextProjection`
 
@@ -183,15 +214,57 @@ Suggested fields:
 - `summary`
 - `coordinates`
 
-The frontend should treat these contracts as stable UI-facing shapes, not inferred backend internals.
+### `SocialGraphProjection`
+
+Represents the social-graph main view.
+
+Suggested fields:
+
+- `persons`
+- `links`
+
+Suggested person fields:
+
+- `id`
+- `name`
+- `occurrence_count`
+
+Suggested link fields:
+
+- `person_ids`
+- `weight`
+
+The frontend should treat these contracts as stable UI-facing shapes, not
+inferred backend internals.
 
 ---
 
 ## 8. State Model
 
-There are two categories of UI state:
+There are three categories of UI state:
 
-### A. Ephemeral Interaction State
+### A. Global Persistent State
+
+Stored in the URL and shared across main views where appropriate.
+
+Examples:
+
+- `mainView`
+- `selectedPersons`
+- `selectedTags`
+- `selectedGeoFilter`
+- `selectedDateRange`
+
+### B. View-Local Persistent State
+
+Persistent, but meaningful only inside one main view.
+
+Examples:
+
+- `gridView` for `Day Grid`
+- graph mode or layout preferences if later introduced for `Social Graph`
+
+### C. Ephemeral Interaction State
 
 Short-lived and not persisted in the URL.
 
@@ -199,52 +272,46 @@ Examples:
 
 - `hoveredDate`
 - `hoveredPanelItem`
-
-This state exists only for temporary exploration and contextual highlighting.
-
-### B. Persistent Exploration State
-
-Stored in the URL and mirrored in shared UI state.
-
-Examples:
-
-- `viewMode`
-- `selectedPersons`
-- `selectedTags`
-- `selectedGeoFilter`
-- `selectedDateRange`
-
-This state defines the current exploration frame and drives backend requests for
-the filtered grid.
+- `hoveredSocialNode`
+- current simulation tick state
 
 ---
 
 ## 9. Interaction Model
 
-The architecture must support two distinct interaction modes:
+The architecture must support three distinct interaction scopes:
 
-### Hover
+### Main-View Navigation
 
-Temporary contextual inspection.
+Changes which primary projection is mounted.
 
 Effects:
 
-- highlight one day
-- update persons, tags, and map panels
+- update the URL-backed `mainView`
+- unmount the inactive view runtime
+- preserve global filter state
+
+### Hover
+
+Temporary contextual inspection within the active main view.
+
+Effects:
+
+- update local contextual highlight
 - never mutate persistent filter state
 
 ### Selection and Filter
 
-Persistent exploration mode.
+Persistent analytical framing.
 
 Effects:
 
-- request and render a server-filtered grid
 - update the URL
+- trigger the active view's data fetch and rendering path
 - remain stable across refresh and navigation
 
 Hover adds temporary focus.
-Selection defines the durable interpretation of the grid.
+Selection defines a durable interpretation of the active projection.
 
 ---
 
@@ -254,7 +321,9 @@ Persistent exploration state should be representable in the URL.
 
 Examples:
 
-- `viewMode=travel`
+- `mainView=day_grid`
+- `mainView=social_graph`
+- `gridView=calendar`
 - `persons=anna,tina`
 - `tags=place/italy,travel/summer`
 - `from=2018-01-01`
@@ -267,50 +336,65 @@ This allows:
 - refresh-safe exploration
 - predictable back and forward navigation
 
-Ephemeral hover state must not be encoded in the URL.
+Ephemeral hover state and simulation runtime state must not be encoded in the
+URL.
 
 ---
 
 ## 11. Rendering Strategy
 
-The main grid should initially be rendered with standard React components.
+### Day Grid
+
+The day grid should continue to render with standard React components.
 
 Start with:
 
 - one component per year
 - one component per day cell
 
-Do not start with Canvas or WebGL.
-Do not hand DOM ownership of the whole grid to D3.
+Do not hand DOM ownership of the entire timeline to D3.
 
-Target for the first implementation:
+### Social Graph
 
-- 10 to 30 years
-- roughly 365 cells per year
-- dynamic recoloring
-- lightweight hover interactions
+The social graph may use SVG or Canvas, with D3-force or equivalent simulation
+logic for layout.
 
-Optimize only after profiling shows a real need.
+React should still own:
+
+- mounting and unmounting the view
+- view-local controls
+- loading and error states
+
+Heavy graph runtime work such as a live force simulation should be torn down
+when the user leaves the main view. Cacheable query data may remain.
 
 ---
 
 ## 12. Layout Strategy
 
-Desktop-first layout:
+Desktop-first shell:
 
 - top bar across the full width
-- left side for the primary grid region
-- right side for contextual panels stacked vertically
+- row 1 for main-view navigation and global filters
+- row 2 for view-specific secondary controls when the active main view needs
+  them
 
-The grid must always remain visible.
-Context panels must never replace it.
+Recommended main-view layouts:
 
-Recommended top-level layout:
+### `Day Grid`
 
 - `TopBar`
 - `MainSplitLayout`
   - `LeftGridPane`
   - `RightContextPane`
+
+### `Social Graph`
+
+- `TopBar`
+- dedicated graph surface layout
+- optional graph-local overlays or legends
+
+The app shell should not force every main view into the day-grid split layout.
 
 ---
 
@@ -318,52 +402,56 @@ Recommended top-level layout:
 
 ### `PersonsPanel`
 
-- display persons relevant to the hovered day or active filters
+- display persons relevant to the hovered day or active timeline filters
 - allow selecting one or more persons
 - reflect active state visually
 
 ### `TagsPanel`
 
-- display tags relevant to the hovered day or active filters
+- display tags relevant to the hovered day or active timeline filters
 - allow selecting tag paths or subtrees
 - reflect active state visually
 
 ### `MapPanel`
 
-- show points relevant to the hovered day or active filters
+- show points relevant to the hovered day or active timeline filters
 - remain visually quiet by default
 - act as contextual support, not dominant navigation
 
+Timeline context panels are timeline-specific. They should not be assumed to
+exist in every main view.
+
 ---
 
-## 14. Derived Views
+## 14. Grid Views
 
-Derived views are backend-defined color strategies over time.
+Grid views are backend-defined coloring strategies over time.
 
 Examples:
 
 - `activity`
-- `travel`
-- `sports`
-- `party_probability`
+- `calendar`
+- `music`
+- `vacation`
+
+They are secondary controls inside the `Day Grid` main view.
+They are not app-level navigation modes.
 
 The frontend should not implement analytics logic.
-It should request the relevant projection and render it.
-
-The list of available view modes may be fetched from the API later, but the first UI increment can use a small mocked list.
+It should request the relevant grid projection and render it.
 
 ---
 
 ## 15. Styling Principles
 
-- Minimalist
-- Grid-first
-- Color is primary encoding
-- No icons inside day cells
-- Strong whitespace discipline
-- Low visual noise
-- Typography should support scanning, not decoration
-- Modern, clean geometric fonts, semi-light or even thin font weights for larger text sizes
+- minimal shell chrome
+- clear main-view hierarchy in the top bar
+- global filters visually stronger than secondary subview toggles
+- color is primary encoding in the grid
+- no icons inside day cells
+- strong whitespace discipline
+- low visual noise
+- typography should support scanning, not decoration
 
 Light mode by default, optionally dark mode later on.
 
@@ -373,25 +461,30 @@ Light mode by default, optionally dark mode later on.
 
 The UI should evolve in this order:
 
-1. app shell and layout
-2. static year grid rendering
+1. app shell and day-grid layout
+2. static year-grid rendering
 3. hover synchronization
 4. persistent filter state
-5. derived view switching
-6. richer contextual panels
-7. day detail storytelling
+5. grid-view switching
+6. main-view navigation split
+7. social-graph API and shell
+8. social-graph rendering
+9. richer projection-specific storytelling
 
-This ordering preserves architectural stability while enabling incremental delivery.
+This ordering preserves architectural stability while enabling incremental
+delivery.
 
 ---
 
 ## 17. Non-Negotiable Rules
 
-- The grid is always visible.
-- Time is the primary organizing principle.
-- Projection DTOs are the UI contract.
-- Hover state is ephemeral.
-- Filter state is persistent.
-- Persistent filter evaluation belongs on the server.
-- UI simplicity beats feature density.
-- Avoid premature rendering complexity.
+- one main view is active at a time
+- the day grid remains the default chronology projection
+- global filters remain app-level state
+- grid views are secondary controls inside `Day Grid`
+- projection DTOs are the UI contract
+- hover state is ephemeral
+- persistent filter evaluation belongs on the server where the projection
+  requires it
+- inactive heavy runtimes must be torn down
+- UI simplicity beats feature density

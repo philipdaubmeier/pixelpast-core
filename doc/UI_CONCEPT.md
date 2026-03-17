@@ -7,12 +7,12 @@ It is not a CRUD interface.
 It is a visual exploration instrument.
 
 The UI exists to make time explorable.
+projections.
 
 The calendar grid is not a component.  
 It is the product.
 
 Everything else in the interface exists to contextualize, filter, enrich, or reinterpret the grid.
-
 If a UI decision weakens the clarity of chronological exploration, it is the wrong decision.
 
 ---
@@ -21,244 +21,265 @@ If a UI decision weakens the clarity of chronological exploration, it is the wro
 
 1. Calendar-first.
 2. All years visible at once.
-3. Grid is always visible.
-4. Exploration over editing.
-5. Hover for context.
-6. Selection for filtering.
-7. Visual simplicity over density.
-8. Desktop-first.
+3. Exploration over editing.
+4. Hover for context.
+5. Selection for filtering.
+6. Visual simplicity over density.
+7. Desktop-first.
 
 ---
 
-## 3. High-Level Layout
+## 3. Main Views
 
-The UI is divided into two primary panels.
+PixelPast should expose a small number of primary exploration modes.
+
+The first two are:
+
+- `Day Grid`
+- `Social Graph`
+
+These are not variations of one widget.
+They are different projections over the same underlying personal-history data.
+
+### `Day Grid`
+
+Purpose:
+
+- explore time continuously across years
+- recolor history through different grid views
+- inspect hovered day context
+
+### `Social Graph`
+
+Purpose:
+
+- explore person co-occurrence across assets
+- reveal clusters, hubs, and bridges between groups
+- inspect social topology without forcing it into a calendar layout
+
+---
+
+## 4. Shared Shell
+
+The app shell should stay stable while the main view changes.
+
+Top bar structure:
 
 ```text
-┌────────────────────────────────────────────────────────────┐
-│ TOP BAR                                                    │
-│ [ View Mode ] [ Filters ] [ Search ] [ Derived Views ]     │
-├────────────────────────────────────────────────────────────┤
-│ LEFT PANEL                      RIGHT PANEL                |
-│ ┌───────────────────────────┐   ┌──────────────────────┐   │
-│ │                           │   │ Persons              │   │
-│ │                           │   ├──────────────────────┤   |
-│ │     YEAR GRID STACK       │   │ Tags                 │   |
-│ │                           │   ├──────────────────────┤   │
-│ │                           │   │ Map                  │   │
-│ │                           │   └──────────────────────┘   │
-│ │                           │                              │
-│ └───────────────────────────┘                              │
-└────────────────────────────────────────────────────────────┘
++---------------------------------------------------------------+
+| Logo | Day Grid | Social Graph | Global Filters              |
++---------------------------------------------------------------+
+| Grid Views (only when Day Grid is active)                     |
++---------------------------------------------------------------+
 ```
 
-### Left Panel – Timeline Grid
+The first row is app-level.
+The second row is view-level and appears only when needed.
 
-- GitHub-style calendar grid.
-- All years stacked vertically.
-- Oldest year at top.
-- Most recent year at bottom.
-- Scroll vertically to move through time.
-- Year labels rotated 90° counter clock wise on the left.
-- Default scroll position: current year visible.
-
-The grid never disappears.
+This distinction matters because the user is not only recoloring a grid anymore.
+The user is switching between different exploration modes.
 
 ---
 
-### Right Panel – Context Views
+## 5. Day Grid Mode
 
-The right panel is horizontally divided into contextual views:
+When `Day Grid` is active, the layout remains split:
 
-- Persons
-- Tags
-- Map
-- (Future: additional analytics views)
+```text
++---------------------------------------------------------------+
+| Top Bar                                                       |
++-------------------------------+-------------------------------+
+| Year Grid Stack               | Persons                      |
+|                               | Tags                         |
+|                               | Map                          |
++-------------------------------+-------------------------------+
+```
 
-These panels never replace the grid.
-They react to it.
+Behavior:
 
----
+- all years remain visible in one stacked chronology
+- grid views recolor the same temporal surface
+- right-side panels react to hover and persistent filters
+- timeline hover stays lightweight and ephemeral
 
-## 4. Chronological Structure
-
-Time flows vertically.
-
-Scrolling up = going into the past.  
-Scrolling down = moving toward the present.
-
-The grid is a continuous temporal surface.
-
-Zooming (month/day) is out of scope for v1.
+The grid remains the primary surface inside this main view.
 
 ---
 
-## 5. Interaction Model
+## 6. Social Graph Mode
 
-There are two interaction layers:
+When `Social Graph` is active, the layout may change completely:
 
-### A. Soft Highlight (Hover)
+```text
++---------------------------------------------------------------+
+| Top Bar                                                       |
++---------------------------------------------------------------+
+|                                                               |
+|                  Social Graph Surface                         |
+|                                                               |
++---------------------------------------------------------------+
+```
+
+Optional overlays such as legends, summaries, or graph-local controls may be
+added if they remain visually quiet.
+
+The social graph should not be forced into the day-grid split layout if that
+hurts readability.
+
+---
+
+## 7. Global Filters
+
+Persons, tags, and a future date range belong in the top bar as persistent
+global controls.
+
+Rules:
+
+- they remain visible across main-view switches
+- their state survives navigation and refresh
+- the app must be explicit about whether the active main view currently applies
+  each filter dimension
+
+The important principle is shared ownership of filter state, not silent reuse
+of one projection's semantics in another projection.
+
+---
+
+## 8. Grid Views
+
+The controls currently called `view modes` should be renamed conceptually to
+`grid views`.
+
+Examples:
+
+- `activity`
+- `calendar`
+- `vacation`
+
+These are not top-level destinations.
+They are coloring strategies within the `Day Grid` main view.
+
+Therefore they should:
+
+- appear only when `Day Grid` is active
+- look visually subordinate to the main-view buttons
+- never compete with `Day Grid` versus `Social Graph` navigation
+
+---
+
+## 9. Interaction Model
+
+There are three interaction layers:
+
+### A. Main-View Switch
+
+Persistent.
+Changes the active projection surface.
+
+Examples:
+
+- switch from `Day Grid` to `Social Graph`
+- preserve global filters while changing the layout and data request path
+
+### B. Hover
 
 Temporary.
 Non-persistent.
-Does not change URL state.
+Never changes URL state.
 
-Hovering a pixel:
+Examples:
 
-- Highlights the day.
-- Displays contextual information.
-- Highlights related persons.
-- Highlights related tags.
-- Shows relevant points on the map.
+- hover a day cell
+- hover a person node
+- hover a graph link
 
-This is exploratory and ephemeral.
-
----
-
-### B. Hard Highlight (Selection / Filtering)
+### C. Selection and Filtering
 
 Persistent.
-Affects grid coloring.
-Stored in URL state.
-Composable.
+Stored in URL state where appropriate.
+Defines the durable exploration frame.
 
 Examples:
 
-- Selecting a person highlights all days containing that person.
-- Selecting a tag subtree highlights matching days.
-- Applying a geographic filter highlights matching days.
-- Selecting a derived view recolors the grid entirely.
+- select persons
+- select tags
+- choose a grid view
 
-Persistent filtering is a server-side concern.
-The browser should request an already filtered grid projection instead of trying
-to reproduce full-dataset filtering locally.
+Persistent filtering should remain a server-side concern whenever the active
+projection depends on server-evaluated data constraints.
 
 ---
 
-## 6. Grid Coloring Strategy
+## 10. Social Graph Semantics
 
-The grid is always colored according to a selected view mode.
+The first social graph should be built from person co-occurrence on assets.
 
-Examples:
+Conceptually:
 
-- Activity (default intensity-based heatmap)
-- Travel
-- Sports
-- Party likelihood
-- Custom derived view
+- nodes are persons
+- node size reflects occurrence count, preferably logarithmically
+- links connect persons who appear on the same asset
+- link weight reflects repeated co-occurrence
+- the layout is force-directed with repulsion, collision handling, and weighted
+  spring forces
 
-Each mode defines a distinct color strategy.
-
-The UI does not compute activity.
-It consumes derived projections from the backend.
-
-The UI also should not be the long-term execution site for complex persistent
-filters such as geographic predicates, distance filters, or filename searches.
-
-The grid must be able to fully re-render based on:
-
-- active view mode
-- selected filters
-- time range
+This is a projection of social proximity, not a ground-truth relationship model.
+The UI should present it as exploratory evidence, not as an authoritative social
+ontology.
 
 ---
 
-## 7. Bidirectional Linking
+## 11. Resource and Lifecycle Principle
 
-All contextual panels are bidirectionally linked to the grid.
+Main views should not all remain live at once.
 
-Interaction matrix:
+Best practice here is:
 
-| Action              | Grid         | Map          | Persons      | Tags         |
-|---------------------|--------------|--------------|--------------|--------------|
-| Hover Pixel         | highlight    | show points  | highlight    | highlight    |
-| Select Person       | recolor grid | show points  | active state | —            |
-| Select Tag          | recolor grid | show points  | —            | active state |
-| Select View Mode    | recolor grid | update       | update       | update       |
+- preserve durable state across main-view switches
+- cache reusable fetched data where helpful
+- unmount heavy view runtimes when inactive
 
-The grid is the primary projection.
-Other panels react.
+For `Social Graph`, that means:
 
----
+- stop the force simulation when leaving the view
+- remove graph-local listeners and animation work
+- remount and resume from data when returning
 
-## 8. Derived Views
-
-Derived analytics jobs may produce predefined views such as:
-
-- Travel periods
-- Sports activity
-- Party probability
-- High social density days
-
-These are hardcoded derived jobs in the backend.
-
-The UI provides a selector for switching between these modes.
-
-Each mode controls how pixels are colored.
+The expensive runtime should go away.
+The durable exploration context should remain.
 
 ---
 
-## 9. Timeline Entry Projection
+## 12. Visual Philosophy
 
-The grid itself is not limited to Events.
+- minimal shell chrome
+- clear hierarchy between main-view navigation and secondary controls
+- no visual noise inside the day grid
+- clean typography
+- light mode by default, optionally dark mode later
 
-Both `Event` and `Asset` contribute to the timeline.
-
-The UI operates on a projection layer (TimelineEntry),
-not directly on raw tables.
-
-This avoids forcing Assets into Events.
-
----
-
-## 10. Map Integration
-
-The map is contextual, not dominant.
-
-Default:
-- empty or passive state.
-
-On hover:
-- show coordinates of that day only.
-
-On filter:
-- show all matching points.
-
-Hover remains local once a bounded context range has been preloaded.
-Persistent filter changes may trigger backend requests.
-
-Map should not overwhelm the interface. If supported by the map view it should default to a subtle color grading, e.g. light grey colors if the whole UI has a light background or similarly dark grey colors in case of a dark UI theme.
+The day grid must remain readable at scale.
+The social graph must remain legible as a topology view rather than collapsing
+into decorative chaos.
 
 ---
 
-## 11. Visual Philosophy
+## 13. Out of Scope
 
-- Minimalistic pixels.
-- No icons inside grid cells.
-- Color-only encoding.
-- Clean typography.
-- Light mode by default, optionally dark mode later on.
-- No visual noise.
-
-The grid must remain readable at scale (10–30 years).
+- mobile layout
+- graph editing
+- persisted manual graph layouts
+- overloaded dashboards
+- inline editing
 
 ---
 
-## 12. Out of Scope (v1)
+## 14. Non-Negotiables
 
-- Mobile layout
-- Complex zoom transitions
-- Animated storytelling
-- Overloaded dashboards
-- Inline editing
-
----
-
-## 13. Non-Negotiables
-
-- The grid never disappears.
-- Time is primary.
-- Hover is lightweight.
-- Filtering is powerful.
-- Persistent filtering is server-side.
-- Simplicity beats density.
+- chronology remains the product backbone
+- the day grid remains the default main view
+- global filters stay visible across main-view switches
+- grid views are not top-level navigation
+- hover stays lightweight
+- persistent filtering remains explicit
+- simplicity beats density
