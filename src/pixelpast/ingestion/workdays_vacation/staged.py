@@ -144,6 +144,7 @@ class WorkdaysVacationStagedIngestionStrategy:
             persisted_event_count=counters.persisted_event_count,
             error_count=len(transform_errors),
             status=status,
+            transform_errors=tuple(transform_errors),
         )
 
 

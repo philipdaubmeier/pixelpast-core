@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import sys
 import time
+import traceback
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import date
@@ -529,7 +530,8 @@ def _execute_operation(
             extra={"command": command_name, "target": target},
         )
         try:
-            runner(runtime)
+            result = runner(runtime)
+            _print_result_errors(result)
         except ValueError as error:
             logger.error(
                 "command failed",
@@ -539,6 +541,7 @@ def _execute_operation(
                     "reason": str(error),
                 },
             )
+            typer.secho(f"error: {error}", fg=typer.colors.RED, err=True)
             raise typer.Exit(code=ExitCode.INVALID_ARGUMENT) from error
         except Exception as error:
             logger.exception(
@@ -549,6 +552,8 @@ def _execute_operation(
                     "reason": str(error),
                 },
             )
+            typer.secho(f"error: {error}", fg=typer.colors.RED, err=True)
+            typer.echo(traceback.format_exc(), err=True)
             raise typer.Exit(code=ExitCode.FAILURE) from error
 
         logger.info(
@@ -584,6 +589,25 @@ def _format_total_value(total: float | None) -> str:
     if total is None:
         return "?"
     return str(int(total))
+
+
+def _print_result_errors(result: object | None) -> None:
+    """Write non-fatal operation errors to the CLI when the result exposes them."""
+
+    if result is None:
+        return
+
+    transform_errors = getattr(result, "transform_errors", ())
+    for transform_error in transform_errors:
+        workbook = getattr(transform_error, "workbook", None)
+        origin_label = getattr(workbook, "origin_label", None)
+        message = getattr(transform_error, "message", None)
+        if origin_label and message:
+            typer.secho(
+                f"error: {origin_label}: {message}",
+                fg=typer.colors.RED,
+                err=True,
+            )
 
 
 if __name__ == "__main__":

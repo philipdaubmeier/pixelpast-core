@@ -112,6 +112,7 @@ class WorkdaysVacationIngestionResult:
     persisted_event_count: int
     error_count: int
     status: str
+    transform_errors: tuple[WorkdaysVacationTransformError, ...] = ()
 
 
 __all__ = [

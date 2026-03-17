@@ -26,6 +26,11 @@ from pixelpast.cli.main import (
     app,
 )
 from pixelpast.ingestion.entrypoints import list_supported_ingest_sources
+from pixelpast.ingestion.workdays_vacation.contracts import (
+    WorkdaysVacationIngestionResult,
+    WorkdaysVacationTransformError,
+    WorkdaysVacationWorkbookDescriptor,
+)
 from pixelpast.persistence.models import Asset, DailyAggregate, DailyView, Event, JobRun, Source
 from pixelpast.shared.progress import JobProgressSnapshot
 from pixelpast.shared.logging import KeyValueFormatter
@@ -489,6 +494,45 @@ def test_cli_returns_invalid_argument_exit_code_when_workdays_vacation_root_is_m
     try:
         result = runner.invoke(app, ["ingest", "workdays_vacation"])
         assert result.exit_code == 2
+        assert "error: Workdays vacation ingestion requires" in result.stderr
+    finally:
+        get_settings.cache_clear()
+        if database_path.exists():
+            database_path.unlink()
+
+
+def test_cli_ingest_workdays_vacation_prints_transform_errors(
+    monkeypatch,
+) -> None:
+    database_path = _build_test_database_path("cli-workdays-vacation-errors")
+    monkeypatch.setenv("PIXELPAST_DATABASE_URL", f"sqlite:///{database_path.as_posix()}")
+    get_settings.cache_clear()
+
+    workbook_path = Path("test") / "assets" / "broken_workday_vacation.xlsx"
+    fake_result = WorkdaysVacationIngestionResult(
+        run_id=7,
+        processed_workbook_count=0,
+        persisted_source_count=0,
+        persisted_event_count=0,
+        error_count=1,
+        status="partial_failure",
+        transform_errors=(
+            WorkdaysVacationTransformError(
+                workbook=WorkdaysVacationWorkbookDescriptor(path=workbook_path),
+                message="Legend color '#123456' is missing from the workbook.",
+            ),
+        ),
+    )
+    monkeypatch.setattr(cli_main_module, "run_ingest_source", lambda **_: fake_result)
+
+    try:
+        result = runner.invoke(app, ["ingest", "workdays_vacation"])
+        assert result.exit_code == 0
+        assert (
+            "error: "
+            f"{workbook_path.resolve().as_posix()}: "
+            "Legend color '#123456' is missing from the workbook."
+        ) in result.stderr
     finally:
         get_settings.cache_clear()
         if database_path.exists():

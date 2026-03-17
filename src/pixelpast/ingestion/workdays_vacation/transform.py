@@ -52,6 +52,7 @@ _LEGEND_CODE_COLUMN = _column_index("AK")
 _LEGEND_DESCRIPTION_COLUMN = _column_index("AL")
 _LEGEND_COLOR_COLUMN = _column_index("AW")
 _HEX_COLOR_PATTERN = re.compile(r"^#[0-9a-fA-F]{6}$")
+_FOUR_DIGIT_YEAR_PATTERN = re.compile(r"(\d{4})")
 _EXCEL_EPOCH = date(1899, 12, 30)
 
 
@@ -350,7 +351,7 @@ def _parse_day_entries(
         row = worksheet_cells[row_index]
         year_anchor_value = row.get(_YEAR_ANCHOR_COLUMN)
         if year_anchor_value is not None:
-            active_year = _coerce_required_int(
+            active_year = _coerce_year_anchor(
                 value=year_anchor_value,
                 error_message=(
                     "Workdays vacation year anchor is invalid at "
@@ -484,6 +485,22 @@ def _coerce_required_int(*, value: object | None, error_message: str) -> int:
         except ValueError:
             pass
     raise ValueError(error_message)
+
+
+def _coerce_year_anchor(*, value: object | None, error_message: str) -> int:
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+
+    trimmed = _trimmed_string(value)
+    if trimmed is None:
+        raise ValueError(error_message)
+
+    year_match = _FOUR_DIGIT_YEAR_PATTERN.search(trimmed)
+    if year_match is None:
+        raise ValueError(error_message)
+    return int(year_match.group(1))
 
 
 def _coerce_excel_date(*, value: object, error_message: str) -> date:

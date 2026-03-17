@@ -141,6 +141,23 @@ def test_workdays_vacation_parser_reads_first_worksheet_regardless_of_sheet_name
     assert len(parsed.day_entries) == 522
 
 
+def test_workdays_vacation_parser_extracts_year_from_anchor_with_suffix_text() -> None:
+    fixture_path = Path("test/assets/workday_vacation_test_fixture.xlsx")
+    payload = _set_sheet_cell_inline_string(
+        fixture_path.read_bytes(),
+        cell_reference="B5",
+        value="2025 (24 vacation days)",
+    )
+
+    parsed = parse_workdays_vacation_workbook(
+        descriptor=WorkdaysVacationWorkbookDescriptor(path=fixture_path),
+        payload=payload,
+    )
+
+    assert len(parsed.day_entries) == 522
+    assert parsed.day_entries[0].represented_date.isoformat() == "2025-01-01"
+
+
 def test_workdays_vacation_parser_rejects_populated_impossible_date() -> None:
     fixture_path = Path("test/assets/workday_vacation_test_fixture.xlsx")
     payload = _set_sheet_cell_shared_string(
@@ -323,6 +340,51 @@ def _set_sheet_cell_shared_string(
                 value_node = ElementTree.SubElement(cell, f"{{{_MAIN_NS}}}v")
             cell.attrib["t"] = "s"
             value_node.text = str(shared_string_index)
+        return ElementTree.tostring(
+            root,
+            encoding="utf-8",
+            xml_declaration=True,
+        )
+
+    return _rewrite_zip_member(
+        payload,
+        member_path="xl/worksheets/sheet1.xml",
+        transform=transform,
+    )
+
+
+def _set_sheet_cell_inline_string(
+    payload: bytes,
+    *,
+    cell_reference: str,
+    value: str,
+) -> bytes:
+    def transform(sheet_xml: bytes) -> bytes:
+        root = ElementTree.fromstring(sheet_xml)
+        row_number = int(
+            "".join(character for character in cell_reference if character.isdigit())
+        )
+        row = root.find(
+            f".//{{{_MAIN_NS}}}sheetData/{{{_MAIN_NS}}}row[@r='{row_number}']"
+        )
+        if row is None:
+            raise AssertionError(f"Expected row {row_number} to exist.")
+
+        cell = None
+        for candidate in row.findall(f"{{{_MAIN_NS}}}c"):
+            if candidate.attrib.get("r") == cell_reference:
+                cell = candidate
+                break
+        if cell is None:
+            raise AssertionError(f"Expected cell {cell_reference} to exist.")
+
+        for child in list(cell):
+            cell.remove(child)
+
+        cell.attrib["t"] = "inlineStr"
+        inline_string = ElementTree.SubElement(cell, f"{{{_MAIN_NS}}}is")
+        text_node = ElementTree.SubElement(inline_string, f"{{{_MAIN_NS}}}t")
+        text_node.text = value
         return ElementTree.tostring(
             root,
             encoding="utf-8",
