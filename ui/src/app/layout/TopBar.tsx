@@ -16,11 +16,11 @@ type TopBarProps = {
   activeGridViewLabel: string;
   selectedPersons: PersonProjection[];
   selectedTags: TagProjection[];
-  matchingDayCount: number;
+  resultSummary: string;
   hasPersistentFilters: boolean;
-  gridState: "loading" | "ready" | "error";
-  gridError: string | null;
-  hoveredDate: string | null;
+  transportState: "loading" | "ready" | "error";
+  transportError: string | null;
+  hoverLabel: string;
   onSelectMainView: (mainView: MainView) => void;
   onSelectGridView: (gridView: GridView) => void;
   onTogglePerson: (personId: string) => void;
@@ -35,11 +35,11 @@ export function TopBar({
   activeGridViewLabel,
   selectedPersons,
   selectedTags,
-  matchingDayCount,
+  resultSummary,
   hasPersistentFilters,
-  gridState,
-  gridError,
-  hoveredDate,
+  transportState,
+  transportError,
+  hoverLabel,
   onSelectMainView,
   onSelectGridView,
   onTogglePerson,
@@ -61,32 +61,38 @@ export function TopBar({
               onSelect={onSelectMainView}
             />
             <FilterBar
-              activeGridViewLabel={activeGridViewLabel}
+              scopeLabel={
+                mainView === "day_grid"
+                  ? `Day Grid / ${activeGridViewLabel}`
+                  : "Social Graph"
+              }
               selectedPersons={selectedPersons}
               selectedTags={selectedTags}
-              matchingDayCount={matchingDayCount}
+              resultSummary={resultSummary}
               hasPersistentFilters={hasPersistentFilters}
-              gridState={gridState}
-              gridError={gridError}
-              hoveredDate={hoveredDate}
+              transportState={transportState}
+              transportError={transportError}
+              hoverLabel={hoverLabel}
               onRemovePerson={onTogglePerson}
               onRemoveTag={onToggleTag}
               onClear={onClearSelections}
             />
           </div>
         </div>
-        <div className="flex min-h-[2.5rem] items-center pl-[4.4rem] lg:pl-[5rem]">
-          <div className="flex items-center gap-3 rounded-full bg-[color:rgba(255,255,255,0.45)] px-3 py-1.5">
-            <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-              Day Grid
-            </span>
-            <GridViewSelector
-              options={gridViews}
-              activeGridView={activeGridView}
-              onSelect={onSelectGridView}
-            />
+        {mainView === "day_grid" ? (
+          <div className="flex min-h-[2.5rem] items-center pl-[4.4rem] lg:pl-[5rem]">
+            <div className="flex items-center gap-3 rounded-full bg-[color:rgba(255,255,255,0.45)] px-3 py-1.5">
+              <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Day Grid
+              </span>
+              <GridViewSelector
+                options={gridViews}
+                activeGridView={activeGridView}
+                onSelect={onSelectGridView}
+              />
+            </div>
           </div>
-        </div>
+        ) : null}
       </div>
     </header>
   );

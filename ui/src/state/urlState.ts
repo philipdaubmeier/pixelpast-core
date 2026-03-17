@@ -22,9 +22,11 @@ export function readPersistentUiState(search: string): PersistentUiState {
 
   return {
     mainView:
-      mainViewParam?.trim() === "day_grid"
-        ? "day_grid"
-        : defaultUiState.mainView,
+      mainViewParam?.trim() === "social_graph"
+        ? "social_graph"
+        : mainViewParam?.trim() === "day_grid"
+          ? "day_grid"
+          : defaultUiState.mainView,
     gridView: gridViewParam?.trim() || defaultUiState.gridView,
     selectedPersons: parseList(params.get("persons")),
     selectedTags: parseList(params.get("tags")),

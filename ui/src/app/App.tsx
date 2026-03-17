@@ -1,5 +1,7 @@
 import { startTransition, useEffect, useRef, useState } from "react";
+import { socialGraphApi } from "../api/socialGraph";
 import { timelineApi } from "../api/timeline";
+import type { SocialGraphProjection } from "../projections/socialGraph";
 import type {
   DateRange,
   DayContextProjection,
@@ -12,7 +14,7 @@ import { UiStateProvider, useUiState } from "../state/UiStateContext";
 import { AppShell } from "./AppShell";
 
 type ShellLoadState = "loading" | "ready" | "error";
-type GridLoadState = "loading" | "ready" | "error";
+type ViewLoadState = "loading" | "ready" | "error";
 type HoverContextStatus = "idle" | "loading" | "ready" | "error";
 
 function isDateInRange(date: string, range: DateRange): boolean {
@@ -74,17 +76,23 @@ function resolveHoverContextStatus(
 function AppBootstrap() {
   const { state, setGridView, setHoveredDate } = useUiState();
   const isMountedRef = useRef(true);
-  const latestGridRequestIdRef = useRef(0);
+  const latestTimelineRequestIdRef = useRef(0);
+  const latestSocialGraphRequestIdRef = useRef(0);
   const latestDayContextScopeRef = useRef("");
   const [shellState, setShellState] = useState<ShellLoadState>("loading");
   const [shellError, setShellError] = useState<string | null>(null);
-  const [gridState, setGridState] = useState<GridLoadState>("loading");
-  const [gridError, setGridError] = useState<string | null>(null);
+  const [timelineState, setTimelineState] = useState<ViewLoadState>("loading");
+  const [timelineError, setTimelineError] = useState<string | null>(null);
+  const [socialGraphState, setSocialGraphState] = useState<ViewLoadState>("loading");
+  const [socialGraphError, setSocialGraphError] = useState<string | null>(null);
   const [explorationRange, setExplorationRange] = useState<DateRange | null>(null);
   const [heatmapDays, setHeatmapDays] = useState<HeatmapDayProjection[]>([]);
   const [gridViews, setGridViews] = useState<GridViewOption[]>([]);
   const [persons, setPersons] = useState<PersonProjection[]>([]);
   const [tags, setTags] = useState<TagProjection[]>([]);
+  const [socialGraph, setSocialGraph] = useState<SocialGraphProjection | null>(
+    null,
+  );
   const [visibleRanges, setVisibleRanges] = useState<DateRange[]>([]);
   const [dayContextsByDate, setDayContextsByDate] = useState<
     Record<string, DayContextProjection>
@@ -163,6 +171,7 @@ function AppBootstrap() {
 
   useEffect(() => {
     if (
+      state.mainView !== "day_grid" ||
       shellState !== "ready" ||
       explorationRange === null ||
       gridViews.length === 0 ||
@@ -171,13 +180,13 @@ function AppBootstrap() {
       return;
     }
 
-    const requestId = latestGridRequestIdRef.current + 1;
-    latestGridRequestIdRef.current = requestId;
+    const requestId = latestTimelineRequestIdRef.current + 1;
+    latestTimelineRequestIdRef.current = requestId;
     setHoveredDate(null);
 
     startTransition(() => {
-      setGridState("loading");
-      setGridError(null);
+      setTimelineState("loading");
+      setTimelineError(null);
     });
 
     void (async () => {
@@ -190,27 +199,27 @@ function AppBootstrap() {
 
         if (
           !isMountedRef.current ||
-          latestGridRequestIdRef.current !== requestId
+          latestTimelineRequestIdRef.current !== requestId
         ) {
           return;
         }
 
         startTransition(() => {
           setHeatmapDays(grid.heatmapDays);
-          setGridState("ready");
-          setGridError(null);
+          setTimelineState("ready");
+          setTimelineError(null);
         });
       } catch (error) {
         if (
           !isMountedRef.current ||
-          latestGridRequestIdRef.current !== requestId
+          latestTimelineRequestIdRef.current !== requestId
         ) {
           return;
         }
 
         startTransition(() => {
-          setGridState("error");
-          setGridError(
+          setTimelineState("error");
+          setTimelineError(
             error instanceof Error
               ? error.message
               : "Unable to load the filtered exploration grid.",
@@ -220,13 +229,75 @@ function AppBootstrap() {
     })();
   }, [
     explorationRange,
+    gridViews,
+    setHoveredDate,
     shellState,
+    state.gridView,
+    state.mainView,
     state.selectedPersons,
     state.selectedTags,
-    state.gridView,
   ]);
 
   useEffect(() => {
+    if (
+      state.mainView !== "social_graph" ||
+      shellState !== "ready" ||
+      explorationRange === null
+    ) {
+      return;
+    }
+
+    const requestId = latestSocialGraphRequestIdRef.current + 1;
+    latestSocialGraphRequestIdRef.current = requestId;
+
+    startTransition(() => {
+      setSocialGraphState("loading");
+      setSocialGraphError(null);
+    });
+
+    void (async () => {
+      try {
+        const graph = await socialGraphApi.getSocialGraph(explorationRange, {
+          selectedPersons: state.selectedPersons,
+        });
+
+        if (
+          !isMountedRef.current ||
+          latestSocialGraphRequestIdRef.current !== requestId
+        ) {
+          return;
+        }
+
+        startTransition(() => {
+          setSocialGraph(graph);
+          setSocialGraphState("ready");
+          setSocialGraphError(null);
+        });
+      } catch (error) {
+        if (
+          !isMountedRef.current ||
+          latestSocialGraphRequestIdRef.current !== requestId
+        ) {
+          return;
+        }
+
+        startTransition(() => {
+          setSocialGraphState("error");
+          setSocialGraphError(
+            error instanceof Error
+              ? error.message
+              : "Unable to load the social graph.",
+          );
+        });
+      }
+    })();
+  }, [explorationRange, shellState, state.mainView, state.selectedPersons]);
+
+  useEffect(() => {
+    if (state.mainView !== "day_grid") {
+      return;
+    }
+
     latestDayContextScopeRef.current = dayContextScope;
     startTransition(() => {
       setDayContextsByDate({});
@@ -235,10 +306,14 @@ function AppBootstrap() {
       setFailedDayContextRanges([]);
       setHoverContextError(null);
     });
-  }, [dayContextScope]);
+  }, [dayContextScope, state.mainView]);
 
   useEffect(() => {
-    if (shellState !== "ready" || visibleRanges.length === 0) {
+    if (
+      state.mainView !== "day_grid" ||
+      shellState !== "ready" ||
+      visibleRanges.length === 0
+    ) {
       return;
     }
 
@@ -321,25 +396,31 @@ function AppBootstrap() {
       })();
     }
   }, [
+    dayContextScope,
     failedDayContextRanges,
     loadedDayContextRanges,
     loadingDayContextRanges,
     shellState,
+    state.gridView,
+    state.mainView,
     state.selectedPersons,
     state.selectedTags,
-    state.gridView,
     visibleRanges,
-    dayContextScope,
   ]);
 
   const activeDayContext =
-    state.hoveredDate !== null ? dayContextsByDate[state.hoveredDate] ?? null : null;
-  const hoverContextStatus = resolveHoverContextStatus(
-    state.hoveredDate,
-    dayContextsByDate,
-    loadingDayContextRanges,
-    failedDayContextRanges,
-  );
+    state.mainView === "day_grid" && state.hoveredDate !== null
+      ? dayContextsByDate[state.hoveredDate] ?? null
+      : null;
+  const hoverContextStatus =
+    state.mainView === "day_grid"
+      ? resolveHoverContextStatus(
+          state.hoveredDate,
+          dayContextsByDate,
+          loadingDayContextRanges,
+          failedDayContextRanges,
+        )
+      : "idle";
 
   if (shellState === "loading") {
     return (
@@ -375,37 +456,22 @@ function AppBootstrap() {
     );
   }
 
-  if (gridState === "loading" && heatmapDays.length === 0) {
-    return (
-      <main className="flex h-screen items-center justify-center p-5 lg:p-7">
-        <div className="mx-auto flex w-full max-w-[56rem] flex-col gap-6">
-          <section className="panel-surface min-h-[18rem] p-6">
-            <h1 className="mt-2 text-2xl font-semibold text-slate-950">
-              Loading filtered exploration
-            </h1>
-            <p className="mt-3 max-w-2xl text-sm text-slate-600">
-              Bootstrap metadata is ready. The grid projection is loading for the
-              current persistent filters.
-            </p>
-          </section>
-        </div>
-      </main>
-    );
-  }
-
   return (
-      <AppShell
+    <AppShell
       heatmapDays={heatmapDays}
       gridViews={gridViews}
       persons={persons}
       tags={tags}
-      gridState={gridState}
-      gridError={gridState === "error" ? gridError : null}
+      timelineState={timelineState}
+      timelineError={timelineState === "error" ? timelineError : null}
       dayContextsByDate={dayContextsByDate}
       activeDayContext={activeDayContext}
       hoverContextStatus={hoverContextStatus}
       hoverContextError={hoverContextStatus === "error" ? hoverContextError : null}
       onVisibleRangesChange={setVisibleRanges}
+      socialGraphState={socialGraphState}
+      socialGraphError={socialGraphState === "error" ? socialGraphError : null}
+      socialGraph={socialGraph}
     />
   );
 }

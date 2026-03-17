@@ -30,6 +30,19 @@ export function MainViewNavigation({
       >
         Day Grid
       </button>
+      <button
+        type="button"
+        onClick={() => onSelect("social_graph")}
+        aria-current={activeMainView === "social_graph" ? "page" : undefined}
+        className={[
+          "rounded-full px-3 py-1.5 text-[12px] font-medium transition",
+          activeMainView === "social_graph"
+            ? "bg-slate-900 text-white shadow-[0_10px_28px_rgba(15,23,42,0.16)]"
+            : "bg-transparent text-slate-700 hover:bg-white",
+        ].join(" ")}
+      >
+        Social Graph
+      </button>
     </nav>
   );
 }

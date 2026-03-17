@@ -4,28 +4,28 @@ import type {
 } from "../../../projections/timeline";
 
 type FilterBarProps = {
-  activeGridViewLabel: string;
+  scopeLabel: string;
   selectedPersons: PersonProjection[];
   selectedTags: TagProjection[];
-  matchingDayCount: number;
+  resultSummary: string;
   hasPersistentFilters: boolean;
-  gridState: "loading" | "ready" | "error";
-  gridError: string | null;
-  hoveredDate: string | null;
+  transportState: "loading" | "ready" | "error";
+  transportError: string | null;
+  hoverLabel: string;
   onRemovePerson: (personId: string) => void;
   onRemoveTag: (tagPath: string) => void;
   onClear: () => void;
 };
 
 export function FilterBar({
-  activeGridViewLabel,
+  scopeLabel,
   selectedPersons,
   selectedTags,
-  matchingDayCount,
+  resultSummary,
   hasPersistentFilters,
-  gridState,
-  gridError,
-  hoveredDate,
+  transportState,
+  transportError,
+  hoverLabel,
   onRemovePerson,
   onRemoveTag,
   onClear,
@@ -33,22 +33,22 @@ export function FilterBar({
   return (
     <div className="flex items-center gap-2">
       <div className="rounded-full bg-white/70 px-3 py-1.5 text-[12px] text-slate-700">
-        Grid view: {activeGridViewLabel}
+        View: {scopeLabel}
       </div>
       <div className="rounded-full bg-white/70 px-3 py-1.5 text-[12px] text-slate-700">
         {hasPersistentFilters
-          ? `${matchingDayCount} matching day${matchingDayCount === 1 ? "" : "s"}`
-          : "No persistent filters active"}
+          ? resultSummary
+          : `${resultSummary} · no persistent filters`}
       </div>
       <div className="rounded-full bg-white/70 px-3 py-1.5 text-[12px] text-slate-700">
-        {gridState === "loading"
-          ? "Grid: updating"
-          : gridState === "error"
-            ? gridError ?? "Grid: request failed"
-            : "Grid: synced"}
+        {transportState === "loading"
+          ? "Data: updating"
+          : transportState === "error"
+            ? transportError ?? "Data: request failed"
+            : "Data: synced"}
       </div>
       <div className="rounded-full bg-white/70 px-3 py-1.5 text-[12px] text-slate-700">
-        Hover: {hoveredDate ?? "none"}
+        Hover: {hoverLabel}
       </div>
       {selectedPersons.map((person) => (
         <button

@@ -96,6 +96,8 @@ export function UiStateProvider({ children }: PropsWithChildren) {
 
       return {
         ...currentState,
+        hoveredDate: null,
+        hoveredPanelItem: null,
         mainView,
       };
     });
