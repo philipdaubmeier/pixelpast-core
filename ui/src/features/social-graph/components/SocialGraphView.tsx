@@ -39,6 +39,7 @@ type GraphLink = {
   sourceId: string;
   targetId: string;
   weight: number;
+  layoutStrength: number;
 };
 
 type GraphViewport = {
@@ -77,6 +78,9 @@ const ALPHA_DECAY = 0.018;
 const ALPHA_MIN = 0.012;
 const MAX_SIMULATION_TICKS = 480;
 const MAX_FRAME_DELTA_MS = 32;
+const COLLISION_RAMP_TICKS = 220;
+const CENTER_RAMP_TICKS = 260;
+const LAYOUT_LINK_STRENGTH_THRESHOLD = 0.16;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
@@ -175,6 +179,7 @@ function createInitialLayout(
     sourceId: link.personIds[0],
     targetId: link.personIds[1],
     weight: link.weight,
+    layoutStrength: 0,
   }));
   const linkWeightScale = Math.max(
     getQuantile(
@@ -183,6 +188,9 @@ function createInitialLayout(
     ),
     1,
   );
+  preparedLinks.forEach((link) => {
+    link.layoutStrength = getLinkStrength(link.weight, linkWeightScale);
+  });
   const centerX = dimensions.width / 2;
   const centerY = dimensions.height / 2;
   const goldenAngle = Math.PI * (3 - Math.sqrt(5));
@@ -230,6 +238,16 @@ function simulateLayoutStep(
   const effectiveAlpha = Math.max(currentLayout.alpha, ALPHA_MIN);
   const damping = 0.82 - (1 - effectiveAlpha) * 0.16;
   const maxVelocity = 2.2 + effectiveAlpha * 12;
+  const collisionRamp = clamp(
+    currentLayout.tickCount / COLLISION_RAMP_TICKS,
+    0.12,
+    1,
+  );
+  const centerRamp = clamp(
+    currentLayout.tickCount / CENTER_RAMP_TICKS,
+    0.03,
+    1,
+  );
 
   for (let leftIndex = 0; leftIndex < nodes.length; leftIndex += 1) {
     const leftNode = nodes[leftIndex];
@@ -268,11 +286,16 @@ function simulateLayoutStep(
         const normalY = dy / distance;
         const overlapRatio = overlap / minimumDistance;
         const separationDistance =
-          overlap * (0.52 + overlapRatio * overlapRatio * 0.7);
+          overlap *
+          (0.12 + collisionRamp * (0.4 + overlapRatio * overlapRatio * 0.95));
         const separationX = normalX * separationDistance * 0.5;
         const separationY = normalY * separationDistance * 0.5;
         const pushVelocity =
-          overlapRatio * overlapRatio * OVERLAP_PUSH_FORCE * effectiveAlpha;
+          overlapRatio *
+          overlapRatio *
+          OVERLAP_PUSH_FORCE *
+          effectiveAlpha *
+          collisionRamp;
 
         leftNode.x -= separationX;
         leftNode.y -= separationY;
@@ -287,6 +310,10 @@ function simulateLayoutStep(
   }
 
   for (const link of links) {
+    if (link.layoutStrength < LAYOUT_LINK_STRENGTH_THRESHOLD) {
+      continue;
+    }
+
     const sourceIndex = nodeIndexById.get(link.sourceId);
     const targetIndex = nodeIndexById.get(link.targetId);
 
@@ -310,13 +337,13 @@ function simulateLayoutStep(
       clamp(
         18 +
           (sourceNode.radius + targetNode.radius) * 1.35 -
-          getLinkStrength(link.weight, currentLayout.linkWeightScale) * 4.2,
+          link.layoutStrength * 4.2,
         sourceNode.radius + targetNode.radius + 2,
         34,
       );
     const springStrength =
       SPRING_FORCE *
-      getLinkStrength(link.weight, currentLayout.linkWeightScale) *
+      link.layoutStrength *
       effectiveAlpha;
     const springDelta = (distance - idealDistance) * springStrength * safeDelta;
     const springX = (dx / distance) * springDelta;
@@ -331,8 +358,18 @@ function simulateLayoutStep(
   let totalKineticEnergy = 0;
 
   for (const node of nodes) {
-    node.vx += (centerX - node.x) * CENTER_FORCE * effectiveAlpha * safeDelta;
-    node.vy += (centerY - node.y) * CENTER_FORCE * effectiveAlpha * safeDelta;
+    node.vx +=
+      (centerX - node.x) *
+      CENTER_FORCE *
+      centerRamp *
+      effectiveAlpha *
+      safeDelta;
+    node.vy +=
+      (centerY - node.y) *
+      CENTER_FORCE *
+      centerRamp *
+      effectiveAlpha *
+      safeDelta;
 
     const padding = node.radius + 8;
     if (node.x < padding) {
