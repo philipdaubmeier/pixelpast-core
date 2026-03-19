@@ -89,20 +89,20 @@ const MIN_CAMERA_RATIO = 0.08;
 const MAX_CAMERA_RATIO = 4;
 const MIN_PEOPLE_PER_ASSET = 2;
 const MAX_PEOPLE_PER_ASSET = 30;
-const FORCE_ATLAS2_MIN_RUNTIME_MS = 2400;
-const FORCE_ATLAS2_MAX_RUNTIME_MS = 6500;
+const FORCE_ATLAS2_MIN_RUNTIME_MS = 200000;
+const FORCE_ATLAS2_MAX_RUNTIME_MS = 400000;
 const FORCE_ATLAS2_NODE_RUNTIME_MS = 24;
-const FORCE_ATLAS2_EDGE_RUNTIME_MS = 7;
+const FORCE_ATLAS2_EDGE_RUNTIME_MS = 9;
 const FORCE_ATLAS2_SETTINGS = {
   settings: {
     adjustSizes: true,
-    barnesHutOptimize: false,
-    edgeWeightInfluence: 1.35,
-    gravity: 0.14,
+    barnesHutOptimize: true,
+    edgeWeightInfluence: 2.0,
+    gravity: 0.58,
     linLogMode: true,
     outboundAttractionDistribution: false,
-    scalingRatio: 10,
-    slowDown: 1.7,
+    scalingRatio: 16,
+    slowDown: 1.2,
     strongGravityMode: false,
   },
   getEdgeWeight: "layoutWeight" as const,
@@ -170,8 +170,22 @@ function getNodeRadius(
 }
 
 function getLinkStrokeWidth(weight: number, maxWeight: number): number {
-  const normalized = maxWeight > 0 ? weight / maxWeight : 0;
-  return 1.2 + normalized * 4.8;
+  const safeMax = Math.max(maxWeight, 1);
+  const normalized = Math.log1p(weight) / Math.log1p(safeMax);
+  const amplified = normalized ** 1.4;
+  return 0.7 + amplified * 5.3;
+}
+
+function getWeightedEdgeColor(weight: number, maxWeight: number): string {
+  const safeMax = Math.max(maxWeight, 1);
+  const normalized = Math.log1p(weight) / Math.log1p(safeMax);
+  const amplified = normalized ** 1.35;
+  const grayscaleValue = Math.round(232 - amplified * 176);
+  const channel = clamp(grayscaleValue, 56, 232)
+    .toString(16)
+    .padStart(2, "0");
+
+  return `#${channel}${channel}${channel}`;
 }
 
 function getQuantile(values: number[], quantile: number): number {
@@ -192,11 +206,12 @@ function getQuantile(values: number[], quantile: number): number {
 
 function getLayoutEdgeWeight(weight: number, linkWeightScale: number): number {
   const safeScale = Math.max(linkWeightScale, 1);
-  const normalized = Math.log1p(weight) / Math.log1p(safeScale);
-  return 1 + clamp(normalized, 0, 1) * 7;
+  const normalized = clamp(weight / safeScale, 0, 1);
+  const amplified = normalized ** 1.8;
+  return 0.25 + amplified * 9;
 }
 
-function getVisibleLinksPerNode(totalNodes: number): number {
+function getDisplayLinksPerNode(totalNodes: number): number {
   if (totalNodes <= 80) {
     return Number.POSITIVE_INFINITY;
   }
@@ -212,12 +227,27 @@ function getVisibleLinksPerNode(totalNodes: number): number {
   return 3;
 }
 
-function selectDisplayLinks(
-  projection: SocialGraphProjection,
-): SocialGraphLinkProjection[] {
-  const visibleLinksPerNode = getVisibleLinksPerNode(projection.persons.length);
+function getLayoutLinksPerNode(totalNodes: number): number {
+  if (totalNodes <= 80) {
+    return Number.POSITIVE_INFINITY;
+  }
 
-  if (!Number.isFinite(visibleLinksPerNode)) {
+  if (totalNodes <= 180) {
+    return 10;
+  }
+
+  if (totalNodes <= 360) {
+    return 8;
+  }
+
+  return 6;
+}
+
+function selectTopLinksPerNode(
+  projection: SocialGraphProjection,
+  linksPerNode: number,
+): SocialGraphLinkProjection[] {
+  if (!Number.isFinite(linksPerNode)) {
     return projection.links;
   }
 
@@ -250,7 +280,7 @@ function selectDisplayLinks(
           left.personIds[0].localeCompare(right.personIds[0]) ||
           left.personIds[1].localeCompare(right.personIds[1]),
       )
-      .slice(0, visibleLinksPerNode)
+      .slice(0, linksPerNode)
       .forEach((link) => {
         selectedLinkIds.add(link.id);
       });
@@ -267,16 +297,28 @@ function createSigmaGraph(
 ): UndirectedGraph<SigmaNodeAttributes, SigmaEdgeAttributes> {
   const sigmaGraph =
     new UndirectedGraph<SigmaNodeAttributes, SigmaEdgeAttributes>();
+  const layoutLinkIds = new Set(
+    selectTopLinksPerNode(
+      projection,
+      getLayoutLinksPerNode(projection.persons.length),
+    ).map((link) => buildLinkId(link.personIds[0], link.personIds[1])),
+  );
   const displayLinkIds = new Set(
-    selectDisplayLinks(projection).map((link) =>
-      buildLinkId(link.personIds[0], link.personIds[1]),
-    ),
+    selectTopLinksPerNode(
+      projection,
+      getDisplayLinksPerNode(projection.persons.length),
+    ).map((link) => buildLinkId(link.personIds[0], link.personIds[1])),
   );
   const personNamesById = new Map(
     projection.persons.map((person) => [person.id, person.name]),
   );
+  const degreeCountByPersonId = new Map<string, number>();
   const maxOccurrenceCount = Math.max(
     ...projection.persons.map((person) => person.occurrenceCount),
+    1,
+  );
+  const maxLinkWeight = Math.max(
+    ...projection.links.map((link) => link.weight),
     1,
   );
   const linkAffinities = projection.links.map((link) => link.affinity);
@@ -284,16 +326,32 @@ function createSigmaGraph(
   const linkWeightScale = Math.max(
     getQuantile(
       linkAffinities,
-      0.8,
+      0.92,
     ),
-    1,
+    0.000001,
   );
   const goldenAngle = Math.PI * (3 - Math.sqrt(5));
-  const spiralSpacing = 2.6;
+
+  projection.links.forEach((link) => {
+    const [leftPersonId, rightPersonId] = link.personIds;
+
+    degreeCountByPersonId.set(
+      leftPersonId,
+      (degreeCountByPersonId.get(leftPersonId) ?? 0) + 1,
+    );
+    degreeCountByPersonId.set(
+      rightPersonId,
+      (degreeCountByPersonId.get(rightPersonId) ?? 0) + 1,
+    );
+  });
+
+  const spiralSpacing = 1.05;
 
   [...projection.persons]
     .sort(
       (left, right) =>
+        (degreeCountByPersonId.get(right.id) ?? 0) -
+          (degreeCountByPersonId.get(left.id) ?? 0) ||
         right.occurrenceCount - left.occurrenceCount ||
         left.name.localeCompare(right.name),
     )
@@ -332,13 +390,15 @@ function createSigmaGraph(
 
     sigmaGraph.addEdgeWithKey(linkId, sourceId, targetId, {
       label: buildLinkLabel(personNamesById, sourceId, targetId),
-      size: getLinkStrokeWidth(affinity, maxLinkAffinity),
+      size: getLinkStrokeWidth(link.weight, maxLinkWeight),
       affinity,
-      color: BASE_EDGE_COLOR,
+      color: getWeightedEdgeColor(link.weight, maxLinkWeight),
       hidden: !displayLinkIds.has(linkId),
       visibleByDefault: displayLinkIds.has(linkId),
       weight: link.weight,
-      layoutWeight: getLayoutEdgeWeight(affinity, linkWeightScale),
+      layoutWeight: layoutLinkIds.has(linkId)
+        ? getLayoutEdgeWeight(affinity, linkWeightScale)
+        : 0,
     });
   });
 
