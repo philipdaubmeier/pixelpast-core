@@ -5,8 +5,9 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import date
+from math import sqrt
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from pixelpast.persistence.models import Asset, AssetPerson, Person
@@ -37,6 +38,7 @@ class SocialGraphLinkSnapshot:
 
     person_ids: tuple[int, int]
     weight: int
+    affinity: float
 
 
 @dataclass(slots=True, frozen=True)
@@ -59,6 +61,7 @@ class SocialGraphReadRepository:
         start_date: date | None = None,
         end_date: date | None = None,
         person_ids: tuple[int, ...] = (),
+        max_people_per_asset: int = 10,
     ) -> SocialGraphReadSnapshot:
         """Return a stable social-graph projection for qualifying assets."""
 
@@ -66,10 +69,19 @@ class SocialGraphReadRepository:
             start_date=start_date,
             end_date=end_date,
             person_ids=person_ids,
+            max_people_per_asset=max_people_per_asset,
         )
+        persons = self._count_person_occurrences(memberships=memberships)
+        occurrence_count_by_person_id = {
+            person.id: person.occurrence_count
+            for person in persons
+        }
         return SocialGraphReadSnapshot(
-            persons=self._count_person_occurrences(memberships=memberships),
-            links=self._count_pair_co_occurrences(memberships=memberships),
+            persons=persons,
+            links=self._count_pair_co_occurrences(
+                memberships=memberships,
+                occurrence_count_by_person_id=occurrence_count_by_person_id,
+            ),
         )
 
     def _list_person_asset_memberships(
@@ -78,6 +90,7 @@ class SocialGraphReadRepository:
         start_date: date | None,
         end_date: date | None,
         person_ids: tuple[int, ...],
+        max_people_per_asset: int,
     ) -> list[PersonAssetMembershipSnapshot]:
         """Load all qualifying canonical person memberships across assets."""
 
@@ -94,6 +107,14 @@ class SocialGraphReadRepository:
                 start_date=start_date,
                 end_date=end_date,
             )
+
+        qualifying_group_asset_ids = (
+            select(AssetPerson.asset_id)
+            .group_by(AssetPerson.asset_id)
+            .having(func.count(AssetPerson.person_id) <= max_people_per_asset)
+        )
+        statement = statement.where(AssetPerson.asset_id.in_(qualifying_group_asset_ids))
+
         if person_ids:
             qualifying_asset_ids = (
                 select(AssetPerson.asset_id)
@@ -139,6 +160,7 @@ class SocialGraphReadRepository:
         self,
         *,
         memberships: list[PersonAssetMembershipSnapshot],
+        occurrence_count_by_person_id: dict[int, int],
     ) -> list[SocialGraphLinkSnapshot]:
         """Count unordered person-pair co-occurrences across qualifying assets."""
 
@@ -154,9 +176,42 @@ class SocialGraphReadRepository:
                     pair_counts[(left_person_id, right_person_id)] += 1
 
         return [
-            SocialGraphLinkSnapshot(person_ids=person_ids, weight=weight)
+            SocialGraphLinkSnapshot(
+                person_ids=person_ids,
+                weight=weight,
+                affinity=_calculate_context_affinity(
+                    co_occurrence_count=weight,
+                    left_occurrence_count=occurrence_count_by_person_id[person_ids[0]],
+                    right_occurrence_count=occurrence_count_by_person_id[person_ids[1]],
+                ),
+            )
             for person_ids, weight in sorted(
                 pair_counts.items(),
                 key=lambda item: item[0],
             )
         ]
+
+
+def _calculate_context_affinity(
+    *,
+    co_occurrence_count: int,
+    left_occurrence_count: int,
+    right_occurrence_count: int,
+) -> float:
+    """Score pair affinity from overlap exclusivity plus repeated evidence.
+
+    The score intentionally penalizes hub-like people who appear in many unrelated
+    contexts while preserving strong ties for smaller, exclusive groups.
+    """
+
+    if co_occurrence_count <= 0:
+        return 0.0
+
+    safe_left_count = max(left_occurrence_count, 1)
+    safe_right_count = max(right_occurrence_count, 1)
+    overlap = co_occurrence_count / min(safe_left_count, safe_right_count)
+    union = safe_left_count + safe_right_count - co_occurrence_count
+    jaccard = co_occurrence_count / max(union, 1)
+    evidence = co_occurrence_count / (co_occurrence_count + 2)
+
+    return sqrt(overlap * jaccard) * evidence

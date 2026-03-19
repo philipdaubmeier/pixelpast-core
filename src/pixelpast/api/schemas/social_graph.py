@@ -18,6 +18,7 @@ class SocialGraphLink(BaseModel):
 
     person_ids: list[int]
     weight: int
+    affinity: float
 
 
 class SocialGraphResponse(BaseModel):

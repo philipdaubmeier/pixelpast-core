@@ -4,6 +4,7 @@ import { socialGraphTransport } from "./socialGraphTransport";
 
 export type SocialGraphFilters = {
   selectedPersons: string[];
+  maxPeoplePerAsset: number;
 };
 
 export const socialGraphApi = {
@@ -14,6 +15,7 @@ export const socialGraphApi = {
     const response = await socialGraphTransport.getSocialGraph({
       start: range.start,
       end: range.end,
+      maxPeoplePerAsset: filters.maxPeoplePerAsset,
       personIds: filters.selectedPersons,
     });
 
@@ -25,6 +27,7 @@ export const socialGraphApi = {
       })),
       links: response.links.map((link) => ({
         personIds: [String(link.person_ids[0]), String(link.person_ids[1])],
+        affinity: link.affinity,
         weight: link.weight,
       })),
     };

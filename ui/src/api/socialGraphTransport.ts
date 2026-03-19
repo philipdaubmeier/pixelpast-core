@@ -7,12 +7,14 @@ export type ApiSocialGraphResponse = {
   links: Array<{
     person_ids: [number, number];
     weight: number;
+    affinity: number;
   }>;
 };
 
 export type ApiSocialGraphRequest = {
   start?: string;
   end?: string;
+  maxPeoplePerAsset: number;
   personIds: string[];
 };
 
@@ -83,6 +85,7 @@ export const socialGraphTransport = {
       `/social/graph${buildQueryString({
         start: request.start,
         end: request.end,
+        max_people_per_asset: String(request.maxPeoplePerAsset),
         person_ids: request.personIds,
       })}`,
     );

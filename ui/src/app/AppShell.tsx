@@ -45,6 +45,8 @@ type AppShellProps = {
   socialGraphState: LoadState;
   socialGraphError: string | null;
   socialGraph: SocialGraphProjection | null;
+  socialGraphMaxPeoplePerAsset: number;
+  onChangeSocialGraphMaxPeoplePerAsset: (value: number) => void;
 };
 
 function TimelineMainContent({
@@ -181,6 +183,8 @@ export function AppShell({
   socialGraphState,
   socialGraphError,
   socialGraph,
+  socialGraphMaxPeoplePerAsset,
+  onChangeSocialGraphMaxPeoplePerAsset,
 }: AppShellProps) {
   const {
     state,
@@ -259,8 +263,10 @@ export function AppShell({
             state={socialGraphState}
             error={socialGraphError}
             graph={socialGraph}
+            maxPeoplePerAsset={socialGraphMaxPeoplePerAsset}
             selectedPersons={selectedPersons}
             selectedTags={selectedTags}
+            onChangeMaxPeoplePerAsset={onChangeSocialGraphMaxPeoplePerAsset}
             onTogglePerson={togglePerson}
           />
         </MainContentFrame>

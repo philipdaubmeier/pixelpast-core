@@ -101,7 +101,7 @@ def test_social_graph_projection_counts_repeated_pair_co_occurrence_across_asset
                 {"id": 2, "name": "Ben", "occurrence_count": 2},
             ],
             "links": [
-                {"person_ids": [1, 2], "weight": 2},
+                {"person_ids": [1, 2], "weight": 2, "affinity": 0.5},
             ],
         }
     finally:
@@ -162,9 +162,132 @@ def test_social_graph_projection_orders_pairs_stably_and_treats_links_as_unorder
                 {"id": 1, "name": "Zoe", "occurrence_count": 2},
             ],
             "links": [
-                {"person_ids": [1, 2], "weight": 2},
-                {"person_ids": [1, 3], "weight": 1},
-                {"person_ids": [2, 3], "weight": 1},
+                {"person_ids": [1, 2], "weight": 2, "affinity": 0.5},
+                {"person_ids": [1, 3], "weight": 1, "affinity": 0.235702},
+                {"person_ids": [2, 3], "weight": 1, "affinity": 0.235702},
+            ],
+        }
+    finally:
+        runtime.engine.dispose()
+
+
+def test_social_graph_affinity_penalizes_hub_overlap_against_exclusive_pair() -> None:
+    runtime = _create_runtime()
+    try:
+        with runtime.session_factory() as session:
+            hub = Person(name="Hub", aliases=None, metadata_json=None)
+            worker_left = Person(name="Worker Left", aliases=None, metadata_json=None)
+            worker_right = Person(name="Worker Right", aliases=None, metadata_json=None)
+            outsider = Person(name="Outsider", aliases=None, metadata_json=None)
+            session.add_all([hub, worker_left, worker_right, outsider])
+            session.flush()
+
+            assets = [
+                Asset(
+                    external_id=f"asset-{index}",
+                    media_type="photo",
+                    timestamp=datetime(2024, 1, index + 1, 9, 0, tzinfo=UTC),
+                    summary=None,
+                    latitude=None,
+                    longitude=None,
+                    creator_person_id=None,
+                    metadata_json={},
+                )
+                for index in range(4)
+            ]
+            session.add_all(assets)
+            session.flush()
+            session.add_all(
+                [
+                    AssetPerson(asset_id=assets[0].id, person_id=hub.id),
+                    AssetPerson(asset_id=assets[0].id, person_id=worker_left.id),
+                    AssetPerson(asset_id=assets[0].id, person_id=worker_right.id),
+                    AssetPerson(asset_id=assets[1].id, person_id=hub.id),
+                    AssetPerson(asset_id=assets[1].id, person_id=worker_left.id),
+                    AssetPerson(asset_id=assets[1].id, person_id=worker_right.id),
+                    AssetPerson(asset_id=assets[2].id, person_id=hub.id),
+                    AssetPerson(asset_id=assets[2].id, person_id=outsider.id),
+                    AssetPerson(asset_id=assets[3].id, person_id=hub.id),
+                    AssetPerson(asset_id=assets[3].id, person_id=outsider.id),
+                ]
+            )
+            session.commit()
+
+            response = build_social_graph_response(
+                SocialGraphReadRepository(session).read_projection()
+            )
+
+        link_by_person_ids = {
+            tuple(link["person_ids"]): link
+            for link in response.model_dump()["links"]
+        }
+        assert link_by_person_ids[(2, 3)]["weight"] == 2
+        assert link_by_person_ids[(1, 2)]["weight"] == 2
+        assert link_by_person_ids[(1, 2)]["affinity"] < link_by_person_ids[(2, 3)]["affinity"]
+        assert link_by_person_ids[(1, 3)]["affinity"] < link_by_person_ids[(2, 3)]["affinity"]
+    finally:
+        runtime.engine.dispose()
+
+
+def test_social_graph_projection_excludes_assets_above_people_cutoff() -> None:
+    runtime = _create_runtime()
+    try:
+        with runtime.session_factory() as session:
+            people = [
+                Person(name=f"Person {index}", aliases=None, metadata_json=None)
+                for index in range(1, 12)
+            ]
+            session.add_all(people)
+            session.flush()
+
+            small_asset = Asset(
+                external_id="asset-small",
+                media_type="photo",
+                timestamp=datetime(2024, 1, 2, 9, 0, tzinfo=UTC),
+                summary=None,
+                latitude=None,
+                longitude=None,
+                creator_person_id=None,
+                metadata_json={},
+            )
+            large_asset = Asset(
+                external_id="asset-large",
+                media_type="photo",
+                timestamp=datetime(2024, 1, 3, 9, 0, tzinfo=UTC),
+                summary=None,
+                latitude=None,
+                longitude=None,
+                creator_person_id=None,
+                metadata_json={},
+            )
+            session.add_all([small_asset, large_asset])
+            session.flush()
+
+            session.add_all(
+                [
+                    AssetPerson(asset_id=small_asset.id, person_id=people[0].id),
+                    AssetPerson(asset_id=small_asset.id, person_id=people[1].id),
+                ]
+                + [
+                    AssetPerson(asset_id=large_asset.id, person_id=person.id)
+                    for person in people
+                ]
+            )
+            session.commit()
+
+            response = build_social_graph_response(
+                SocialGraphReadRepository(session).read_projection(
+                    max_people_per_asset=10,
+                )
+            )
+
+        assert response.model_dump() == {
+            "persons": [
+                {"id": 1, "name": "Person 1", "occurrence_count": 1},
+                {"id": 2, "name": "Person 2", "occurrence_count": 1},
+            ],
+            "links": [
+                {"person_ids": [1, 2], "weight": 1, "affinity": 0.333333},
             ],
         }
     finally:

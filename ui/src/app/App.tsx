@@ -85,6 +85,8 @@ function AppBootstrap() {
   const [timelineError, setTimelineError] = useState<string | null>(null);
   const [socialGraphState, setSocialGraphState] = useState<ViewLoadState>("loading");
   const [socialGraphError, setSocialGraphError] = useState<string | null>(null);
+  const [socialGraphMaxPeoplePerAsset, setSocialGraphMaxPeoplePerAsset] =
+    useState(10);
   const [explorationRange, setExplorationRange] = useState<DateRange | null>(null);
   const [heatmapDays, setHeatmapDays] = useState<HeatmapDayProjection[]>([]);
   const [gridViews, setGridViews] = useState<GridViewOption[]>([]);
@@ -258,6 +260,7 @@ function AppBootstrap() {
     void (async () => {
       try {
         const graph = await socialGraphApi.getSocialGraph(explorationRange, {
+          maxPeoplePerAsset: socialGraphMaxPeoplePerAsset,
           selectedPersons: state.selectedPersons,
         });
 
@@ -291,7 +294,13 @@ function AppBootstrap() {
         });
       }
     })();
-  }, [explorationRange, shellState, state.mainView, state.selectedPersons]);
+  }, [
+    explorationRange,
+    shellState,
+    socialGraphMaxPeoplePerAsset,
+    state.mainView,
+    state.selectedPersons,
+  ]);
 
   useEffect(() => {
     if (state.mainView !== "day_grid") {
@@ -472,6 +481,8 @@ function AppBootstrap() {
       socialGraphState={socialGraphState}
       socialGraphError={socialGraphState === "error" ? socialGraphError : null}
       socialGraph={socialGraph}
+      socialGraphMaxPeoplePerAsset={socialGraphMaxPeoplePerAsset}
+      onChangeSocialGraphMaxPeoplePerAsset={setSocialGraphMaxPeoplePerAsset}
     />
   );
 }

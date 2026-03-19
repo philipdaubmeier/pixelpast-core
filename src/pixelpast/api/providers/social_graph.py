@@ -22,6 +22,7 @@ class SocialGraphFilters:
     """Supported server-owned filters for social-graph requests."""
 
     person_ids: tuple[int, ...] = ()
+    max_people_per_asset: int = 10
 
 
 class SocialGraphProjectionProvider(Protocol):
@@ -61,6 +62,7 @@ class DatabaseSocialGraphProjectionProvider:
                 start_date=start,
                 end_date=end,
                 person_ids=filters.person_ids,
+                max_people_per_asset=filters.max_people_per_asset,
             )
         )
 
@@ -133,6 +135,7 @@ def build_social_graph_response(
             SocialGraphLink(
                 person_ids=list(link.person_ids),
                 weight=link.weight,
+                affinity=round(link.affinity, 6),
             )
             for link in snapshot.links
         ],
@@ -147,7 +150,7 @@ _DEMO_PERSONS: Final[tuple[SocialGraphPerson, ...]] = (
 )
 
 _DEMO_LINKS: Final[tuple[SocialGraphLink, ...]] = (
-    SocialGraphLink(person_ids=[1, 2], weight=7),
-    SocialGraphLink(person_ids=[1, 3], weight=4),
-    SocialGraphLink(person_ids=[2, 4], weight=2),
+    SocialGraphLink(person_ids=[1, 2], weight=7, affinity=0.777778),
+    SocialGraphLink(person_ids=[1, 3], weight=4, affinity=0.5),
+    SocialGraphLink(person_ids=[2, 4], weight=2, affinity=0.333333),
 )

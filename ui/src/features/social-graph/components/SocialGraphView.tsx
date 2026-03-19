@@ -28,8 +28,10 @@ type SocialGraphViewProps = {
   state: "loading" | "ready" | "error";
   error: string | null;
   graph: SocialGraphProjection | null;
+  maxPeoplePerAsset: number;
   selectedPersons: PersonProjection[];
   selectedTags: TagProjection[];
+  onChangeMaxPeoplePerAsset: (value: number) => void;
   onTogglePerson: (personId: string) => void;
 };
 
@@ -47,6 +49,9 @@ type SigmaEdgeAttributes = {
   label: string;
   size: number;
   color: string;
+  affinity: number;
+  hidden?: boolean;
+  visibleByDefault: boolean;
   weight: number;
   layoutWeight: number;
 };
@@ -73,14 +78,17 @@ type SocialGraphSigmaSceneProps = {
   setCameraRatio: Dispatch<SetStateAction<number>>;
 };
 
-const BASE_NODE_COLOR = "#f8f2e8";
-const ACTIVE_NODE_COLOR = "#f0c47f";
+const BASE_NODE_COLOR = "#748fb6";
+const ACTIVE_NODE_COLOR = "#5d7da9";
 const SELECTED_NODE_COLOR = "#ca9f58";
-const BASE_NODE_STROKE = "#8a6b43";
-const ACTIVE_EDGE_COLOR = "#7c4b21";
-const BASE_EDGE_RGB = "138, 107, 67";
+const BASE_NODE_STROKE = "#49668e";
+const ACTIVE_EDGE_COLOR = "#627081";
+const BASE_EDGE_COLOR = "#a3aab4";
+const DIM_EDGE_COLOR = "#d5d9df";
 const MIN_CAMERA_RATIO = 0.08;
 const MAX_CAMERA_RATIO = 4;
+const MIN_PEOPLE_PER_ASSET = 2;
+const MAX_PEOPLE_PER_ASSET = 30;
 const FORCE_ATLAS2_MIN_RUNTIME_MS = 2400;
 const FORCE_ATLAS2_MAX_RUNTIME_MS = 6500;
 const FORCE_ATLAS2_NODE_RUNTIME_MS = 24;
@@ -89,11 +97,12 @@ const FORCE_ATLAS2_SETTINGS = {
   settings: {
     adjustSizes: true,
     barnesHutOptimize: false,
-    edgeWeightInfluence: 1,
-    gravity: 0.18,
+    edgeWeightInfluence: 1.35,
+    gravity: 0.14,
     linLogMode: true,
-    scalingRatio: 7,
-    slowDown: 1.4,
+    outboundAttractionDistribution: false,
+    scalingRatio: 10,
+    slowDown: 1.7,
     strongGravityMode: false,
   },
   getEdgeWeight: "layoutWeight" as const,
@@ -107,7 +116,7 @@ const SIGMA_STYLE: SigmaStyle = {
 };
 const SIGMA_SETTINGS = {
   allowInvalidContainer: true,
-  defaultEdgeColor: `rgba(${BASE_EDGE_RGB}, 0.28)`,
+  defaultEdgeColor: BASE_EDGE_COLOR,
   defaultEdgeType: "line",
   defaultNodeColor: BASE_NODE_COLOR,
   defaultNodeType: "circle",
@@ -165,11 +174,6 @@ function getLinkStrokeWidth(weight: number, maxWeight: number): number {
   return 1.2 + normalized * 4.8;
 }
 
-function getLinkOpacity(weight: number, maxWeight: number): number {
-  const normalized = maxWeight > 0 ? weight / maxWeight : 0;
-  return 0.18 + normalized * 0.58;
-}
-
 function getQuantile(values: number[], quantile: number): number {
   if (values.length === 0) {
     return 1;
@@ -192,12 +196,82 @@ function getLayoutEdgeWeight(weight: number, linkWeightScale: number): number {
   return 1 + clamp(normalized, 0, 1) * 7;
 }
 
+function getVisibleLinksPerNode(totalNodes: number): number {
+  if (totalNodes <= 80) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  if (totalNodes <= 180) {
+    return 6;
+  }
+
+  if (totalNodes <= 360) {
+    return 4;
+  }
+
+  return 3;
+}
+
+function selectDisplayLinks(
+  projection: SocialGraphProjection,
+): SocialGraphLinkProjection[] {
+  const visibleLinksPerNode = getVisibleLinksPerNode(projection.persons.length);
+
+  if (!Number.isFinite(visibleLinksPerNode)) {
+    return projection.links;
+  }
+
+  const candidateLinksByPersonId = new Map<string, GraphLinkDetails[]>();
+
+  projection.links.forEach((link) => {
+    const [leftPersonId, rightPersonId] = link.personIds;
+    const linkWithId = {
+      ...link,
+      id: buildLinkId(leftPersonId, rightPersonId),
+    };
+
+    const leftLinks = candidateLinksByPersonId.get(leftPersonId) ?? [];
+    leftLinks.push(linkWithId);
+    candidateLinksByPersonId.set(leftPersonId, leftLinks);
+
+    const rightLinks = candidateLinksByPersonId.get(rightPersonId) ?? [];
+    rightLinks.push(linkWithId);
+    candidateLinksByPersonId.set(rightPersonId, rightLinks);
+  });
+
+  const selectedLinkIds = new Set<string>();
+
+  candidateLinksByPersonId.forEach((candidateLinks) => {
+    candidateLinks
+      .sort(
+        (left, right) =>
+          right.affinity - left.affinity ||
+          right.weight - left.weight ||
+          left.personIds[0].localeCompare(right.personIds[0]) ||
+          left.personIds[1].localeCompare(right.personIds[1]),
+      )
+      .slice(0, visibleLinksPerNode)
+      .forEach((link) => {
+        selectedLinkIds.add(link.id);
+      });
+  });
+
+  return projection.links.filter((link) =>
+    selectedLinkIds.has(buildLinkId(link.personIds[0], link.personIds[1])),
+  );
+}
+
 function createSigmaGraph(
   projection: SocialGraphProjection,
   showAllNodeLabels: boolean,
 ): UndirectedGraph<SigmaNodeAttributes, SigmaEdgeAttributes> {
   const sigmaGraph =
     new UndirectedGraph<SigmaNodeAttributes, SigmaEdgeAttributes>();
+  const displayLinkIds = new Set(
+    selectDisplayLinks(projection).map((link) =>
+      buildLinkId(link.personIds[0], link.personIds[1]),
+    ),
+  );
   const personNamesById = new Map(
     projection.persons.map((person) => [person.id, person.name]),
   );
@@ -205,16 +279,17 @@ function createSigmaGraph(
     ...projection.persons.map((person) => person.occurrenceCount),
     1,
   );
-  const maxLinkWeight = Math.max(...projection.links.map((link) => link.weight), 1);
+  const linkAffinities = projection.links.map((link) => link.affinity);
+  const maxLinkAffinity = Math.max(...linkAffinities, 1);
   const linkWeightScale = Math.max(
     getQuantile(
-      projection.links.map((link) => link.weight),
+      linkAffinities,
       0.8,
     ),
     1,
   );
   const goldenAngle = Math.PI * (3 - Math.sqrt(5));
-  const spiralSpacing = 2.35;
+  const spiralSpacing = 2.6;
 
   [...projection.persons]
     .sort(
@@ -244,6 +319,7 @@ function createSigmaGraph(
   projection.links.forEach((link) => {
     const [sourceId, targetId] = link.personIds;
     const linkId = buildLinkId(sourceId, targetId);
+    const affinity = link.affinity;
 
     if (
       sourceId === targetId ||
@@ -254,18 +330,62 @@ function createSigmaGraph(
       return;
     }
 
-    const edgeOpacity = getLinkOpacity(link.weight, maxLinkWeight);
-
     sigmaGraph.addEdgeWithKey(linkId, sourceId, targetId, {
       label: buildLinkLabel(personNamesById, sourceId, targetId),
-      size: getLinkStrokeWidth(link.weight, maxLinkWeight),
-      color: `rgba(${BASE_EDGE_RGB}, ${edgeOpacity.toFixed(3)})`,
+      size: getLinkStrokeWidth(affinity, maxLinkAffinity),
+      affinity,
+      color: BASE_EDGE_COLOR,
+      hidden: !displayLinkIds.has(linkId),
+      visibleByDefault: displayLinkIds.has(linkId),
       weight: link.weight,
-      layoutWeight: getLayoutEdgeWeight(link.weight, linkWeightScale),
+      layoutWeight: getLayoutEdgeWeight(affinity, linkWeightScale),
     });
   });
 
   return sigmaGraph;
+}
+
+function SocialGraphPeopleCutoffControl({
+  maxPeoplePerAsset,
+  onChangeMaxPeoplePerAsset,
+}: {
+  maxPeoplePerAsset: number;
+  onChangeMaxPeoplePerAsset: (value: number) => void;
+}) {
+  return (
+    <div className="rounded-3xl border border-[color:var(--pp-border)] bg-white/80 p-4 sm:col-span-2">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+            Group Photo Cutoff
+          </div>
+          <p className="mt-2 text-sm text-slate-700">
+            Ignore assets with more than this many tagged people before building
+            graph links.
+          </p>
+        </div>
+        <div className="rounded-full border border-[color:var(--pp-border)] bg-white px-3 py-1 text-sm font-semibold text-slate-900">
+          {maxPeoplePerAsset}
+        </div>
+      </div>
+      <input
+        type="range"
+        min={MIN_PEOPLE_PER_ASSET}
+        max={MAX_PEOPLE_PER_ASSET}
+        step={1}
+        value={maxPeoplePerAsset}
+        onChange={(event) => {
+          onChangeMaxPeoplePerAsset(Number(event.target.value));
+        }}
+        className="mt-4 h-2 w-full cursor-pointer accent-[#5d7da9]"
+      />
+      <div className="mt-2 flex items-center justify-between gap-3 text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">
+        <span>{MIN_PEOPLE_PER_ASSET}</span>
+        <span>Default 10</span>
+        <span>{MAX_PEOPLE_PER_ASSET}</span>
+      </div>
+    </div>
+  );
 }
 
 function SocialGraphSigmaScene({
@@ -409,11 +529,20 @@ function SocialGraphSigmaScene({
         const isHovered = hoveredLinkId === edge;
         const isIncidentToActiveNode = activeLinkIds.has(edge);
         const isActive = isHovered || isIncidentToActiveNode;
+        const shouldShow = data.visibleByDefault || isActive;
+
+        if (!shouldShow) {
+          return {
+            ...data,
+            hidden: true,
+          };
+        }
 
         if (activeNodeId !== null && !isActive) {
           return {
             ...data,
-            color: `rgba(${BASE_EDGE_RGB}, 0.1)`,
+            color: DIM_EDGE_COLOR,
+            hidden: false,
             size: Math.max(0.6, data.size * 0.72),
             zIndex: 0,
           };
@@ -422,6 +551,7 @@ function SocialGraphSigmaScene({
         return {
           ...data,
           color: isActive ? ACTIVE_EDGE_COLOR : data.color,
+          hidden: false,
           size: isActive ? data.size + 1.2 : data.size,
           zIndex: isActive ? 2 : 1,
         };
@@ -445,7 +575,7 @@ function SocialGraphSigmaScene({
             : isActive || isFocused
               ? ACTIVE_NODE_COLOR
               : shouldDim
-                ? "rgba(248, 242, 232, 0.4)"
+                ? "rgba(116, 143, 182, 0.28)"
                 : data.color,
           forceLabel:
             showAllNodeLabels || isSelected || isActive || isFocused,
@@ -484,11 +614,15 @@ function SocialGraphSigmaScene({
 
 function SocialGraphCanvas({
   graph,
+  maxPeoplePerAsset,
   selectedPersons,
+  onChangeMaxPeoplePerAsset,
   onTogglePerson,
 }: {
   graph: SocialGraphProjection;
+  maxPeoplePerAsset: number;
   selectedPersons: PersonProjection[];
+  onChangeMaxPeoplePerAsset: (value: number) => void;
   onTogglePerson: (personId: string) => void;
 }) {
   const [cameraRatio, setCameraRatio] = useState(1);
@@ -579,7 +713,10 @@ function SocialGraphCanvas({
           link.personIds[0] === activeNodeId ||
           link.personIds[1] === activeNodeId,
       )
-      .sort((left, right) => right.weight - left.weight)
+      .sort(
+        (left, right) =>
+          right.affinity - left.affinity || right.weight - left.weight,
+      )
       .slice(0, 4);
   }, [activeNodeId, links]);
   const zoomPercent = Math.round((1 / clamp(cameraRatio, MIN_CAMERA_RATIO, MAX_CAMERA_RATIO)) * 100);
@@ -610,7 +747,7 @@ function SocialGraphCanvas({
     <div className="grid h-full min-h-0 gap-3 xl:grid-cols-[minmax(0,1.35fr)_minmax(19rem,0.65fr)]">
       <PanelCard
         title="Social Graph"
-        description="ForceAtlas2 clusters weighted co-occurrence links. Drag pans, wheel zooms, and hover reveals local structure."
+        description="ForceAtlas2 clusters context-affinity links. Drag pans, wheel zooms, and hover reveals local structure."
         actions={
           <button
             type="button"
@@ -624,7 +761,11 @@ function SocialGraphCanvas({
         }
       >
         <div className="flex h-full min-h-0 flex-col gap-4">
-          <div className="grid gap-3 sm:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-6">
+            <SocialGraphPeopleCutoffControl
+              maxPeoplePerAsset={maxPeoplePerAsset}
+              onChangeMaxPeoplePerAsset={onChangeMaxPeoplePerAsset}
+            />
             <div className="rounded-3xl border border-[color:var(--pp-border)] bg-white/80 p-4">
               <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                 Persons
@@ -697,7 +838,8 @@ function SocialGraphCanvas({
                     )}
                   </span>
                   {` `}
-                  carries weight {focusedLink.weight}.
+                  carries weight {focusedLink.weight} with affinity{" "}
+                  {focusedLink.affinity.toFixed(3)}.
                 </>
               ) : detailPerson !== null ? (
                 <>
@@ -772,7 +914,8 @@ function SocialGraphCanvas({
                             {peerName}
                           </div>
                           <div className="mt-1 text-xs text-slate-500">
-                            Shared weight {link.weight}
+                            Shared weight {link.weight} | affinity{" "}
+                            {link.affinity.toFixed(3)}
                           </div>
                         </div>
                       );
@@ -837,8 +980,10 @@ export function SocialGraphView({
   state,
   error,
   graph,
+  maxPeoplePerAsset,
   selectedPersons,
   selectedTags,
+  onChangeMaxPeoplePerAsset,
   onTogglePerson,
 }: SocialGraphViewProps) {
   if (state === "loading") {
@@ -855,6 +1000,12 @@ export function SocialGraphView({
             The shell is requesting canonical co-occurrence data for the current
             time range and persistent person selection.
           </p>
+          <div className="mt-5 max-w-xl">
+            <SocialGraphPeopleCutoffControl
+              maxPeoplePerAsset={maxPeoplePerAsset}
+              onChangeMaxPeoplePerAsset={onChangeMaxPeoplePerAsset}
+            />
+          </div>
         </div>
       </section>
     );
@@ -873,6 +1024,12 @@ export function SocialGraphView({
           <p className="mt-3 text-sm text-rose-700">
             {error ?? "The social-graph request failed."}
           </p>
+          <div className="mt-5 max-w-xl">
+            <SocialGraphPeopleCutoffControl
+              maxPeoplePerAsset={maxPeoplePerAsset}
+              onChangeMaxPeoplePerAsset={onChangeMaxPeoplePerAsset}
+            />
+          </div>
         </div>
       </section>
     );
@@ -892,6 +1049,12 @@ export function SocialGraphView({
             No qualifying person co-occurrences were found for the active time
             range and supported persistent filters.
           </p>
+          <div className="mt-5 max-w-xl">
+            <SocialGraphPeopleCutoffControl
+              maxPeoplePerAsset={maxPeoplePerAsset}
+              onChangeMaxPeoplePerAsset={onChangeMaxPeoplePerAsset}
+            />
+          </div>
           {selectedTags.length > 0 ? (
             <p className="mt-3 text-sm text-amber-800">
               Tag filters remain selected globally but are not applied to the
@@ -906,7 +1069,9 @@ export function SocialGraphView({
   return (
     <SocialGraphCanvas
       graph={graph}
+      maxPeoplePerAsset={maxPeoplePerAsset}
       selectedPersons={selectedPersons}
+      onChangeMaxPeoplePerAsset={onChangeMaxPeoplePerAsset}
       onTogglePerson={onTogglePerson}
     />
   );

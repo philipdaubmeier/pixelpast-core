@@ -7,6 +7,7 @@ export type SocialGraphPersonProjection = {
 export type SocialGraphLinkProjection = {
   personIds: [string, string];
   weight: number;
+  affinity: number;
 };
 
 export type SocialGraphProjection = {

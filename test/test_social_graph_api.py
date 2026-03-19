@@ -34,9 +34,9 @@ def test_social_graph_endpoint_returns_stable_response_shape() -> None:
                 {"id": 3, "name": "Zoe", "occurrence_count": 1},
             ],
             "links": [
-                {"person_ids": [1, 2], "weight": 2},
-                {"person_ids": [1, 3], "weight": 1},
-                {"person_ids": [2, 3], "weight": 1},
+                {"person_ids": [1, 2], "weight": 2, "affinity": 0.5},
+                {"person_ids": [1, 3], "weight": 1, "affinity": 0.235702},
+                {"person_ids": [2, 3], "weight": 1, "affinity": 0.235702},
             ],
         }
     finally:
@@ -84,9 +84,38 @@ def test_social_graph_endpoint_supports_person_filter_over_qualifying_assets() -
                 {"id": 3, "name": "Zoe", "occurrence_count": 1},
             ],
             "links": [
-                {"person_ids": [1, 2], "weight": 2},
-                {"person_ids": [1, 3], "weight": 1},
-                {"person_ids": [2, 3], "weight": 1},
+                {"person_ids": [1, 2], "weight": 2, "affinity": 0.5},
+                {"person_ids": [1, 3], "weight": 1, "affinity": 0.235702},
+                {"person_ids": [2, 3], "weight": 1, "affinity": 0.235702},
+            ],
+        }
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_social_graph_endpoint_excludes_assets_above_people_cutoff() -> None:
+    workspace_root = _create_workspace_dir(prefix="social-graph-people-cutoff")
+    runtime = None
+    try:
+        runtime = _create_runtime(workspace_root=workspace_root)
+        _seed_large_group_social_graph_scenario(runtime=runtime)
+
+        app = create_app(settings=runtime.settings)
+        with TestClient(app) as client:
+            response = client.get(
+                "/api/social/graph?start=2024-01-02&end=2024-01-03&max_people_per_asset=10"
+            )
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "persons": [
+                {"id": 1, "name": "Person 1", "occurrence_count": 1},
+                {"id": 2, "name": "Person 2", "occurrence_count": 1},
+            ],
+            "links": [
+                {"person_ids": [1, 2], "weight": 1, "affinity": 0.333333},
             ],
         }
     finally:
@@ -109,7 +138,7 @@ def test_social_graph_endpoint_rejects_unsupported_persistent_filters() -> None:
         assert response.json() == {
             "detail": (
                 "unsupported social graph filters: tag_paths; "
-                "supported filters: start, end, person_ids"
+                "supported filters: start, end, person_ids, max_people_per_asset"
             )
         }
     finally:
@@ -167,6 +196,50 @@ def _seed_social_graph_scenario(*, runtime) -> None:
                 AssetPerson(asset_id=asset_two.id, person_id=ben.id),
                 AssetPerson(asset_id=asset_two.id, person_id=zoe.id),
                 AssetPerson(asset_id=asset_three.id, person_id=ben.id),
+            ]
+        )
+        session.commit()
+
+
+def _seed_large_group_social_graph_scenario(*, runtime) -> None:
+    with runtime.session_factory() as session:
+        people = [
+            Person(name=f"Person {index}", aliases=None, metadata_json=None)
+            for index in range(1, 12)
+        ]
+        session.add_all(people)
+        session.flush()
+
+        small_asset = Asset(
+            external_id="asset-small",
+            media_type="photo",
+            timestamp=datetime(2024, 1, 2, 9, 0, tzinfo=UTC),
+            summary=None,
+            latitude=None,
+            longitude=None,
+            creator_person_id=None,
+            metadata_json={},
+        )
+        large_asset = Asset(
+            external_id="asset-large",
+            media_type="photo",
+            timestamp=datetime(2024, 1, 3, 9, 0, tzinfo=UTC),
+            summary=None,
+            latitude=None,
+            longitude=None,
+            creator_person_id=None,
+            metadata_json={},
+        )
+        session.add_all([small_asset, large_asset])
+        session.flush()
+        session.add_all(
+            [
+                AssetPerson(asset_id=small_asset.id, person_id=people[0].id),
+                AssetPerson(asset_id=small_asset.id, person_id=people[1].id),
+            ]
+            + [
+                AssetPerson(asset_id=large_asset.id, person_id=person.id)
+                for person in people
             ]
         )
         session.commit()

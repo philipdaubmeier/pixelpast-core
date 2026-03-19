@@ -131,6 +131,7 @@ def build_exploration_grid_filters(
 def build_social_graph_filters(
     *,
     person_ids: list[int],
+    max_people_per_asset: int,
     tag_paths: list[str],
     location_geometry: str | None,
     distance_latitude: float | None,
@@ -160,8 +161,11 @@ def build_social_graph_filters(
             detail=(
                 "unsupported social graph filters: "
                 + ", ".join(sorted(unsupported_filters))
-                + "; supported filters: start, end, person_ids"
+                + "; supported filters: start, end, person_ids, max_people_per_asset"
             ),
         )
 
-    return SocialGraphFilters(person_ids=tuple(sorted(set(person_ids))))
+    return SocialGraphFilters(
+        person_ids=tuple(sorted(set(person_ids))),
+        max_people_per_asset=max_people_per_asset,
+    )
