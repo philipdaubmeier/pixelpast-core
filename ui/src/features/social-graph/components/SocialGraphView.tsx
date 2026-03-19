@@ -9,13 +9,13 @@ import {
 import {
   SigmaContainer,
   useCamera,
+  useLoadGraph,
   useRegisterEvents,
   useSetSettings,
   useSigma,
 } from "@react-sigma/core";
 import { useWorkerLayoutForceAtlas2 } from "@react-sigma/layout-forceatlas2";
 import { UndirectedGraph } from "graphology";
-import { EdgeLineProgram, NodeCircleProgram } from "sigma/rendering";
 import { PanelCard } from "../../../components/PanelCard";
 import type { PersonProjection, TagProjection } from "../../../projections/timeline";
 import type {
@@ -37,7 +37,6 @@ type SigmaNodeAttributes = {
   label: string;
   size: number;
   color: string;
-  type: "circle";
   x: number;
   y: number;
   occurrenceCount: number;
@@ -48,7 +47,6 @@ type SigmaEdgeAttributes = {
   label: string;
   size: number;
   color: string;
-  type: "line";
   weight: number;
   layoutWeight: number;
 };
@@ -73,15 +71,6 @@ type SocialGraphSigmaSceneProps = {
   setHoveredLinkId: Dispatch<SetStateAction<string | null>>;
   setFocusedNodeId: Dispatch<SetStateAction<string | null>>;
   setCameraRatio: Dispatch<SetStateAction<number>>;
-};
-
-type SigmaProgramRegistrar = {
-  registerEdgeProgram: (key: string, programClass: typeof EdgeLineProgram) => void;
-  registerNodeProgram: (
-    key: string,
-    programClass: typeof NodeCircleProgram,
-    hoverProgramClass?: typeof NodeCircleProgram,
-  ) => void;
 };
 
 const BASE_NODE_COLOR = "#f8f2e8";
@@ -123,9 +112,6 @@ const SIGMA_SETTINGS = {
   defaultNodeColor: BASE_NODE_COLOR,
   defaultNodeType: "circle",
   enableEdgeEvents: true,
-  edgeProgramClasses: {
-    line: EdgeLineProgram,
-  },
   hideEdgesOnMove: false,
   hideLabelsOnMove: false,
   labelColor: { color: "#1c2430" },
@@ -134,12 +120,6 @@ const SIGMA_SETTINGS = {
   labelWeight: "600",
   maxCameraRatio: MAX_CAMERA_RATIO,
   minCameraRatio: MIN_CAMERA_RATIO,
-  nodeHoverProgramClasses: {
-    circle: NodeCircleProgram,
-  },
-  nodeProgramClasses: {
-    circle: NodeCircleProgram,
-  },
   renderEdgeLabels: false,
   renderLabels: true,
   stagePadding: 36,
@@ -255,7 +235,6 @@ function createSigmaGraph(
         ),
         color: BASE_NODE_COLOR,
         occurrenceCount: person.occurrenceCount,
-        type: "circle",
         x: Math.cos(angle) * distance,
         y: Math.sin(angle) * distance,
         forceLabel: showAllNodeLabels,
@@ -281,7 +260,6 @@ function createSigmaGraph(
       label: buildLinkLabel(personNamesById, sourceId, targetId),
       size: getLinkStrokeWidth(link.weight, maxLinkWeight),
       color: `rgba(${BASE_EDGE_RGB}, ${edgeOpacity.toFixed(3)})`,
-      type: "line",
       weight: link.weight,
       layoutWeight: getLayoutEdgeWeight(link.weight, linkWeightScale),
     });
@@ -306,7 +284,7 @@ function SocialGraphSigmaScene({
   setCameraRatio,
 }: SocialGraphSigmaSceneProps) {
   const sigma = useSigma<SigmaNodeAttributes, SigmaEdgeAttributes>();
-  const sigmaProgramRegistrar = sigma as unknown as SigmaProgramRegistrar;
+  const loadGraph = useLoadGraph<SigmaNodeAttributes, SigmaEdgeAttributes>();
   const registerEvents = useRegisterEvents<
     SigmaNodeAttributes,
     SigmaEdgeAttributes
@@ -328,26 +306,8 @@ function SocialGraphSigmaScene({
   );
 
   useEffect(() => {
-    sigmaProgramRegistrar.registerNodeProgram(
-      "circle",
-      NodeCircleProgram,
-      NodeCircleProgram,
-    );
-    sigmaProgramRegistrar.registerEdgeProgram("line", EdgeLineProgram);
-    setSettings({
-      defaultEdgeType: "line",
-      defaultNodeType: "circle",
-      edgeProgramClasses: {
-        line: EdgeLineProgram,
-      },
-      nodeHoverProgramClasses: {
-        circle: NodeCircleProgram,
-      },
-      nodeProgramClasses: {
-        circle: NodeCircleProgram,
-      },
-    });
-  }, [setSettings, sigmaProgramRegistrar]);
+    loadGraph(sigmaGraph);
+  }, [loadGraph, sigmaGraph]);
 
   useEffect(() => {
     setCameraRatio(sigma.getCamera().getState().ratio);
@@ -701,7 +661,6 @@ function SocialGraphCanvas({
           <div className="subtle-grid relative min-h-[22rem] flex-1 overflow-hidden rounded-[2rem] border border-[color:var(--pp-border)] bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.95),_rgba(244,234,219,0.92)_54%,_rgba(229,214,190,0.95))]">
             <SigmaContainer
               className="h-full w-full"
-              graph={sigmaGraph}
               style={SIGMA_STYLE}
               settings={SIGMA_SETTINGS}
             >
