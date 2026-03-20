@@ -9,7 +9,16 @@ derive flow with a dedicated Spotify source-scoped `daily_view`.
 Unlike the photo connector, this ingest path creates canonical `Event` rows and
 does not create `Asset` rows. Unlike the calendar connector, one logical import
 source may span multiple JSON documents, while still representing one canonical
-Spotify account source.
+Spotify account source. However, like the calendar connector, the provided path
+may refer to either one json file, a directory that has to be searched recursively
+or a zip file that has to be traversed recursively and stream processed without
+extracting its contents to a temporary directory. The connector must only accept
+files with the pattern `Streaming_History_Audio*.json` (which must result in
+type `music_play` events) and the pattern `Streaming_History_Video*.json` (which
+must result in type `video_play` events accordingly). Any other found json files
+in the given directory or zip file that do not match these patterns must be
+ignored and clearly communicated via CLI output how many json files were skipped
+due to this reason.
 
 This task series must reuse the ingestion architecture already established by
 the existing connectors wherever that reuse is justified:
