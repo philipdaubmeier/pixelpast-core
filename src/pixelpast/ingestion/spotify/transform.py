@@ -11,20 +11,10 @@ from pixelpast.ingestion.spotify.contracts import (
     ParsedSpotifyStreamingHistoryDocument,
     ParsedSpotifyStreamRow,
     SpotifyAccountSourceCandidate,
+    SpotifyDocumentCandidate,
     SpotifyEventCandidate,
     SpotifyStreamingHistoryDocumentDescriptor,
 )
-
-_RAW_PAYLOAD_FIELDS = (
-    "username",
-    "platform",
-    "conn_country",
-    "spotify_track_uri",
-    "spotify_episode_uri",
-    "shuffle",
-    "skipped",
-)
-
 
 def parse_spotify_streaming_history_document(
     *,
@@ -64,7 +54,13 @@ def parse_loaded_spotify_streaming_history_document(
                 "Spotify streaming-history row must be a JSON object at index "
                 f"{row_index}: {document.descriptor.origin_label}"
             )
-        rows.append(_parse_stream_row(raw_row))
+        rows.append(
+            _parse_stream_row(
+                raw_row,
+                row_index=row_index,
+                document_origin_label=document.descriptor.origin_label,
+            )
+        )
 
     return ParsedSpotifyStreamingHistoryDocument(
         descriptor=document.descriptor,
@@ -82,8 +78,6 @@ def build_spotify_account_source_candidates(
 
     for document in documents:
         for row in document.rows:
-            if row.normalized_username is None:
-                continue
             external_id = build_spotify_source_external_id(row.normalized_username)
             origin_labels = origin_labels_by_username.setdefault(
                 row.normalized_username,
@@ -124,17 +118,53 @@ def build_spotify_event_candidates(
 ) -> tuple[SpotifyEventCandidate, ...]:
     """Build canonical Spotify event candidates for one parsed document."""
 
-    return tuple(_build_event_candidate(row) for row in document.rows)
+    return build_spotify_event_candidates_for_documents([document])
 
 
-def _parse_stream_row(raw_row: dict[str, Any]) -> ParsedSpotifyStreamRow:
+def build_spotify_event_candidates_for_documents(
+    documents: Iterable[ParsedSpotifyStreamingHistoryDocument],
+) -> tuple[SpotifyEventCandidate, ...]:
+    """Build deterministically ordered canonical event candidates across documents."""
+
+    sortable_rows: list[ParsedSpotifyStreamRow] = []
+    for document in documents:
+        sortable_rows.extend(document.rows)
+    return tuple(
+        _build_event_candidate(row)
+        for row in sorted(sortable_rows, key=_spotify_row_sort_key)
+    )
+
+
+def build_spotify_document_candidate(
+    document: ParsedSpotifyStreamingHistoryDocument,
+) -> SpotifyDocumentCandidate:
+    """Build one explicit document-level Spotify transform result."""
+
+    return SpotifyDocumentCandidate(
+        document=document.descriptor,
+        rows=document.rows,
+        source_candidates=build_spotify_account_source_candidates([document]),
+        events=build_spotify_event_candidates(document),
+    )
+
+
+def _parse_stream_row(
+    raw_row: dict[str, Any],
+    *,
+    row_index: int,
+    document_origin_label: str,
+) -> ParsedSpotifyStreamRow:
     timestamp_end = _parse_utc_timestamp(raw_row.get("ts"))
     ms_played = _parse_ms_played(raw_row.get("ms_played"))
-    username = _trimmed_string(raw_row.get("username"))
+    username = _parse_required_username(raw_row.get("username"))
+    normalized_username = _normalize_username(username)
+    assert normalized_username is not None
 
     return ParsedSpotifyStreamRow(
+        row_index=row_index,
+        document_origin_label=document_origin_label,
         username=username,
-        normalized_username=_normalize_username(username),
+        normalized_username=normalized_username,
         timestamp_end=timestamp_end,
         ms_played=ms_played,
         platform=_trimmed_string(raw_row.get("platform")),
@@ -151,18 +181,22 @@ def _parse_stream_row(raw_row: dict[str, Any]) -> ParsedSpotifyStreamRow:
         spotify_episode_uri=_trimmed_string(raw_row.get("spotify_episode_uri")),
         shuffle=_parse_optional_bool(raw_row.get("shuffle"), field_name="shuffle"),
         skipped=_parse_optional_bool(raw_row.get("skipped"), field_name="skipped"),
-        raw_payload={field: raw_row.get(field) for field in _RAW_PAYLOAD_FIELDS},
+        raw_payload=_build_raw_payload(
+            username=username,
+            platform=_trimmed_string(raw_row.get("platform")),
+            conn_country=_trimmed_string(raw_row.get("conn_country")),
+            spotify_track_uri=_trimmed_string(raw_row.get("spotify_track_uri")),
+            spotify_episode_uri=_trimmed_string(raw_row.get("spotify_episode_uri")),
+            shuffle=_parse_optional_bool(raw_row.get("shuffle"), field_name="shuffle"),
+            skipped=_parse_optional_bool(raw_row.get("skipped"), field_name="skipped"),
+        ),
     )
 
 
 def _build_event_candidate(row: ParsedSpotifyStreamRow) -> SpotifyEventCandidate:
     timestamp_start = row.timestamp_end - timedelta(milliseconds=row.ms_played)
     return SpotifyEventCandidate(
-        source_external_id=(
-            build_spotify_source_external_id(row.normalized_username)
-            if row.normalized_username is not None
-            else None
-        ),
+        source_external_id=build_spotify_source_external_id(row.normalized_username),
         external_event_id=None,
         type="music_play",
         timestamp_start=timestamp_start,
@@ -172,6 +206,27 @@ def _build_event_candidate(row: ParsedSpotifyStreamRow) -> SpotifyEventCandidate
         raw_payload=dict(row.raw_payload),
         derived_payload=None,
     )
+
+
+def _build_raw_payload(
+    *,
+    username: str,
+    platform: str | None,
+    conn_country: str | None,
+    spotify_track_uri: str | None,
+    spotify_episode_uri: str | None,
+    shuffle: bool | None,
+    skipped: bool | None,
+) -> dict[str, Any]:
+    return {
+        "username": username,
+        "platform": platform,
+        "conn_country": conn_country,
+        "spotify_track_uri": spotify_track_uri,
+        "spotify_episode_uri": spotify_episode_uri,
+        "shuffle": shuffle,
+        "skipped": skipped,
+    }
 
 
 def _build_title(row: ParsedSpotifyStreamRow) -> str:
@@ -217,6 +272,15 @@ def _parse_ms_played(value: object) -> int:
     return value
 
 
+def _parse_required_username(value: object) -> str:
+    username = _trimmed_string(value)
+    if username is None:
+        raise ValueError(
+            "Spotify streaming-history row is missing a valid 'username' value."
+        )
+    return username
+
+
 def _parse_optional_bool(value: object, *, field_name: str) -> bool | None:
     if value is None or isinstance(value, bool):
         return value
@@ -239,13 +303,24 @@ def _normalize_username(username: str | None) -> str | None:
     return normalized or None
 
 
+def _spotify_row_sort_key(row: ParsedSpotifyStreamRow) -> tuple[str, datetime, str, int]:
+    return (
+        row.normalized_username,
+        row.timestamp_end,
+        row.document_origin_label,
+        row.row_index,
+    )
+
+
 def build_spotify_source_external_id(normalized_username: str) -> str:
     return f"spotify:{normalized_username}"
 
 
 __all__ = [
     "build_spotify_account_source_candidates",
+    "build_spotify_document_candidate",
     "build_spotify_event_candidates",
+    "build_spotify_event_candidates_for_documents",
     "build_spotify_source_external_id",
     "parse_loaded_spotify_streaming_history_document",
     "parse_spotify_streaming_history_document",

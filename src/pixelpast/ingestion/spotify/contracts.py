@@ -57,8 +57,10 @@ class SpotifyStreamingHistoryDiscoveryResult:
 class ParsedSpotifyStreamRow:
     """One parsed Spotify streaming-history row prior to canonical mapping."""
 
-    username: str | None
-    normalized_username: str | None
+    row_index: int
+    document_origin_label: str
+    username: str
+    normalized_username: str
     timestamp_end: datetime
     ms_played: int
     platform: str | None
@@ -97,8 +99,8 @@ class SpotifyAccountSourceCandidate:
     """Canonical source candidate representing one Spotify account."""
 
     type: str
-    name: str | None
-    external_id: str | None
+    name: str
+    external_id: str
     config_json: dict[str, Any] | None
 
 
@@ -106,7 +108,7 @@ class SpotifyAccountSourceCandidate:
 class SpotifyEventCandidate:
     """Canonical event candidate derived from one Spotify stream row."""
 
-    source_external_id: str | None
+    source_external_id: str
     external_event_id: str | None
     type: str
     timestamp_start: datetime

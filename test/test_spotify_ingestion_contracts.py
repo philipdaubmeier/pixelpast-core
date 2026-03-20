@@ -10,12 +10,15 @@ from pixelpast.ingestion.spotify import (
     ParsedSpotifyStreamingHistoryDocument,
     ParsedSpotifyStreamRow,
     SpotifyAccountSourceCandidate,
+    SpotifyDocumentCandidate,
     SpotifyEventCandidate,
     SpotifyIngestionResult,
     SpotifyStreamingHistoryDocumentDescriptor,
     SpotifyTransformError,
     build_spotify_account_source_candidates,
+    build_spotify_document_candidate,
     build_spotify_event_candidates,
+    build_spotify_event_candidates_for_documents,
     parse_loaded_spotify_streaming_history_document,
     parse_spotify_streaming_history_document,
 )
@@ -38,6 +41,7 @@ def test_spotify_ingest_public_contract_imports_remain_stable() -> None:
     assert SpotifyAccountSourceCandidate is (
         spotify_contracts.SpotifyAccountSourceCandidate
     )
+    assert SpotifyDocumentCandidate is spotify_contracts.SpotifyDocumentCandidate
     assert SpotifyEventCandidate is spotify_contracts.SpotifyEventCandidate
     assert SpotifyTransformError is spotify_contracts.SpotifyTransformError
     assert SpotifyIngestionResult is spotify_contracts.SpotifyIngestionResult
@@ -58,6 +62,8 @@ def test_spotify_fixture_characterizes_track_and_episode_rows() -> None:
     assert len(parsed.rows) == 2
 
     track_row = parsed.rows[0]
+    assert track_row.row_index == 0
+    assert track_row.document_origin_label == fixture_path.resolve().as_posix()
     assert track_row.timestamp_end == datetime(2024, 2, 1, 7, 15, 10, tzinfo=UTC)
     assert track_row.ms_played == 14333
     assert track_row.master_metadata_album_artist_name == "Nova Echo"
@@ -115,6 +121,7 @@ def test_spotify_fixture_characterizes_track_and_episode_rows() -> None:
         55,
         tzinfo=UTC,
     )
+    assert event_candidates[1].raw_payload["username"] == "pixeluser"
 
 
 def test_spotify_title_remains_empty_when_artist_or_track_is_unavailable() -> None:
@@ -131,6 +138,98 @@ def test_spotify_title_remains_empty_when_artist_or_track_is_unavailable() -> No
 
     assert candidate.title == ""
     assert candidate.summary is None
+
+
+def test_spotify_document_candidate_makes_multi_username_documents_explicit() -> None:
+    descriptor = SpotifyStreamingHistoryDocumentDescriptor(path=Path("mixed.json"))
+    parsed = parse_spotify_streaming_history_document(
+        descriptor=descriptor,
+        text=(
+            "["
+            "{\"ts\":\"2024-02-01T08:00:00Z\",\"username\":\"SecondUser\","
+            "\"platform\":\"web\",\"ms_played\":2000,\"conn_country\":\"DE\","
+            "\"master_metadata_track_name\":\"Two\","
+            "\"master_metadata_album_artist_name\":\"Artist\","
+            "\"spotify_track_uri\":\"spotify:track:2\","
+            "\"episode_name\":null,\"episode_show_name\":null,"
+            "\"spotify_episode_uri\":null,\"shuffle\":null,\"skipped\":true},"
+            "{\"ts\":\"2024-02-01T07:15:10Z\",\"username\":\"PixelUser\","
+            "\"platform\":\"android\",\"ms_played\":1000,\"conn_country\":\"DE\","
+            "\"master_metadata_track_name\":\"One\","
+            "\"master_metadata_album_artist_name\":\"Artist\","
+            "\"spotify_track_uri\":\"spotify:track:1\","
+            "\"episode_name\":null,\"episode_show_name\":null,"
+            "\"spotify_episode_uri\":null,\"shuffle\":false,\"skipped\":false}"
+            "]"
+        ),
+    )
+
+    candidate = build_spotify_document_candidate(parsed)
+
+    assert candidate == SpotifyDocumentCandidate(
+        document=descriptor,
+        rows=parsed.rows,
+        source_candidates=(
+            SpotifyAccountSourceCandidate(
+                type="spotify",
+                name="pixeluser",
+                external_id="spotify:pixeluser",
+                config_json={
+                    "username": "pixeluser",
+                    "origin_labels": [descriptor.origin_label],
+                },
+            ),
+            SpotifyAccountSourceCandidate(
+                type="spotify",
+                name="seconduser",
+                external_id="spotify:seconduser",
+                config_json={
+                    "username": "seconduser",
+                    "origin_labels": [descriptor.origin_label],
+                },
+            ),
+        ),
+        events=(
+            SpotifyEventCandidate(
+                source_external_id="spotify:pixeluser",
+                external_event_id=None,
+                type="music_play",
+                timestamp_start=datetime(2024, 2, 1, 7, 15, 9, tzinfo=UTC),
+                timestamp_end=datetime(2024, 2, 1, 7, 15, 10, tzinfo=UTC),
+                title="Artist - One",
+                summary=None,
+                raw_payload={
+                    "username": "PixelUser",
+                    "platform": "android",
+                    "conn_country": "DE",
+                    "spotify_track_uri": "spotify:track:1",
+                    "spotify_episode_uri": None,
+                    "shuffle": False,
+                    "skipped": False,
+                },
+                derived_payload=None,
+            ),
+            SpotifyEventCandidate(
+                source_external_id="spotify:seconduser",
+                external_event_id=None,
+                type="music_play",
+                timestamp_start=datetime(2024, 2, 1, 7, 59, 58, tzinfo=UTC),
+                timestamp_end=datetime(2024, 2, 1, 8, 0, 0, tzinfo=UTC),
+                title="Artist - Two",
+                summary=None,
+                raw_payload={
+                    "username": "SecondUser",
+                    "platform": "web",
+                    "conn_country": "DE",
+                    "spotify_track_uri": "spotify:track:2",
+                    "spotify_episode_uri": None,
+                    "shuffle": None,
+                    "skipped": True,
+                },
+                derived_payload=None,
+            ),
+        ),
+    )
 
 
 def test_spotify_account_identity_groups_rows_by_normalized_username() -> None:
@@ -191,6 +290,56 @@ def test_spotify_account_identity_groups_rows_by_normalized_username() -> None:
     )
 
 
+def test_spotify_event_candidates_are_sorted_deterministically_across_documents() -> None:
+    later_path = Path("z-last.json")
+    earlier_path = Path("a-first.json")
+    later_document = parse_spotify_streaming_history_document(
+        descriptor=SpotifyStreamingHistoryDocumentDescriptor(path=later_path),
+        text=(
+            "["
+            "{\"ts\":\"2024-02-01T08:00:00Z\",\"username\":\"PixelUser\","
+            "\"platform\":\"web\",\"ms_played\":1000,\"conn_country\":\"DE\","
+            "\"master_metadata_track_name\":\"Later\","
+            "\"master_metadata_album_artist_name\":\"Artist\","
+            "\"spotify_track_uri\":\"spotify:track:later\","
+            "\"episode_name\":null,\"episode_show_name\":null,"
+            "\"spotify_episode_uri\":null,\"shuffle\":false,\"skipped\":false},"
+            "{\"ts\":\"2024-02-01T07:00:00Z\",\"username\":\"PixelUser\","
+            "\"platform\":\"web\",\"ms_played\":1000,\"conn_country\":\"DE\","
+            "\"master_metadata_track_name\":\"Second\","
+            "\"master_metadata_album_artist_name\":\"Artist\","
+            "\"spotify_track_uri\":\"spotify:track:second\","
+            "\"episode_name\":null,\"episode_show_name\":null,"
+            "\"spotify_episode_uri\":null,\"shuffle\":false,\"skipped\":false}"
+            "]"
+        ),
+    )
+    earlier_document = parse_spotify_streaming_history_document(
+        descriptor=SpotifyStreamingHistoryDocumentDescriptor(path=earlier_path),
+        text=(
+            "["
+            "{\"ts\":\"2024-02-01T07:00:00Z\",\"username\":\" pixeluser \","
+            "\"platform\":\"android\",\"ms_played\":1000,\"conn_country\":\"DE\","
+            "\"master_metadata_track_name\":\"First\","
+            "\"master_metadata_album_artist_name\":\"Artist\","
+            "\"spotify_track_uri\":\"spotify:track:first\","
+            "\"episode_name\":null,\"episode_show_name\":null,"
+            "\"spotify_episode_uri\":null,\"shuffle\":true,\"skipped\":false}"
+            "]"
+        ),
+    )
+
+    candidates = build_spotify_event_candidates_for_documents(
+        [later_document, earlier_document]
+    )
+
+    assert [candidate.title for candidate in candidates] == [
+        "Artist - First",
+        "Artist - Second",
+        "Artist - Later",
+    ]
+
+
 def test_spotify_parser_rejects_non_array_documents() -> None:
     descriptor = SpotifyStreamingHistoryDocumentDescriptor(path=Path("invalid.json"))
 
@@ -206,3 +355,29 @@ def test_spotify_parser_rejects_non_array_documents() -> None:
         )
     else:
         raise AssertionError("Expected non-array Spotify document to fail.")
+
+
+def test_spotify_parser_rejects_rows_without_username() -> None:
+    descriptor = SpotifyStreamingHistoryDocumentDescriptor(path=Path("invalid.json"))
+
+    try:
+        parse_spotify_streaming_history_document(
+            descriptor=descriptor,
+            text=(
+                "["
+                "{\"ts\":\"2024-02-01T07:15:10Z\",\"username\":\" \","
+                "\"platform\":\"android\",\"ms_played\":1000,\"conn_country\":\"DE\","
+                "\"master_metadata_track_name\":\"One\","
+                "\"master_metadata_album_artist_name\":\"Artist\","
+                "\"spotify_track_uri\":\"spotify:track:1\","
+                "\"episode_name\":null,\"episode_show_name\":null,"
+                "\"spotify_episode_uri\":null,\"shuffle\":false,\"skipped\":false}"
+                "]"
+            ),
+        )
+    except ValueError as error:
+        assert str(error) == (
+            "Spotify streaming-history row is missing a valid 'username' value."
+        )
+    else:
+        raise AssertionError("Expected blank Spotify username to fail.")
