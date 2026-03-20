@@ -407,6 +407,53 @@ def test_cli_ingest_spotify_zip_reports_skipped_json_files(monkeypatch) -> None:
         shutil.rmtree(workspace_root, ignore_errors=True)
 
 
+def test_cli_ingest_spotify_warns_when_export_has_no_usernames(monkeypatch) -> None:
+    database_path = _build_test_database_path("cli-spotify-missing-username")
+    workspace_root = Path("var") / f"cli-spotify-missing-user-{uuid4().hex}"
+    spotify_path = workspace_root / "Streaming_History_Audio_2024.json"
+    workspace_root.mkdir(parents=True, exist_ok=False)
+    spotify_path.write_text(
+        "\n".join(
+            [
+                "[",
+                "  {",
+                '    "ts": "2024-02-01T07:15:10Z",',
+                '    "username": "",',
+                '    "platform": "android",',
+                '    "ms_played": 1000,',
+                '    "conn_country": "DE",',
+                '    "master_metadata_track_name": "One",',
+                '    "master_metadata_album_artist_name": "Artist",',
+                '    "spotify_track_uri": "spotify:track:one",',
+                '    "episode_name": null,',
+                '    "episode_show_name": null,',
+                '    "spotify_episode_uri": null,',
+                '    "shuffle": false,',
+                '    "skipped": false',
+                "  }",
+                "]",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("PIXELPAST_DATABASE_URL", f"sqlite:///{database_path.as_posix()}")
+    monkeypatch.setenv("PIXELPAST_SPOTIFY_ROOT", str(spotify_path.resolve()))
+    get_settings.cache_clear()
+
+    try:
+        result = runner.invoke(app, ["ingest", "spotify"])
+
+        assert result.exit_code == 0
+        assert "[spotify] completed" in result.stdout
+        assert "warning: Spotify export rows are missing 'username'" in result.stderr
+        assert "inserted: 1" in result.stdout
+    finally:
+        get_settings.cache_clear()
+        if database_path.exists():
+            database_path.unlink()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
 def test_cli_ingest_calendar_reports_event_counts_in_terminal_summary(
     monkeypatch,
 ) -> None:

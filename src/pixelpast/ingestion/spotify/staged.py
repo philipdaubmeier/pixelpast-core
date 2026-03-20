@@ -76,6 +76,7 @@ class SpotifyStagedIngestionStrategy:
         self._prepared = False
         self._candidate_by_origin_label: dict[str, SpotifyAccountCandidate | None] = {}
         self._error_by_origin_label: dict[str, Exception] = {}
+        self.warning_messages: tuple[str, ...] = ()
 
     def discover_units(
         self,
@@ -86,6 +87,7 @@ class SpotifyStagedIngestionStrategy:
         self._prepared = False
         self._candidate_by_origin_label.clear()
         self._error_by_origin_label.clear()
+        self.warning_messages = ()
         discovery_result = self._connector.discover_documents(
             root,
             on_document_discovered=on_unit_discovered,
@@ -149,6 +151,7 @@ class SpotifyStagedIngestionStrategy:
             error_count=len(transform_errors),
             status=status,
             skipped_json_file_count=self.skipped_json_file_count,
+            warning_messages=self.warning_messages,
             transform_errors=tuple(transform_errors),
         )
 
@@ -164,17 +167,26 @@ class SpotifyStagedIngestionStrategy:
         parsed_documents: list[ParsedSpotifyStreamingHistoryDocument] = []
         for unit in units:
             try:
-                parsed_documents.append(
-                    self._connector.parse_document(
-                        document=unit,
-                        text=fetched_payloads[unit],
+                parsed_document = self._connector.parse_document(
+                    document=unit,
+                    text=fetched_payloads[unit],
+                )
+                parsed_documents.append(parsed_document)
+                self.warning_messages = tuple(
+                    sorted(
+                        {
+                            *self.warning_messages,
+                            *parsed_document.warning_messages,
+                        }
                     )
                 )
             except Exception as error:
                 self._error_by_origin_label[unit.origin_label] = error
 
         for account_group in group_spotify_documents_by_account(parsed_documents):
-            representative_origin_label = account_group.documents[0].descriptor.origin_label
+            representative_origin_label = (
+                account_group.documents[0].descriptor.origin_label
+            )
             self._candidate_by_origin_label[representative_origin_label] = (
                 self._connector.build_account_candidate(account_group=account_group)
             )

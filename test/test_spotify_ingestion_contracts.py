@@ -386,7 +386,71 @@ def test_spotify_parser_rejects_non_array_documents() -> None:
         raise AssertionError("Expected non-array Spotify document to fail.")
 
 
-def test_spotify_parser_rejects_rows_without_username() -> None:
+def test_spotify_parser_infers_missing_row_username_from_single_account_document() -> (
+    None
+):
+    descriptor = SpotifyStreamingHistoryDocumentDescriptor(path=Path("invalid.json"))
+
+    parsed = parse_spotify_streaming_history_document(
+        descriptor=descriptor,
+        text=(
+            "["
+            '{"ts":"2024-02-01T07:15:10Z","username":"PixelUser",'
+            '"platform":"android","ms_played":1000,"conn_country":"DE",'
+            '"master_metadata_track_name":"One",'
+            '"master_metadata_album_artist_name":"Artist",'
+            '"spotify_track_uri":"spotify:track:1",'
+            '"episode_name":null,"episode_show_name":null,'
+            '"spotify_episode_uri":null,"shuffle":false,"skipped":false},'
+            '{"ts":"2024-02-01T07:16:10Z","username":" ",'
+            '"platform":"android","ms_played":1000,"conn_country":"DE",'
+            '"master_metadata_track_name":"Two",'
+            '"master_metadata_album_artist_name":"Artist",'
+            '"spotify_track_uri":"spotify:track:2",'
+            '"episode_name":null,"episode_show_name":null,'
+            '"spotify_episode_uri":null,"shuffle":false,"skipped":false}'
+            "]"
+        ),
+    )
+
+    assert parsed.rows[0].username == "PixelUser"
+    assert parsed.rows[0].normalized_username == "pixeluser"
+    assert parsed.rows[1].username is None
+    assert parsed.rows[1].normalized_username == "pixeluser"
+    assert parsed.warning_messages == ()
+    assert "username" not in build_spotify_event_candidates(parsed)[1].raw_payload
+
+
+def test_spotify_parser_uses_fallback_identity_when_document_has_no_usernames() -> None:
+    descriptor = SpotifyStreamingHistoryDocumentDescriptor(path=Path("invalid.json"))
+
+    parsed = parse_spotify_streaming_history_document(
+        descriptor=descriptor,
+        text=(
+            "["
+            '{"ts":"2024-02-01T07:15:10Z","username":" ",'
+            '"platform":"android","ms_played":1000,"conn_country":"DE",'
+            '"master_metadata_track_name":"One",'
+            '"master_metadata_album_artist_name":"Artist",'
+            '"spotify_track_uri":"spotify:track:1",'
+            '"episode_name":null,"episode_show_name":null,'
+            '"spotify_episode_uri":null,"shuffle":false,"skipped":false}'
+            "]"
+        ),
+    )
+
+    assert parsed.rows[0].username is None
+    assert parsed.rows[0].normalized_username == "missing-username"
+    assert parsed.warning_messages == (
+        "Spotify export rows are missing 'username' in all rows for "
+        f"{descriptor.origin_label}; using fallback account identity "
+        "'spotify:missing-username'.",
+    )
+    assert "username" not in build_spotify_event_candidates(parsed)[0].raw_payload
+
+
+def test_spotify_parser_rejects_ambiguous_missing_username_in_multi_account_document(
+) -> None:
     descriptor = SpotifyStreamingHistoryDocumentDescriptor(path=Path("invalid.json"))
 
     try:
@@ -394,11 +458,25 @@ def test_spotify_parser_rejects_rows_without_username() -> None:
             descriptor=descriptor,
             text=(
                 "["
-                '{"ts":"2024-02-01T07:15:10Z","username":" ",'
+                '{"ts":"2024-02-01T07:15:10Z","username":"PixelUser",'
                 '"platform":"android","ms_played":1000,"conn_country":"DE",'
                 '"master_metadata_track_name":"One",'
                 '"master_metadata_album_artist_name":"Artist",'
                 '"spotify_track_uri":"spotify:track:1",'
+                '"episode_name":null,"episode_show_name":null,'
+                '"spotify_episode_uri":null,"shuffle":false,"skipped":false},'
+                '{"ts":"2024-02-01T07:16:10Z","username":"SecondUser",'
+                '"platform":"android","ms_played":1000,"conn_country":"DE",'
+                '"master_metadata_track_name":"Two",'
+                '"master_metadata_album_artist_name":"Artist",'
+                '"spotify_track_uri":"spotify:track:2",'
+                '"episode_name":null,"episode_show_name":null,'
+                '"spotify_episode_uri":null,"shuffle":false,"skipped":false},'
+                '{"ts":"2024-02-01T07:17:10Z","username":" ",'
+                '"platform":"android","ms_played":1000,"conn_country":"DE",'
+                '"master_metadata_track_name":"Three",'
+                '"master_metadata_album_artist_name":"Artist",'
+                '"spotify_track_uri":"spotify:track:3",'
                 '"episode_name":null,"episode_show_name":null,'
                 '"spotify_episode_uri":null,"shuffle":false,"skipped":false}'
                 "]"
@@ -406,7 +484,8 @@ def test_spotify_parser_rejects_rows_without_username() -> None:
         )
     except ValueError as error:
         assert str(error) == (
-            "Spotify streaming-history row is missing a valid 'username' value."
+            "Spotify streaming-history document contains rows without 'username' in "
+            f"a multi-account context: {descriptor.origin_label}"
         )
     else:
-        raise AssertionError("Expected blank Spotify username to fail.")
+        raise AssertionError("Expected ambiguous username inference to fail.")

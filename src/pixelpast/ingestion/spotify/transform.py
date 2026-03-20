@@ -19,6 +19,7 @@ from pixelpast.ingestion.spotify.contracts import (
 
 _AUDIO_FILE_PREFIX = "streaming_history_audio"
 _VIDEO_FILE_PREFIX = "streaming_history_video"
+_MISSING_USERNAME_FALLBACK = "missing-username"
 
 
 def parse_spotify_streaming_history_document(
@@ -67,9 +68,14 @@ def parse_loaded_spotify_streaming_history_document(
             )
         )
 
+    resolved_rows, warning_messages = _resolve_document_usernames(
+        rows=rows,
+        document_origin_label=document.descriptor.origin_label,
+    )
     return ParsedSpotifyStreamingHistoryDocument(
         descriptor=document.descriptor,
-        rows=tuple(rows),
+        rows=resolved_rows,
+        warning_messages=warning_messages,
     )
 
 
@@ -161,9 +167,8 @@ def _parse_stream_row(
 ) -> ParsedSpotifyStreamRow:
     timestamp_end = _parse_utc_timestamp(raw_row.get("ts"))
     ms_played = _parse_ms_played(raw_row.get("ms_played"))
-    username = _parse_required_username(raw_row.get("username"))
-    normalized_username = _normalize_username(username)
-    assert normalized_username is not None
+    username = _parse_optional_username(raw_row.get("username"))
+    normalized_username = _normalize_username(username) or ""
 
     return ParsedSpotifyStreamRow(
         row_index=row_index,
@@ -215,7 +220,7 @@ def _build_event_candidate(row: ParsedSpotifyStreamRow) -> SpotifyEventCandidate
 
 def _build_raw_payload(
     *,
-    username: str,
+    username: str | None,
     platform: str | None,
     conn_country: str | None,
     spotify_track_uri: str | None,
@@ -223,8 +228,7 @@ def _build_raw_payload(
     shuffle: bool | None,
     skipped: bool | None,
 ) -> dict[str, Any]:
-    return {
-        "username": username,
+    payload: dict[str, Any] = {
         "platform": platform,
         "conn_country": conn_country,
         "spotify_track_uri": spotify_track_uri,
@@ -232,6 +236,9 @@ def _build_raw_payload(
         "shuffle": shuffle,
         "skipped": skipped,
     }
+    if username is not None:
+        payload["username"] = username
+    return payload
 
 
 def _build_title(row: ParsedSpotifyStreamRow) -> str:
@@ -278,13 +285,8 @@ def _parse_ms_played(value: object) -> int:
     return value
 
 
-def _parse_required_username(value: object) -> str:
-    username = _trimmed_string(value)
-    if username is None:
-        raise ValueError(
-            "Spotify streaming-history row is missing a valid 'username' value."
-        )
-    return username
+def _parse_optional_username(value: object) -> str | None:
+    return _trimmed_string(value)
 
 
 def _parse_optional_bool(value: object, *, field_name: str) -> bool | None:
@@ -307,6 +309,88 @@ def _normalize_username(username: str | None) -> str | None:
         return None
     normalized = username.strip().casefold()
     return normalized or None
+
+
+def _resolve_document_usernames(
+    *,
+    rows: list[ParsedSpotifyStreamRow],
+    document_origin_label: str,
+) -> tuple[tuple[ParsedSpotifyStreamRow, ...], tuple[str, ...]]:
+    resolved_usernames = {
+        row.normalized_username for row in rows if row.normalized_username
+    }
+    if not rows:
+        return (), ()
+
+    if len(resolved_usernames) == 0:
+        return (
+            tuple(
+                ParsedSpotifyStreamRow(
+                    row_index=row.row_index,
+                    document_origin_label=row.document_origin_label,
+                    username=None,
+                    normalized_username=_MISSING_USERNAME_FALLBACK,
+                    timestamp_end=row.timestamp_end,
+                    ms_played=row.ms_played,
+                    platform=row.platform,
+                    conn_country=row.conn_country,
+                    master_metadata_track_name=row.master_metadata_track_name,
+                    master_metadata_album_artist_name=(
+                        row.master_metadata_album_artist_name
+                    ),
+                    spotify_track_uri=row.spotify_track_uri,
+                    episode_name=row.episode_name,
+                    episode_show_name=row.episode_show_name,
+                    spotify_episode_uri=row.spotify_episode_uri,
+                    shuffle=row.shuffle,
+                    skipped=row.skipped,
+                    raw_payload=dict(row.raw_payload),
+                )
+                for row in rows
+            ),
+            (
+                "Spotify export rows are missing 'username' in all rows for "
+                f"{document_origin_label}; using fallback account identity "
+                "'spotify:missing-username'.",
+            ),
+        )
+
+    if len(resolved_usernames) > 1 and any(
+        not row.normalized_username for row in rows
+    ):
+        raise ValueError(
+            "Spotify streaming-history document contains rows without 'username' in "
+            f"a multi-account context: {document_origin_label}"
+        )
+
+    inferred_normalized_username = sorted(resolved_usernames)[0]
+    return (
+        tuple(
+            row
+            if row.normalized_username
+            else ParsedSpotifyStreamRow(
+                row_index=row.row_index,
+                document_origin_label=row.document_origin_label,
+                username=None,
+                normalized_username=inferred_normalized_username,
+                timestamp_end=row.timestamp_end,
+                ms_played=row.ms_played,
+                platform=row.platform,
+                conn_country=row.conn_country,
+                master_metadata_track_name=row.master_metadata_track_name,
+                master_metadata_album_artist_name=row.master_metadata_album_artist_name,
+                spotify_track_uri=row.spotify_track_uri,
+                episode_name=row.episode_name,
+                episode_show_name=row.episode_show_name,
+                spotify_episode_uri=row.spotify_episode_uri,
+                shuffle=row.shuffle,
+                skipped=row.skipped,
+                raw_payload=dict(row.raw_payload),
+            )
+            for row in rows
+        ),
+        (),
+    )
 
 
 def _spotify_row_sort_key(

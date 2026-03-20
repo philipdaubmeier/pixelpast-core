@@ -495,6 +495,51 @@ def test_spotify_ingestion_reads_zip_backed_fixture_and_maps_video_events() -> N
         shutil.rmtree(workspace_root, ignore_errors=True)
 
 
+def test_spotify_ingestion_warns_and_uses_fallback_identity_without_usernames() -> None:
+    runtime = _create_runtime()
+    workspace_root = _create_workspace_root()
+    document = workspace_root / "Streaming_History_Audio_2024.json"
+    document.write_text(
+        _build_spotify_document(
+            [
+                _spotify_row(
+                    ts="2024-02-01T07:15:10Z",
+                    username="",
+                    ms_played=1000,
+                    track="One",
+                )
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    try:
+        result = SpotifyIngestionService().ingest(runtime=runtime, root=document)
+
+        with runtime.session_factory() as session:
+            source = session.execute(select(Source)).scalar_one()
+            event = session.execute(select(Event)).scalar_one()
+
+        assert result.status == "completed"
+        assert result.warning_messages == (
+            "Spotify export rows are missing 'username' in all rows for "
+            f"{document.resolve().as_posix()}; using fallback account identity "
+            "'spotify:missing-username'.",
+        )
+        assert source.external_id == "spotify:missing-username"
+        assert event.raw_payload == {
+            "platform": "android",
+            "conn_country": "DE",
+            "spotify_track_uri": "spotify:track:one",
+            "spotify_episode_uri": None,
+            "shuffle": False,
+            "skipped": False,
+        }
+    finally:
+        runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
 def test_spotify_ingestion_emits_shared_progress_snapshots() -> None:
     runtime = _create_runtime()
     workspace_root = _create_workspace_root()

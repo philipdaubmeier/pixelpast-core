@@ -59,7 +59,7 @@ class ParsedSpotifyStreamRow:
 
     row_index: int
     document_origin_label: str
-    username: str
+    username: str | None
     normalized_username: str
     timestamp_end: datetime
     ms_played: int
@@ -82,6 +82,7 @@ class ParsedSpotifyStreamingHistoryDocument:
 
     descriptor: SpotifyStreamingHistoryDocumentDescriptor
     rows: tuple[ParsedSpotifyStreamRow, ...]
+    warning_messages: tuple[str, ...] = ()
 
 
 @dataclass(slots=True, frozen=True)
@@ -158,6 +159,7 @@ class SpotifyIngestionResult:
     error_count: int
     status: str
     skipped_json_file_count: int = 0
+    warning_messages: tuple[str, ...] = ()
     transform_errors: tuple[SpotifyTransformError, ...] = ()
 
 

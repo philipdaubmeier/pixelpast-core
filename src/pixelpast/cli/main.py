@@ -530,6 +530,7 @@ def _execute_operation(
         try:
             result = runner(runtime)
             _print_result_errors(result)
+            _print_result_warnings(result)
             _print_result_metadata(result)
         except ValueError as error:
             logger.error(
@@ -622,6 +623,22 @@ def _print_result_metadata(result: object | None) -> None:
     skipped_json_file_count = getattr(result, "skipped_json_file_count", None)
     if skipped_json_file_count is not None:
         typer.echo(f"skipped_json_files: {skipped_json_file_count}")
+
+
+def _print_result_warnings(result: object | None) -> None:
+    """Write non-fatal operation warnings to the CLI."""
+
+    if result is None:
+        return
+
+    warning_messages = getattr(result, "warning_messages", ())
+    for warning_message in warning_messages:
+        if warning_message:
+            typer.secho(
+                f"warning: {warning_message}",
+                fg=typer.colors.YELLOW,
+                err=True,
+            )
 
 
 if __name__ == "__main__":
