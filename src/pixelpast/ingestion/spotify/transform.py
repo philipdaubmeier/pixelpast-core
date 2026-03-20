@@ -84,7 +84,7 @@ def build_spotify_account_source_candidates(
         for row in document.rows:
             if row.normalized_username is None:
                 continue
-            external_id = _build_source_external_id(row.normalized_username)
+            external_id = build_spotify_source_external_id(row.normalized_username)
             origin_labels = origin_labels_by_username.setdefault(
                 row.normalized_username,
                 set(),
@@ -159,7 +159,7 @@ def _build_event_candidate(row: ParsedSpotifyStreamRow) -> SpotifyEventCandidate
     timestamp_start = row.timestamp_end - timedelta(milliseconds=row.ms_played)
     return SpotifyEventCandidate(
         source_external_id=(
-            _build_source_external_id(row.normalized_username)
+            build_spotify_source_external_id(row.normalized_username)
             if row.normalized_username is not None
             else None
         ),
@@ -239,13 +239,14 @@ def _normalize_username(username: str | None) -> str | None:
     return normalized or None
 
 
-def _build_source_external_id(normalized_username: str) -> str:
+def build_spotify_source_external_id(normalized_username: str) -> str:
     return f"spotify:{normalized_username}"
 
 
 __all__ = [
     "build_spotify_account_source_candidates",
     "build_spotify_event_candidates",
+    "build_spotify_source_external_id",
     "parse_loaded_spotify_streaming_history_document",
     "parse_spotify_streaming_history_document",
 ]

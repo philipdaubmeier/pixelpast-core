@@ -42,6 +42,10 @@ class Settings(BaseSettings):
         default=None,
         description="Root path for the calendar ingestion connector.",
     )
+    spotify_root: Path | None = Field(
+        default=None,
+        description="Root path for the Spotify ingestion connector.",
+    )
     workdays_vacation_root: Path | None = Field(
         default=None,
         description="Root path for the workdays-vacation ingestion connector.",

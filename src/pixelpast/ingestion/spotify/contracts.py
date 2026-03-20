@@ -46,6 +46,14 @@ class LoadedSpotifyStreamingHistoryDocument:
 
 
 @dataclass(slots=True, frozen=True)
+class SpotifyStreamingHistoryDiscoveryResult:
+    """Deterministic discovery result for one Spotify intake root."""
+
+    documents: tuple[SpotifyStreamingHistoryDocumentDescriptor, ...]
+    skipped_json_file_count: int = 0
+
+
+@dataclass(slots=True, frozen=True)
 class ParsedSpotifyStreamRow:
     """One parsed Spotify streaming-history row prior to canonical mapping."""
 
@@ -71,6 +79,16 @@ class ParsedSpotifyStreamingHistoryDocument:
     """Parsed Spotify document payload and its normalized rows."""
 
     descriptor: SpotifyStreamingHistoryDocumentDescriptor
+    rows: tuple[ParsedSpotifyStreamRow, ...]
+
+
+@dataclass(slots=True, frozen=True)
+class SpotifyAccountDocumentGroup:
+    """All parsed rows that belong to one normalized Spotify username."""
+
+    normalized_username: str
+    source_external_id: str
+    documents: tuple[ParsedSpotifyStreamingHistoryDocument, ...]
     rows: tuple[ParsedSpotifyStreamRow, ...]
 
 
@@ -133,6 +151,8 @@ class SpotifyIngestionResult:
 
 __all__ = [
     "LoadedSpotifyStreamingHistoryDocument",
+    "SpotifyAccountDocumentGroup",
+    "SpotifyStreamingHistoryDiscoveryResult",
     "ParsedSpotifyStreamingHistoryDocument",
     "ParsedSpotifyStreamRow",
     "SpotifyAccountSourceCandidate",
