@@ -1,0 +1,25 @@
+[
+  {
+    "ts": "2024-02-02T11:30:00Z",
+    "username": "PixelUser",
+    "platform": "ios",
+    "ms_played": 60000,
+    "conn_country": "DE",
+    "ip_addr_decrypted": "192.0.2.12",
+    "user_agent_decrypted": "Spotify/8.9",
+    "master_metadata_track_name": "  ",
+    "master_metadata_album_artist_name": "Nova Echo",
+    "master_metadata_album_album_name": "Night Drive",
+    "spotify_track_uri": "spotify:track:fedcba0987654321",
+    "episode_name": null,
+    "episode_show_name": null,
+    "spotify_episode_uri": null,
+    "reason_start": "clickrow",
+    "reason_end": "fwdbtn",
+    "shuffle": true,
+    "skipped": true,
+    "offline": false,
+    "offline_timestamp": 0,
+    "incognito_mode": false
+  }
+]
