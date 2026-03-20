@@ -108,7 +108,7 @@ class StagedIngestionStrategy(
         root: Path,
         unit: DiscoveredUnitT,
         fetched_payloads: FetchedPayloadT,
-    ) -> CandidateT: ...
+    ) -> CandidateT | None: ...
 
     def build_transform_error(
         self,
@@ -242,13 +242,13 @@ class StagedIngestionRunner(
         transform_errors: list[TransformErrorT] = []
         for unit in discovered_units:
             try:
-                candidates.append(
-                    self._strategy.build_candidate(
-                        root=resolved_root,
-                        unit=unit,
-                        fetched_payloads=fetched_payloads,
-                    )
+                candidate = self._strategy.build_candidate(
+                    root=resolved_root,
+                    unit=unit,
+                    fetched_payloads=fetched_payloads,
                 )
+                if candidate is not None:
+                    candidates.append(candidate)
                 progress.mark_analysis_success()
             except Exception as error:
                 transform_error = self._strategy.build_transform_error(

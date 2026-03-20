@@ -105,6 +105,16 @@ class SpotifyAccountSourceCandidate:
 
 
 @dataclass(slots=True, frozen=True)
+class SpotifyAccountCandidate:
+    """One persistable Spotify account replacement set."""
+
+    normalized_username: str
+    documents: tuple[SpotifyStreamingHistoryDocumentDescriptor, ...]
+    source: SpotifyAccountSourceCandidate
+    events: tuple["SpotifyEventCandidate", ...]
+
+
+@dataclass(slots=True, frozen=True)
 class SpotifyEventCandidate:
     """Canonical event candidate derived from one Spotify stream row."""
 
@@ -153,6 +163,7 @@ class SpotifyIngestionResult:
 
 __all__ = [
     "LoadedSpotifyStreamingHistoryDocument",
+    "SpotifyAccountCandidate",
     "SpotifyAccountDocumentGroup",
     "SpotifyStreamingHistoryDiscoveryResult",
     "ParsedSpotifyStreamingHistoryDocument",

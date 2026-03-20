@@ -9,6 +9,7 @@ from pixelpast.ingestion.spotify import (
     LoadedSpotifyStreamingHistoryDocument,
     ParsedSpotifyStreamingHistoryDocument,
     ParsedSpotifyStreamRow,
+    SpotifyAccountCandidate,
     SpotifyAccountSourceCandidate,
     SpotifyDocumentCandidate,
     SpotifyEventCandidate,
@@ -38,6 +39,7 @@ def test_spotify_ingest_public_contract_imports_remain_stable() -> None:
         spotify_contracts.ParsedSpotifyStreamingHistoryDocument
     )
     assert ParsedSpotifyStreamRow is spotify_contracts.ParsedSpotifyStreamRow
+    assert SpotifyAccountCandidate is spotify_contracts.SpotifyAccountCandidate
     assert SpotifyAccountSourceCandidate is (
         spotify_contracts.SpotifyAccountSourceCandidate
     )

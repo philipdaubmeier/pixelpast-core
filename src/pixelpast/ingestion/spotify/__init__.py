@@ -1,7 +1,9 @@
 """Spotify ingestion contracts and transform helpers."""
 
+from pixelpast.ingestion.spotify.connector import SpotifyConnector
 from pixelpast.ingestion.spotify.contracts import (
     LoadedSpotifyStreamingHistoryDocument,
+    SpotifyAccountCandidate,
     SpotifyAccountDocumentGroup,
     ParsedSpotifyStreamingHistoryDocument,
     ParsedSpotifyStreamRow,
@@ -18,6 +20,21 @@ from pixelpast.ingestion.spotify.discovery import (
     group_spotify_documents_by_account,
     resolve_spotify_ingestion_root,
 )
+from pixelpast.ingestion.spotify.fetch import (
+    SpotifyDocumentLoadProgress,
+    SpotifyStreamingHistoryFetcher,
+)
+from pixelpast.ingestion.spotify.lifecycle import SpotifyIngestionRunCoordinator
+from pixelpast.ingestion.spotify.persist import SpotifyAccountPersister
+from pixelpast.ingestion.spotify.progress import (
+    SpotifyIngestionProgressSnapshot,
+    SpotifyIngestionProgressTracker,
+)
+from pixelpast.ingestion.spotify.service import SpotifyIngestionService
+from pixelpast.ingestion.spotify.staged import (
+    SpotifyIngestionPersistenceScope,
+    SpotifyStagedIngestionStrategy,
+)
 from pixelpast.ingestion.spotify.transform import (
     build_spotify_account_source_candidates,
     build_spotify_document_candidate,
@@ -29,18 +46,29 @@ from pixelpast.ingestion.spotify.transform import (
 )
 
 __all__ = [
+    "SpotifyAccountCandidate",
     "LoadedSpotifyStreamingHistoryDocument",
     "SpotifyAccountDocumentGroup",
+    "SpotifyAccountPersister",
+    "SpotifyConnector",
     "ParsedSpotifyStreamingHistoryDocument",
     "ParsedSpotifyStreamRow",
     "SpotifyAccountSourceCandidate",
+    "SpotifyDocumentLoadProgress",
     "SpotifyDocumentCandidate",
     "SpotifyEventCandidate",
     "SpotifyIngestionResult",
+    "SpotifyIngestionPersistenceScope",
+    "SpotifyIngestionProgressSnapshot",
+    "SpotifyIngestionProgressTracker",
+    "SpotifyIngestionRunCoordinator",
+    "SpotifyIngestionService",
+    "SpotifyStagedIngestionStrategy",
     "SpotifyStreamingHistoryDiscoveryResult",
     "SpotifyStreamingHistoryDocumentDescriptor",
     "SpotifyTransformError",
     "SpotifyStreamingHistoryDocumentDiscoverer",
+    "SpotifyStreamingHistoryFetcher",
     "build_spotify_account_source_candidates",
     "build_spotify_document_candidate",
     "build_spotify_event_candidates",
