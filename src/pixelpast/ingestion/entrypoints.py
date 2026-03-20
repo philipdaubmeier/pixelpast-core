@@ -11,6 +11,10 @@ from pixelpast.ingestion.photos.service import (
     PhotoIngestionResult,
     PhotoIngestionService,
 )
+from pixelpast.ingestion.spotify.service import (
+    SpotifyIngestionResult,
+    SpotifyIngestionService,
+)
 from pixelpast.ingestion.workdays_vacation.service import (
     WorkdaysVacationIngestionResult,
     WorkdaysVacationIngestionService,
@@ -20,7 +24,9 @@ from pixelpast.shared.runtime import RuntimeContext
 
 logger = logging.getLogger(__name__)
 
-_SUPPORTED_SOURCES = frozenset({"calendar", "photos", "workdays_vacation"})
+_SUPPORTED_SOURCES = frozenset(
+    {"calendar", "photos", "spotify", "workdays_vacation"}
+)
 
 
 def list_supported_ingest_sources() -> tuple[str, ...]:
@@ -34,7 +40,12 @@ def run_ingest_source(
     source: str,
     runtime: RuntimeContext,
     progress_callback: Callable[[JobProgressSnapshot], None] | None = None,
-) -> PhotoIngestionResult | CalendarIngestionResult | WorkdaysVacationIngestionResult:
+) -> (
+    PhotoIngestionResult
+    | CalendarIngestionResult
+    | SpotifyIngestionResult
+    | WorkdaysVacationIngestionResult
+):
     """Run an ingestion entrypoint for a configured source."""
 
     if source not in _SUPPORTED_SOURCES:
@@ -85,6 +96,27 @@ def run_ingest_source(
                 "processed_document_count": result.processed_document_count,
                 "persisted_source_count": result.persisted_source_count,
                 "persisted_event_count": result.persisted_event_count,
+                "error_count": result.error_count,
+                "status": result.status,
+                "run_id": result.run_id,
+            },
+        )
+        return result
+
+    if source == "spotify":
+        result = SpotifyIngestionService().ingest(
+            runtime=runtime,
+            progress_callback=progress_callback,
+        )
+        logger.info(
+            "ingest completed",
+            extra={
+                "source": source,
+                "database_url": runtime.settings.database_url,
+                "processed_document_count": result.processed_document_count,
+                "persisted_source_count": result.persisted_source_count,
+                "persisted_event_count": result.persisted_event_count,
+                "skipped_json_file_count": result.skipped_json_file_count,
                 "error_count": result.error_count,
                 "status": result.status,
                 "run_id": result.run_id,

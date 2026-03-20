@@ -284,6 +284,60 @@ def test_cli_ingest_calendar_subprocess_completes_with_zip_fixture() -> None:
         shutil.rmtree(workspace_root, ignore_errors=True)
 
 
+def test_cli_ingest_spotify_persists_events_from_fixture(monkeypatch) -> None:
+    database_path = _build_test_database_path("cli-spotify-ingest")
+    workspace_root = Path("var") / f"cli-spotify-{uuid4().hex}"
+    fixture_path = Path("test") / "assets" / "spotify_streaming_history_audio_test_fixture.json"
+    spotify_path = workspace_root / "Streaming_History_Audio_2024.json"
+    workspace_root.mkdir(parents=True, exist_ok=False)
+    spotify_path.write_text(fixture_path.read_text(encoding="utf-8"), encoding="utf-8")
+    monkeypatch.setenv("PIXELPAST_DATABASE_URL", f"sqlite:///{database_path.as_posix()}")
+    monkeypatch.setenv("PIXELPAST_SPOTIFY_ROOT", str(spotify_path.resolve()))
+    get_settings.cache_clear()
+
+    try:
+        result = runner.invoke(app, ["ingest", "spotify"])
+        assert result.exit_code == 0
+        assert database_path.exists()
+        assert "[spotify] completed" in result.stdout
+        assert "inserted: 2" in result.stdout
+        assert "failed: 0" in result.stdout
+
+        engine = create_engine(f"sqlite:///{database_path.as_posix()}")
+        try:
+            with Session(engine) as session:
+                sources = list(session.execute(select(Source)).scalars())
+                events = list(
+                    session.execute(select(Event).order_by(Event.timestamp_end)).scalars()
+                )
+                assets = list(session.execute(select(Asset)).scalars())
+                job_runs = list(
+                    session.execute(select(JobRun).order_by(JobRun.id)).scalars()
+                )
+        finally:
+            engine.dispose()
+
+        assert len(sources) == 1
+        assert sources[0].type == "spotify"
+        assert sources[0].external_id == "spotify:pixeluser"
+        assert len(events) == 2
+        assert [event.type for event in events] == ["music_play", "music_play"]
+        assert assets == []
+        assert len(job_runs) == 1
+        assert job_runs[0].type == "ingest"
+        assert job_runs[0].job == "spotify"
+        assert job_runs[0].status == "completed"
+        assert job_runs[0].progress_json is not None
+        assert job_runs[0].progress_json["inserted"] == 2
+        assert job_runs[0].progress_json["persisted_event_count"] == 2
+        assert job_runs[0].progress_json["failed"] == 0
+    finally:
+        get_settings.cache_clear()
+        if database_path.exists():
+            database_path.unlink()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
 def test_cli_ingest_calendar_reports_event_counts_in_terminal_summary(monkeypatch) -> None:
     database_path = _build_test_database_path("cli-calendar-ingest-summary")
     workspace_root = Path("var") / f"cli-calendar-summary-{uuid4().hex}"
@@ -912,6 +966,24 @@ def test_cli_returns_invalid_argument_exit_code_when_calendar_root_is_missing(
     try:
         result = runner.invoke(app, ["ingest", "calendar"])
         assert result.exit_code == 2
+    finally:
+        get_settings.cache_clear()
+        if database_path.exists():
+            database_path.unlink()
+
+
+def test_cli_returns_invalid_argument_exit_code_when_spotify_root_is_missing(
+    monkeypatch,
+) -> None:
+    database_path = _build_test_database_path("cli-spotify-missing-root")
+    monkeypatch.setenv("PIXELPAST_DATABASE_URL", f"sqlite:///{database_path.as_posix()}")
+    monkeypatch.delenv("PIXELPAST_SPOTIFY_ROOT", raising=False)
+    get_settings.cache_clear()
+
+    try:
+        result = runner.invoke(app, ["ingest", "spotify"])
+        assert result.exit_code == 2
+        assert "error: Spotify ingestion requires" in result.stderr
     finally:
         get_settings.cache_clear()
         if database_path.exists():

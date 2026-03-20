@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import json
 import shutil
+from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
 from sqlalchemy import select
 
 from pixelpast.ingestion.spotify import SpotifyIngestionService
-from pixelpast.persistence.models import Event, JobRun, Source
+from pixelpast.persistence.models import Asset, Event, JobRun, Source
 from pixelpast.shared.runtime import create_runtime_context, initialize_database
 from pixelpast.shared.settings import Settings
 
@@ -294,6 +295,166 @@ def test_spotify_ingestion_preserves_exact_duplicate_rows_for_v1() -> None:
         assert result.persisted_event_count == 2
         assert len(events) == 2
         assert [event.title for event in events] == ["Artist - One", "Artist - One"]
+    finally:
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_spotify_ingestion_creates_one_source_per_account_for_multi_account_input() -> None:
+    runtime = _create_runtime()
+    workspace_root = _create_workspace_root()
+    try:
+        first_document = workspace_root / "Streaming_History_Audio_2024.json"
+        second_document = workspace_root / "nested" / "Streaming_History_Audio_2025.json"
+        second_document.parent.mkdir(parents=True)
+        first_document.write_text(
+            _build_spotify_document(
+                [
+                    _spotify_row(
+                        ts="2024-02-01T07:15:10Z",
+                        username="PixelUser",
+                        ms_played=1000,
+                        track="One",
+                    )
+                ]
+            ),
+            encoding="utf-8",
+        )
+        second_document.write_text(
+            _build_spotify_document(
+                [
+                    _spotify_row(
+                        ts="2024-02-01T08:15:10Z",
+                        username="SecondUser",
+                        ms_played=2000,
+                        track="Two",
+                    ),
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        result = SpotifyIngestionService().ingest(runtime=runtime, root=workspace_root)
+
+        with runtime.session_factory() as session:
+            sources = list(
+                session.execute(select(Source).order_by(Source.external_id)).scalars()
+            )
+            events = list(
+                session.execute(
+                    select(Event).order_by(Event.timestamp_end, Event.id)
+                ).scalars()
+            )
+
+        assert result.status == "completed"
+        assert result.processed_document_count == 2
+        assert result.persisted_source_count == 2
+        assert result.persisted_event_count == 2
+        assert [source.external_id for source in sources] == [
+            "spotify:pixeluser",
+            "spotify:seconduser",
+        ]
+        assert [event.title for event in events] == ["Artist - One", "Artist - Two"]
+    finally:
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_spotify_ingestion_persists_canonical_mapping_without_assets() -> None:
+    runtime = _create_runtime()
+    workspace_root = _create_workspace_root()
+    fixture_path = Path("test/assets/spotify_streaming_history_audio_test_fixture.json")
+    document = workspace_root / "Streaming_History_Audio_2024.json"
+    document.write_text(fixture_path.read_text(encoding="utf-8"), encoding="utf-8")
+
+    try:
+        result = SpotifyIngestionService().ingest(runtime=runtime, root=document)
+
+        with runtime.session_factory() as session:
+            sources = list(session.execute(select(Source).order_by(Source.id)).scalars())
+            events = list(
+                session.execute(
+                    select(Event).order_by(Event.timestamp_end, Event.id)
+                ).scalars()
+            )
+            assets = list(session.execute(select(Asset).order_by(Asset.id)).scalars())
+
+        assert result.status == "completed"
+        assert result.processed_document_count == 1
+        assert result.persisted_source_count == 1
+        assert result.persisted_event_count == 2
+        assert assets == []
+        assert len(sources) == 1
+        assert sources[0].type == "spotify"
+        assert sources[0].external_id == "spotify:pixeluser"
+        assert [event.type for event in events] == ["music_play", "music_play"]
+        assert events[0].title == "Nova Echo - Starfall"
+        assert events[0].timestamp_start == datetime(
+            2024, 2, 1, 7, 14, 55, 667000, tzinfo=UTC
+        )
+        assert events[0].timestamp_end == datetime(2024, 2, 1, 7, 15, 10, tzinfo=UTC)
+        assert events[0].raw_payload == {
+            "username": "PixelUser",
+            "platform": "android",
+            "conn_country": "DE",
+            "spotify_track_uri": "spotify:track:1234567890abcdef",
+            "spotify_episode_uri": None,
+            "shuffle": False,
+            "skipped": False,
+        }
+    finally:
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_spotify_ingestion_emits_shared_progress_snapshots() -> None:
+    runtime = _create_runtime()
+    workspace_root = _create_workspace_root()
+    fixture_path = Path("test/assets/spotify_streaming_history_audio_test_fixture.json")
+    document = workspace_root / "Streaming_History_Audio_2024.json"
+    document.write_text(fixture_path.read_text(encoding="utf-8"), encoding="utf-8")
+    snapshots = []
+
+    try:
+        result = SpotifyIngestionService().ingest(
+            runtime=runtime,
+            root=document,
+            progress_callback=snapshots.append,
+        )
+
+        assert result.status == "completed"
+        assert [
+            snapshot.event for snapshot in snapshots if snapshot.event == "run_finished"
+        ] == ["run_finished"]
+        assert [
+            snapshot.phase for snapshot in snapshots if snapshot.event == "phase_started"
+        ] == [
+            "filesystem discovery",
+            "metadata extraction",
+            "canonical persistence",
+            "finalization",
+        ]
+        assert any(
+            snapshot.event == "progress"
+            and snapshot.phase == "filesystem discovery"
+            and snapshot.completed == 1
+            and snapshot.total == 1
+            for snapshot in snapshots
+        )
+        assert any(
+            snapshot.event == "progress"
+            and snapshot.phase == "metadata extraction"
+            and snapshot.completed == 1
+            and snapshot.total == 1
+            for snapshot in snapshots
+        )
+        assert any(
+            snapshot.event == "progress"
+            and snapshot.phase == "canonical persistence"
+            and snapshot.completed == 1
+            and snapshot.inserted == 2
+            and snapshot.total == 1
+            for snapshot in snapshots
+        )
+        assert snapshots[-1].event == "run_finished"
+        assert snapshots[-1].phase == "finalization"
     finally:
         shutil.rmtree(workspace_root, ignore_errors=True)
 

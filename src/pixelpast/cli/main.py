@@ -599,8 +599,12 @@ def _print_result_errors(result: object | None) -> None:
 
     transform_errors = getattr(result, "transform_errors", ())
     for transform_error in transform_errors:
-        workbook = getattr(transform_error, "workbook", None)
-        origin_label = getattr(workbook, "origin_label", None)
+        origin = getattr(transform_error, "workbook", None) or getattr(
+            transform_error,
+            "document",
+            None,
+        )
+        origin_label = getattr(origin, "origin_label", None)
         message = getattr(transform_error, "message", None)
         if origin_label and message:
             typer.secho(
