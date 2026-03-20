@@ -16,6 +16,7 @@ from pixelpast.analytics.daily_aggregate import (
 )
 from pixelpast.analytics.daily_views import (
     DEFAULT_ACTIVITY_SCORE_COLOR_THRESHOLDS,
+    SPOTIFY_SOURCE_TYPE,
     WORKDAYS_VACATION_SOURCE_TYPE,
     build_daily_view,
 )
@@ -35,7 +36,6 @@ from pixelpast.persistence.models import (
     Source,
     Tag,
 )
-from pixelpast.shared.progress import JobProgressSnapshot
 from pixelpast.persistence.repositories.daily_aggregates import (
     CanonicalAssetAggregateInput,
     CanonicalEventAggregateInput,
@@ -44,6 +44,7 @@ from pixelpast.persistence.repositories.daily_aggregates import (
     DailyAggregateRepository,
     DailyAggregateSnapshot,
 )
+from pixelpast.shared.progress import JobProgressSnapshot
 from pixelpast.shared.runtime import create_runtime_context, initialize_database
 from pixelpast.shared.settings import Settings
 
@@ -289,6 +290,10 @@ def test_build_daily_view_returns_stable_metadata() -> None:
         aggregate_scope="source_type",
         source_type="photo",
     )
+    spotify_view = build_daily_view(
+        aggregate_scope="source_type",
+        source_type=SPOTIFY_SOURCE_TYPE,
+    )
     workdays_vacation_view = build_daily_view(
         aggregate_scope="source_type",
         source_type=WORKDAYS_VACATION_SOURCE_TYPE,
@@ -312,11 +317,80 @@ def test_build_daily_view_returns_stable_metadata() -> None:
         photo_view.metadata_json["activity_score_color_thresholds"]
         == [dict(threshold) for threshold in DEFAULT_ACTIVITY_SCORE_COLOR_THRESHOLDS]
     )
+    assert spotify_view.source_type == SPOTIFY_SOURCE_TYPE
+    assert spotify_view.label == "Spotify"
+    assert (
+        spotify_view.description
+        == "Highlights days with Spotify listening activity."
+    )
+    assert spotify_view.metadata_json["score_version"] == "v2"
+    assert (
+        spotify_view.metadata_json["activity_score_color_thresholds"]
+        == [dict(threshold) for threshold in DEFAULT_ACTIVITY_SCORE_COLOR_THRESHOLDS]
+    )
     assert workdays_vacation_view.source_type == WORKDAYS_VACATION_SOURCE_TYPE
     assert workdays_vacation_view.label == "Workdays Vacation"
     assert workdays_vacation_view.metadata_json["score_version"] == "v2"
     assert workdays_vacation_view.metadata_json["activity_score_color_thresholds"] == []
     assert workdays_vacation_view.metadata_json["direct_color"] is True
+
+
+def test_build_daily_aggregate_snapshots_partition_spotify_by_source_type() -> None:
+    snapshots = build_daily_aggregate_snapshots(
+        DailyAggregateCanonicalInputs(
+            event_inputs=[
+                CanonicalEventAggregateInput(
+                    day=date(2024, 1, 2),
+                    source_type=SPOTIFY_SOURCE_TYPE,
+                    event_type="music_play",
+                    title="Artist - Track",
+                    timestamp_start=datetime(2024, 1, 2, 10, 0, tzinfo=UTC),
+                    raw_payload={"spotify_track_uri": "spotify:track:test"},
+                    latitude=None,
+                    longitude=None,
+                )
+            ],
+            asset_inputs=[],
+            tag_inputs=[],
+            person_inputs=[],
+        )
+    )
+
+    assert [_serialize_snapshot(snapshot) for snapshot in snapshots] == [
+        {
+            "date": "2024-01-02",
+            "scope": "overall",
+            "source_type": "__all__",
+            "total_events": 1,
+            "media_count": 0,
+            "activity_score": 1,
+            "tag_summary": [],
+            "person_summary": [],
+            "location_summary": [],
+            "score_version": "v2",
+            "color_value": None,
+            "title": None,
+        },
+        {
+            "date": "2024-01-02",
+            "scope": "source_type",
+            "source_type": "spotify",
+            "total_events": 1,
+            "media_count": 0,
+            "activity_score": 1,
+            "tag_summary": [],
+            "person_summary": [],
+            "location_summary": [],
+            "score_version": "v2",
+            "color_value": None,
+            "title": None,
+        },
+    ]
+    assert all(
+        snapshot.daily_view.source_type != "music_play"
+        for snapshot in snapshots
+        if snapshot.daily_view.source_type is not None
+    )
 
 
 def test_daily_aggregate_job_clears_rows_for_empty_canonical_dataset() -> None:
@@ -750,6 +824,116 @@ def test_daily_aggregate_job_persists_workdays_vacation_direct_color_view() -> N
         shutil.rmtree(workspace_root, ignore_errors=True)
 
 
+def test_daily_aggregate_job_persists_spotify_source_scoped_view() -> None:
+    workspace_root = _create_workspace_dir(prefix="daily-aggregate-spotify")
+    runtime = None
+    try:
+        runtime = _create_runtime(workspace_root=workspace_root)
+
+        with runtime.session_factory() as session:
+            spotify_source = Source(
+                name="Spotify Account",
+                type=SPOTIFY_SOURCE_TYPE,
+                config={},
+                external_id="spotify:pixeluser",
+            )
+            session.add(spotify_source)
+            session.flush()
+            session.add(
+                Event(
+                    source_id=spotify_source.id,
+                    type="music_play",
+                    timestamp_start=datetime(2024, 1, 2, 10, 0, tzinfo=UTC),
+                    timestamp_end=datetime(2024, 1, 2, 10, 3, tzinfo=UTC),
+                    title="Artist - Track",
+                    summary=None,
+                    latitude=None,
+                    longitude=None,
+                    raw_payload={"spotify_track_uri": "spotify:track:test"},
+                    derived_payload={},
+                )
+            )
+            session.commit()
+
+        result = DailyAggregateJob().run(runtime=runtime)
+
+        assert result.aggregate_count == 2
+        with runtime.session_factory() as session:
+            stored_views = list(
+                session.execute(
+                    select(DailyView).order_by(
+                        DailyView.aggregate_scope,
+                        DailyView.source_type,
+                        DailyView.id,
+                    )
+                ).scalars()
+            )
+            stored_aggregates = list(
+                session.execute(
+                    select(DailyAggregate)
+                    .join(DailyView, DailyView.id == DailyAggregate.daily_view_id)
+                    .order_by(
+                        DailyAggregate.date,
+                        DailyView.aggregate_scope,
+                        DailyView.source_type,
+                    )
+                ).scalars()
+            )
+
+        assert [
+            (
+                daily_view.aggregate_scope,
+                daily_view.source_type,
+                daily_view.label,
+                daily_view.description,
+                daily_view.metadata_json,
+            )
+            for daily_view in stored_views
+        ] == [
+            (
+                "overall",
+                None,
+                "Activity",
+                "Default heat intensity across all timeline sources.",
+                build_daily_view(
+                    aggregate_scope="overall",
+                    source_type="__all__",
+                ).metadata_json,
+            ),
+            (
+                "source_type",
+                "spotify",
+                "Spotify",
+                "Highlights days with Spotify listening activity.",
+                build_daily_view(
+                    aggregate_scope="source_type",
+                    source_type=SPOTIFY_SOURCE_TYPE,
+                ).metadata_json,
+            ),
+        ]
+        assert [
+            (
+                aggregate.date.isoformat(),
+                aggregate.aggregate_scope,
+                aggregate.source_type,
+                aggregate.total_events,
+                aggregate.media_count,
+                aggregate.activity_score,
+            )
+            for aggregate in stored_aggregates
+        ] == [
+            ("2024-01-02", "overall", "__all__", 1, 0, 1),
+            ("2024-01-02", "source_type", "spotify", 1, 0, 1),
+        ]
+        assert all(
+            daily_view.source_type != "music_play" for daily_view in stored_views
+        )
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
 def test_daily_aggregate_job_recomputes_range_idempotently_for_v2_rows() -> None:
     workspace_root = _create_workspace_dir(prefix="daily-aggregate-range")
     runtime = None
@@ -1076,7 +1260,9 @@ def test_daily_aggregate_job_persists_derive_run_lifecycle_and_progress() -> Non
         }
 
         assert [
-            snapshot.phase for snapshot in snapshots if snapshot.event == "phase_started"
+            snapshot.phase
+            for snapshot in snapshots
+            if snapshot.event == "phase_started"
         ] == [
             "loading canonical inputs",
             "building daily aggregates",

@@ -15,6 +15,7 @@ DEFAULT_ACTIVITY_SCORE_COLOR_THRESHOLDS: tuple[dict[str, object], ...] = (
     {"activity_score": 35, "color_value": "medium"},
     {"activity_score": 70, "color_value": "high"},
 )
+SPOTIFY_SOURCE_TYPE = "spotify"
 WORKDAYS_VACATION_SOURCE_TYPE = "workdays_vacation"
 
 
@@ -78,6 +79,9 @@ def build_daily_view(
     label = normalized_source_type.title()
     metadata_json = build_default_daily_view_metadata()
     description = f"Highlights days with {normalized_source_type} activity."
+    if source_type == SPOTIFY_SOURCE_TYPE:
+        label = "Spotify"
+        description = "Highlights days with Spotify listening activity."
     if source_type == WORKDAYS_VACATION_SOURCE_TYPE:
         description = (
             "Highlights days imported from the workdays vacation workbook "
