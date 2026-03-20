@@ -7,6 +7,7 @@ import shutil
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
+from zipfile import ZipFile
 
 from sqlalchemy import select
 
@@ -16,13 +17,16 @@ from pixelpast.shared.runtime import create_runtime_context, initialize_database
 from pixelpast.shared.settings import Settings
 
 
-def test_spotify_ingestion_merges_multiple_documents_per_account_into_one_source(
-) -> None:
+def test_spotify_ingestion_merges_multiple_documents_per_account_into_one_source() -> (
+    None
+):
     runtime = _create_runtime()
     workspace_root = _create_workspace_root()
     try:
         first_document = workspace_root / "Streaming_History_Audio_2024.json"
-        second_document = workspace_root / "nested" / "Streaming_History_Audio_2025.json"
+        second_document = (
+            workspace_root / "nested" / "Streaming_History_Audio_2025.json"
+        )
         skipped_document = workspace_root / "nested" / "PlaylistMetadata.json"
         second_document.parent.mkdir(parents=True)
         first_document.write_text(
@@ -65,7 +69,9 @@ def test_spotify_ingestion_merges_multiple_documents_per_account_into_one_source
         with runtime.session_factory() as session:
             source = session.execute(select(Source)).scalar_one()
             events = list(
-                session.execute(select(Event).order_by(Event.timestamp_end, Event.id)).scalars()
+                session.execute(
+                    select(Event).order_by(Event.timestamp_end, Event.id)
+                ).scalars()
             )
             job_run = session.execute(
                 select(JobRun).order_by(JobRun.id.desc())
@@ -105,6 +111,7 @@ def test_spotify_ingestion_merges_multiple_documents_per_account_into_one_source
             "persisted_event_count": 3,
         }
     finally:
+        runtime.engine.dispose()
         shutil.rmtree(workspace_root, ignore_errors=True)
 
 
@@ -137,23 +144,31 @@ def test_spotify_ingestion_is_idempotent_for_same_account_file_set() -> None:
         with runtime.session_factory() as session:
             first_source = session.execute(select(Source)).scalar_one()
             first_events = list(
-                session.execute(select(Event).order_by(Event.timestamp_end, Event.id)).scalars()
+                session.execute(
+                    select(Event).order_by(Event.timestamp_end, Event.id)
+                ).scalars()
             )
 
         second_result = SpotifyIngestionService().ingest(runtime=runtime, root=document)
         with runtime.session_factory() as session:
             second_source = session.execute(select(Source)).scalar_one()
             second_events = list(
-                session.execute(select(Event).order_by(Event.timestamp_end, Event.id)).scalars()
+                session.execute(
+                    select(Event).order_by(Event.timestamp_end, Event.id)
+                ).scalars()
             )
-            latest_job_run = session.execute(
-                select(JobRun).order_by(JobRun.id.desc())
-            ).scalars().first()
+            latest_job_run = (
+                session.execute(select(JobRun).order_by(JobRun.id.desc()))
+                .scalars()
+                .first()
+            )
 
         assert first_result.status == "completed"
         assert second_result.status == "completed"
         assert first_source.id == second_source.id
-        assert [event.id for event in first_events] == [event.id for event in second_events]
+        assert [event.id for event in first_events] == [
+            event.id for event in second_events
+        ]
         assert [event.created_at for event in first_events] == [
             event.created_at for event in second_events
         ]
@@ -169,11 +184,13 @@ def test_spotify_ingestion_is_idempotent_for_same_account_file_set() -> None:
             "persisted_event_count": 2,
         }
     finally:
+        runtime.engine.dispose()
         shutil.rmtree(workspace_root, ignore_errors=True)
 
 
-def test_spotify_ingestion_replaces_full_account_event_set_when_documents_change(
-) -> None:
+def test_spotify_ingestion_replaces_full_account_event_set_when_documents_change() -> (
+    None
+):
     runtime = _create_runtime()
     workspace_root = _create_workspace_root()
     try:
@@ -216,33 +233,40 @@ def test_spotify_ingestion_replaces_full_account_event_set_when_documents_change
         with runtime.session_factory() as session:
             original_source = session.execute(select(Source)).scalar_one()
             original_events = list(
-                session.execute(select(Event).order_by(Event.timestamp_end, Event.id)).scalars()
+                session.execute(
+                    select(Event).order_by(Event.timestamp_end, Event.id)
+                ).scalars()
             )
 
-        second_document.write_text(
-            _build_spotify_document(
-                [
-                    _spotify_row(
-                        ts="2024-02-02T08:15:10Z",
-                        username="PixelUser",
-                        ms_played=2000,
-                        track="Replacement",
-                    )
-                ]
-            ),
-            encoding="utf-8",
-        )
+            second_document.parent.mkdir(parents=True, exist_ok=True)
+            second_document.write_text(
+                _build_spotify_document(
+                    [
+                        _spotify_row(
+                            ts="2024-02-02T08:15:10Z",
+                            username="PixelUser",
+                            ms_played=2000,
+                            track="Replacement",
+                        )
+                    ]
+                ),
+                encoding="utf-8",
+            )
 
         result = SpotifyIngestionService().ingest(runtime=runtime, root=workspace_root)
 
         with runtime.session_factory() as session:
             source = session.execute(select(Source)).scalar_one()
             events = list(
-                session.execute(select(Event).order_by(Event.timestamp_end, Event.id)).scalars()
+                session.execute(
+                    select(Event).order_by(Event.timestamp_end, Event.id)
+                ).scalars()
             )
-            latest_job_run = session.execute(
-                select(JobRun).order_by(JobRun.id.desc())
-            ).scalars().first()
+            latest_job_run = (
+                session.execute(select(JobRun).order_by(JobRun.id.desc()))
+                .scalars()
+                .first()
+            )
 
         assert result.status == "completed"
         assert result.persisted_source_count == 1
@@ -265,6 +289,7 @@ def test_spotify_ingestion_replaces_full_account_event_set_when_documents_change
             "persisted_event_count": 2,
         }
     finally:
+        runtime.engine.dispose()
         shutil.rmtree(workspace_root, ignore_errors=True)
 
 
@@ -287,24 +312,27 @@ def test_spotify_ingestion_preserves_exact_duplicate_rows_for_v1() -> None:
         result = SpotifyIngestionService().ingest(runtime=runtime, root=document)
 
         with runtime.session_factory() as session:
-            events = list(
-                session.execute(select(Event).order_by(Event.id)).scalars()
-            )
+            events = list(session.execute(select(Event).order_by(Event.id)).scalars())
 
         assert result.status == "completed"
         assert result.persisted_event_count == 2
         assert len(events) == 2
         assert [event.title for event in events] == ["Artist - One", "Artist - One"]
     finally:
+        runtime.engine.dispose()
         shutil.rmtree(workspace_root, ignore_errors=True)
 
 
-def test_spotify_ingestion_creates_one_source_per_account_for_multi_account_input() -> None:
+def test_spotify_ingestion_creates_one_source_per_account_for_multi_account_input() -> (
+    None
+):
     runtime = _create_runtime()
     workspace_root = _create_workspace_root()
     try:
         first_document = workspace_root / "Streaming_History_Audio_2024.json"
-        second_document = workspace_root / "nested" / "Streaming_History_Audio_2025.json"
+        second_document = (
+            workspace_root / "nested" / "Streaming_History_Audio_2025.json"
+        )
         second_document.parent.mkdir(parents=True)
         first_document.write_text(
             _build_spotify_document(
@@ -355,6 +383,7 @@ def test_spotify_ingestion_creates_one_source_per_account_for_multi_account_inpu
         ]
         assert [event.title for event in events] == ["Artist - One", "Artist - Two"]
     finally:
+        runtime.engine.dispose()
         shutil.rmtree(workspace_root, ignore_errors=True)
 
 
@@ -369,7 +398,9 @@ def test_spotify_ingestion_persists_canonical_mapping_without_assets() -> None:
         result = SpotifyIngestionService().ingest(runtime=runtime, root=document)
 
         with runtime.session_factory() as session:
-            sources = list(session.execute(select(Source).order_by(Source.id)).scalars())
+            sources = list(
+                session.execute(select(Source).order_by(Source.id)).scalars()
+            )
             events = list(
                 session.execute(
                     select(Event).order_by(Event.timestamp_end, Event.id)
@@ -401,6 +432,66 @@ def test_spotify_ingestion_persists_canonical_mapping_without_assets() -> None:
             "skipped": False,
         }
     finally:
+        runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_spotify_ingestion_reads_zip_backed_fixture_and_maps_video_events() -> None:
+    runtime = _create_runtime()
+    workspace_root = _create_workspace_root()
+    archive_path = workspace_root / "spotify-export.zip"
+
+    with ZipFile(archive_path, mode="w") as archive:
+        archive.writestr(
+            "nested/Streaming_History_Audio_2024.json",
+            _build_spotify_document(
+                [
+                    _spotify_row(
+                        ts="2024-02-01T07:15:10Z",
+                        username="PixelUser",
+                        ms_played=1000,
+                        track="One",
+                    )
+                ]
+            ),
+        )
+        archive.writestr(
+            "nested/Streaming_History_Video_2024.json",
+            _build_spotify_document(
+                [
+                    _spotify_row(
+                        ts="2024-02-01T08:15:10Z",
+                        username="PixelUser",
+                        ms_played=2000,
+                        track="Two",
+                    )
+                ]
+            ),
+        )
+        archive.writestr("nested/Profile.json", "{}")
+
+    try:
+        result = SpotifyIngestionService().ingest(runtime=runtime, root=archive_path)
+
+        with runtime.session_factory() as session:
+            sources = list(
+                session.execute(select(Source).order_by(Source.id)).scalars()
+            )
+            events = list(
+                session.execute(
+                    select(Event).order_by(Event.timestamp_end, Event.id)
+                ).scalars()
+            )
+
+        assert result.status == "completed"
+        assert result.processed_document_count == 2
+        assert result.persisted_source_count == 1
+        assert result.persisted_event_count == 2
+        assert result.skipped_json_file_count == 1
+        assert len(sources) == 1
+        assert [event.type for event in events] == ["music_play", "video_play"]
+    finally:
+        runtime.engine.dispose()
         shutil.rmtree(workspace_root, ignore_errors=True)
 
 
@@ -424,7 +515,9 @@ def test_spotify_ingestion_emits_shared_progress_snapshots() -> None:
             snapshot.event for snapshot in snapshots if snapshot.event == "run_finished"
         ] == ["run_finished"]
         assert [
-            snapshot.phase for snapshot in snapshots if snapshot.event == "phase_started"
+            snapshot.phase
+            for snapshot in snapshots
+            if snapshot.event == "phase_started"
         ] == [
             "filesystem discovery",
             "metadata extraction",
@@ -456,6 +549,7 @@ def test_spotify_ingestion_emits_shared_progress_snapshots() -> None:
         assert snapshots[-1].event == "run_finished"
         assert snapshots[-1].phase == "finalization"
     finally:
+        runtime.engine.dispose()
         shutil.rmtree(workspace_root, ignore_errors=True)
 
 

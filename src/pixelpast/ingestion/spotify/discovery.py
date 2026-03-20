@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import defaultdict
 from collections.abc import Callable, Iterable
 from pathlib import Path
+from zipfile import BadZipFile, ZipFile
 
 from pixelpast.ingestion.spotify.contracts import (
     ParsedSpotifyStreamingHistoryDocument,
@@ -16,6 +17,7 @@ from pixelpast.ingestion.spotify.contracts import (
 from pixelpast.ingestion.spotify.transform import build_spotify_source_external_id
 from pixelpast.shared.settings import Settings
 
+_SUPPORTED_FILE_EXTENSIONS = frozenset({".json", ".zip"})
 _SUPPORTED_FILE_PREFIXES = ("streaming_history_audio", "streaming_history_video")
 
 
@@ -51,7 +53,9 @@ class SpotifyStreamingHistoryDocumentDiscoverer:
         if not resolved_root.exists():
             raise ValueError(f"Spotify root does not exist: {resolved_root}")
 
-        documents, skipped_json_file_count = self._discover_from_root(root=resolved_root)
+        documents, skipped_json_file_count = self._discover_from_root(
+            root=resolved_root
+        )
         if on_document_discovered is not None:
             for index, document in enumerate(documents, start=1):
                 on_document_discovered(document, index)
@@ -79,12 +83,21 @@ class SpotifyStreamingHistoryDocumentDiscoverer:
         documents: list[SpotifyStreamingHistoryDocumentDescriptor] = []
         skipped_json_file_count = 0
         for path in sorted(root.rglob("*"), key=lambda candidate: candidate.as_posix()):
-            if not path.is_file() or path.suffix.lower() != ".json":
+            if not path.is_file():
                 continue
-            if self._is_supported_streaming_history_file(path):
-                documents.append(SpotifyStreamingHistoryDocumentDescriptor(path=path))
+            suffix = path.suffix.lower()
+            if suffix not in _SUPPORTED_FILE_EXTENSIONS:
                 continue
-            skipped_json_file_count += 1
+            if suffix == ".json" and not self._is_supported_streaming_history_file(
+                path
+            ):
+                skipped_json_file_count += 1
+                continue
+            discovered_documents, skipped_json_files = self._discover_from_file(
+                path=path
+            )
+            documents.extend(discovered_documents)
+            skipped_json_file_count += skipped_json_files
         return tuple(documents), skipped_json_file_count
 
     def _discover_from_file(
@@ -92,17 +105,59 @@ class SpotifyStreamingHistoryDocumentDiscoverer:
         *,
         path: Path,
     ) -> tuple[tuple[SpotifyStreamingHistoryDocumentDescriptor, ...], int]:
-        if path.suffix.lower() != ".json":
-            raise ValueError(f"Spotify root is not supported: {path}")
-        if not self._is_supported_streaming_history_file(path):
-            raise ValueError(
-                "Spotify root is not a supported streaming-history JSON file: "
-                f"{path}"
-            )
-        return (SpotifyStreamingHistoryDocumentDescriptor(path=path),), 0
+        suffix = path.suffix.lower()
+        if suffix == ".json":
+            if not self._is_supported_streaming_history_file(path):
+                raise ValueError(
+                    "Spotify root is not a supported streaming-history JSON file: "
+                    f"{path}"
+                )
+            return (SpotifyStreamingHistoryDocumentDescriptor(path=path),), 0
+        if suffix == ".zip":
+            return self._discover_from_zip(path=path)
+        raise ValueError(f"Spotify root is not supported: {path}")
+
+    def _discover_from_zip(
+        self,
+        *,
+        path: Path,
+    ) -> tuple[tuple[SpotifyStreamingHistoryDocumentDescriptor, ...], int]:
+        try:
+            with ZipFile(path) as archive:
+                member_names = sorted(
+                    (
+                        member.filename.replace("\\", "/")
+                        for member in archive.infolist()
+                        if not member.is_dir()
+                        and member.filename.lower().endswith(".json")
+                    ),
+                )
+        except BadZipFile as error:
+            raise ValueError(f"Spotify zip file is invalid: {path}") from error
+
+        documents: list[SpotifyStreamingHistoryDocumentDescriptor] = []
+        skipped_json_file_count = 0
+        for member_name in member_names:
+            if self._is_supported_streaming_history_member(member_name):
+                documents.append(
+                    SpotifyStreamingHistoryDocumentDescriptor(
+                        path=path,
+                        archive_member_path=member_name,
+                    )
+                )
+                continue
+            skipped_json_file_count += 1
+        return tuple(documents), skipped_json_file_count
+
+    def _is_supported_streaming_history_member(self, member_name: str) -> bool:
+        normalized_name = Path(member_name).name.casefold()
+        return self._is_supported_streaming_history_name(normalized_name)
 
     def _is_supported_streaming_history_file(self, path: Path) -> bool:
         normalized_name = path.name.casefold()
+        return self._is_supported_streaming_history_name(normalized_name)
+
+    def _is_supported_streaming_history_name(self, normalized_name: str) -> bool:
         return any(
             normalized_name.startswith(prefix) for prefix in _SUPPORTED_FILE_PREFIXES
         )
@@ -113,9 +168,9 @@ def group_spotify_documents_by_account(
 ) -> tuple[SpotifyAccountDocumentGroup, ...]:
     """Group parsed Spotify documents into account-scoped replacement sets."""
 
-    documents_by_username: dict[str, dict[str, ParsedSpotifyStreamingHistoryDocument]] = (
-        defaultdict(dict)
-    )
+    documents_by_username: dict[
+        str, dict[str, ParsedSpotifyStreamingHistoryDocument]
+    ] = defaultdict(dict)
     rows_by_username: dict[str, list[ParsedSpotifyStreamRow]] = defaultdict(list)
 
     for document in sorted(
@@ -136,10 +191,14 @@ def group_spotify_documents_by_account(
         grouped_documents.append(
             SpotifyAccountDocumentGroup(
                 normalized_username=normalized_username,
-                source_external_id=build_spotify_source_external_id(normalized_username),
+                source_external_id=build_spotify_source_external_id(
+                    normalized_username
+                ),
                 documents=tuple(
                     documents_by_username[normalized_username][origin_label]
-                    for origin_label in sorted(documents_by_username[normalized_username])
+                    for origin_label in sorted(
+                        documents_by_username[normalized_username]
+                    )
                 ),
                 rows=tuple(rows_by_username[normalized_username]),
             )

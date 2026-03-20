@@ -4,8 +4,11 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from zipfile import BadZipFile, ZipFile
 
-from pixelpast.ingestion.spotify.contracts import SpotifyStreamingHistoryDocumentDescriptor
+from pixelpast.ingestion.spotify.contracts import (
+    SpotifyStreamingHistoryDocumentDescriptor,
+)
 
 _TEXT_ENCODINGS = ("utf-8-sig", "utf-8", "cp1252")
 
@@ -45,7 +48,7 @@ class SpotifyStreamingHistoryFetcher:
                         document_total=document_total,
                     )
                 )
-            fetched_documents[document] = _decode_spotify_bytes(document.path.read_bytes())
+            fetched_documents[document] = self._fetch_document_text(document=document)
             if on_document_progress is not None:
                 on_document_progress(
                     SpotifyDocumentLoadProgress(
@@ -56,6 +59,34 @@ class SpotifyStreamingHistoryFetcher:
                     )
                 )
         return fetched_documents
+
+    def _fetch_document_text(
+        self,
+        *,
+        document: SpotifyStreamingHistoryDocumentDescriptor,
+    ) -> str:
+        if document.archive_member_path is None:
+            return _decode_spotify_bytes(document.path.read_bytes())
+        return self._read_archive_member(document=document)
+
+    def _read_archive_member(
+        self,
+        *,
+        document: SpotifyStreamingHistoryDocumentDescriptor,
+    ) -> str:
+        try:
+            with ZipFile(document.path) as archive:
+                try:
+                    member_bytes = archive.read(document.archive_member_path)
+                except KeyError as error:
+                    raise ValueError(
+                        "Spotify archive member does not exist: "
+                        f"{document.origin_label}"
+                    ) from error
+        except BadZipFile as error:
+            raise ValueError(f"Spotify zip file is invalid: {document.path}") from error
+
+        return _decode_spotify_bytes(member_bytes)
 
 
 def _decode_spotify_bytes(payload: bytes) -> str:

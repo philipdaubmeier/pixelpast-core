@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from shutil import rmtree
 from uuid import uuid4
+from zipfile import ZipFile
 
 from pixelpast.ingestion.spotify import (
     SpotifyAccountDocumentGroup,
@@ -18,8 +19,7 @@ from pixelpast.ingestion.spotify import (
 from pixelpast.shared.settings import Settings
 
 
-def test_spotify_discovery_accepts_supported_direct_json_file(
-) -> None:
+def test_spotify_discovery_accepts_supported_direct_json_file() -> None:
     workspace_root = _build_test_workspace("spotify-discovery-file")
 
     try:
@@ -40,8 +40,9 @@ def test_spotify_discovery_accepts_supported_direct_json_file(
         rmtree(workspace_root, ignore_errors=True)
 
 
-def test_spotify_discovery_walks_directories_recursively_in_deterministic_order(
-) -> None:
+def test_spotify_discovery_walks_directories_recursively_in_deterministic_order() -> (
+    None
+):
     workspace_root = _build_test_workspace("spotify-discovery-dir")
 
     try:
@@ -71,7 +72,9 @@ def test_spotify_discovery_walks_directories_recursively_in_deterministic_order(
 
         assert result == SpotifyStreamingHistoryDiscoveryResult(
             documents=(
-                SpotifyStreamingHistoryDocumentDescriptor(path=first_document.resolve()),
+                SpotifyStreamingHistoryDocumentDescriptor(
+                    path=first_document.resolve()
+                ),
                 SpotifyStreamingHistoryDocumentDescriptor(
                     path=second_document.resolve()
                 ),
@@ -82,6 +85,68 @@ def test_spotify_discovery_walks_directories_recursively_in_deterministic_order(
             first_document.resolve().as_posix(),
             second_document.resolve().as_posix(),
         ]
+    finally:
+        rmtree(workspace_root, ignore_errors=True)
+
+
+def test_spotify_discovery_accepts_single_zip_root_and_emits_archive_members() -> None:
+    workspace_root = _build_test_workspace("spotify-discovery-zip")
+
+    try:
+        archive_path = workspace_root / "spotify-export.zip"
+        with ZipFile(archive_path, mode="w") as archive:
+            archive.writestr("nested/Streaming_History_Audio_2024.json", "[]")
+            archive.writestr("Streaming_History_Video_2024.json", "[]")
+            archive.writestr("nested/PlaylistMetadata.json", "{}")
+
+        result = SpotifyStreamingHistoryDocumentDiscoverer().discover_documents(
+            archive_path
+        )
+
+        assert result == SpotifyStreamingHistoryDiscoveryResult(
+            documents=(
+                SpotifyStreamingHistoryDocumentDescriptor(
+                    path=archive_path.resolve(),
+                    archive_member_path="Streaming_History_Video_2024.json",
+                ),
+                SpotifyStreamingHistoryDocumentDescriptor(
+                    path=archive_path.resolve(),
+                    archive_member_path="nested/Streaming_History_Audio_2024.json",
+                ),
+            ),
+            skipped_json_file_count=1,
+        )
+    finally:
+        rmtree(workspace_root, ignore_errors=True)
+
+
+def test_spotify_discovery_recurses_directories_and_zip_members() -> None:
+    workspace_root = _build_test_workspace("spotify-discovery-dir-zip")
+
+    try:
+        root = workspace_root / "takeout"
+        root.mkdir()
+        direct_document = root / "Streaming_History_Audio_2024.json"
+        archive_path = root / "bundle.zip"
+        direct_document.write_text("[]", encoding="utf-8")
+        with ZipFile(archive_path, mode="w") as archive:
+            archive.writestr("nested/Streaming_History_Video_2025.json", "[]")
+            archive.writestr("nested/Profile.json", "{}")
+
+        result = SpotifyStreamingHistoryDocumentDiscoverer().discover_documents(root)
+
+        assert result == SpotifyStreamingHistoryDiscoveryResult(
+            documents=(
+                SpotifyStreamingHistoryDocumentDescriptor(
+                    path=direct_document.resolve()
+                ),
+                SpotifyStreamingHistoryDocumentDescriptor(
+                    path=archive_path.resolve(),
+                    archive_member_path="nested/Streaming_History_Video_2025.json",
+                ),
+            ),
+            skipped_json_file_count=1,
+        )
     finally:
         rmtree(workspace_root, ignore_errors=True)
 
@@ -102,8 +167,9 @@ def test_spotify_root_resolution_requires_configured_root() -> None:
         raise AssertionError("Expected Spotify root resolution to fail.")
 
 
-def test_spotify_account_grouping_keeps_document_boundary_and_merges_by_username(
-) -> None:
+def test_spotify_account_grouping_keeps_document_boundary_and_merges_by_username() -> (
+    None
+):
     workspace_root = _build_test_workspace("spotify-grouping")
 
     try:
@@ -121,20 +187,20 @@ def test_spotify_account_grouping_keeps_document_boundary_and_merges_by_username
             ),
             text=(
                 "["
-                "{\"ts\":\"2024-02-01T07:15:10Z\",\"username\":\"PixelUser\","
-                "\"platform\":\"android\",\"ms_played\":1000,\"conn_country\":\"DE\","
-                "\"master_metadata_track_name\":\"One\","
-                "\"master_metadata_album_artist_name\":\"Artist\","
-                "\"spotify_track_uri\":\"spotify:track:1\","
-                "\"episode_name\":null,\"episode_show_name\":null,"
-                "\"spotify_episode_uri\":null,\"shuffle\":false,\"skipped\":false},"
-                "{\"ts\":\"2024-02-01T08:15:10Z\",\"username\":\"SecondUser\","
-                "\"platform\":\"web\",\"ms_played\":2000,\"conn_country\":\"DE\","
-                "\"master_metadata_track_name\":\"Two\","
-                "\"master_metadata_album_artist_name\":\"Artist\","
-                "\"spotify_track_uri\":\"spotify:track:2\","
-                "\"episode_name\":null,\"episode_show_name\":null,"
-                "\"spotify_episode_uri\":null,\"shuffle\":false,\"skipped\":false}"
+                '{"ts":"2024-02-01T07:15:10Z","username":"PixelUser",'
+                '"platform":"android","ms_played":1000,"conn_country":"DE",'
+                '"master_metadata_track_name":"One",'
+                '"master_metadata_album_artist_name":"Artist",'
+                '"spotify_track_uri":"spotify:track:1",'
+                '"episode_name":null,"episode_show_name":null,'
+                '"spotify_episode_uri":null,"shuffle":false,"skipped":false},'
+                '{"ts":"2024-02-01T08:15:10Z","username":"SecondUser",'
+                '"platform":"web","ms_played":2000,"conn_country":"DE",'
+                '"master_metadata_track_name":"Two",'
+                '"master_metadata_album_artist_name":"Artist",'
+                '"spotify_track_uri":"spotify:track:2",'
+                '"episode_name":null,"episode_show_name":null,'
+                '"spotify_episode_uri":null,"shuffle":false,"skipped":false}'
                 "]"
             ),
         )
@@ -144,13 +210,13 @@ def test_spotify_account_grouping_keeps_document_boundary_and_merges_by_username
             ),
             text=(
                 "["
-                "{\"ts\":\"2024-02-02T07:15:10Z\",\"username\":\" pixeluser \","
-                "\"platform\":\"android\",\"ms_played\":3000,\"conn_country\":\"DE\","
-                "\"master_metadata_track_name\":\"Three\","
-                "\"master_metadata_album_artist_name\":\"Artist\","
-                "\"spotify_track_uri\":\"spotify:track:3\","
-                "\"episode_name\":null,\"episode_show_name\":null,"
-                "\"spotify_episode_uri\":null,\"shuffle\":true,\"skipped\":false}"
+                '{"ts":"2024-02-02T07:15:10Z","username":" pixeluser ",'
+                '"platform":"android","ms_played":3000,"conn_country":"DE",'
+                '"master_metadata_track_name":"Three",'
+                '"master_metadata_album_artist_name":"Artist",'
+                '"spotify_track_uri":"spotify:track:3",'
+                '"episode_name":null,"episode_show_name":null,'
+                '"spotify_episode_uri":null,"shuffle":true,"skipped":false}'
                 "]"
             ),
         )

@@ -142,26 +142,51 @@ def test_spotify_title_remains_empty_when_artist_or_track_is_unavailable() -> No
     assert candidate.summary is None
 
 
+def test_spotify_video_documents_map_to_video_play_events() -> None:
+    descriptor = SpotifyStreamingHistoryDocumentDescriptor(
+        path=Path("Streaming_History_Video_2024.json")
+    )
+
+    parsed = parse_spotify_streaming_history_document(
+        descriptor=descriptor,
+        text=(
+            "["
+            '{"ts":"2024-02-01T07:15:10Z","username":"PixelUser",'
+            '"platform":"android","ms_played":1000,"conn_country":"DE",'
+            '"master_metadata_track_name":"Clip",'
+            '"master_metadata_album_artist_name":"Artist",'
+            '"spotify_track_uri":"spotify:track:clip",'
+            '"episode_name":null,"episode_show_name":null,'
+            '"spotify_episode_uri":null,"shuffle":false,"skipped":false}'
+            "]"
+        ),
+    )
+
+    candidate = build_spotify_event_candidates(parsed)[0]
+
+    assert candidate.type == "video_play"
+
+
 def test_spotify_document_candidate_makes_multi_username_documents_explicit() -> None:
     descriptor = SpotifyStreamingHistoryDocumentDescriptor(path=Path("mixed.json"))
     parsed = parse_spotify_streaming_history_document(
         descriptor=descriptor,
         text=(
             "["
-            "{\"ts\":\"2024-02-01T08:00:00Z\",\"username\":\"SecondUser\","
-            "\"platform\":\"web\",\"ms_played\":2000,\"conn_country\":\"DE\","
-            "\"master_metadata_track_name\":\"Two\","
-            "\"master_metadata_album_artist_name\":\"Artist\","
-            "\"spotify_track_uri\":\"spotify:track:2\","
-            "\"episode_name\":null,\"episode_show_name\":null,"
-            "\"spotify_episode_uri\":null,\"shuffle\":null,\"skipped\":true},"
-            "{\"ts\":\"2024-02-01T07:15:10Z\",\"username\":\"PixelUser\","
-            "\"platform\":\"android\",\"ms_played\":1000,\"conn_country\":\"DE\","
-            "\"master_metadata_track_name\":\"One\","
-            "\"master_metadata_album_artist_name\":\"Artist\","
-            "\"spotify_track_uri\":\"spotify:track:1\","
-            "\"episode_name\":null,\"episode_show_name\":null,"
-            "\"spotify_episode_uri\":null,\"shuffle\":false,\"skipped\":false}"
+            '{"ts":"2024-02-01T08:00:00Z","username":"SecondUser",'
+            '"platform":"web","ms_played":2000,"conn_country":"DE",'
+            '"master_metadata_track_name":"Two",'
+            '"master_metadata_album_artist_name":"Artist",'
+            '"spotify_track_uri":"spotify:track:2",'
+            '"episode_name":null,"episode_show_name":null,'
+            '"spotify_episode_uri":null,"shuffle":null,"skipped":true},'
+            '{"ts":"2024-02-01T07:15:10Z","username":"PixelUser",'
+            '"platform":"android","ms_played":1000,"conn_country":"DE",'
+            '"master_metadata_track_name":"One",'
+            '"master_metadata_album_artist_name":"Artist",'
+            '"spotify_track_uri":"spotify:track:1",'
+            '"episode_name":null,"episode_show_name":null,'
+            '"spotify_episode_uri":null,"shuffle":false,"skipped":false}'
             "]"
         ),
     )
@@ -241,13 +266,13 @@ def test_spotify_account_identity_groups_rows_by_normalized_username() -> None:
         ),
         text=(
             "["
-            "{\"ts\":\"2024-02-01T07:15:10Z\",\"username\":\"PixelUser\","
-            "\"platform\":\"android\",\"ms_played\":1000,\"conn_country\":\"DE\","
-            "\"master_metadata_track_name\":\"One\","
-            "\"master_metadata_album_artist_name\":\"Artist\","
-            "\"spotify_track_uri\":\"spotify:track:1\","
-            "\"episode_name\":null,\"episode_show_name\":null,"
-            "\"spotify_episode_uri\":null,\"shuffle\":false,\"skipped\":false}"
+            '{"ts":"2024-02-01T07:15:10Z","username":"PixelUser",'
+            '"platform":"android","ms_played":1000,"conn_country":"DE",'
+            '"master_metadata_track_name":"One",'
+            '"master_metadata_album_artist_name":"Artist",'
+            '"spotify_track_uri":"spotify:track:1",'
+            '"episode_name":null,"episode_show_name":null,'
+            '"spotify_episode_uri":null,"shuffle":false,"skipped":false}'
             "]"
         ),
     )
@@ -258,13 +283,13 @@ def test_spotify_account_identity_groups_rows_by_normalized_username() -> None:
             ),
             text=(
                 "["
-                "{\"ts\":\"2024-02-01T08:00:00Z\",\"username\":\" pixeluser \","
-                "\"platform\":\"web\",\"ms_played\":2000,\"conn_country\":\"DE\","
-                "\"master_metadata_track_name\":\"Two\","
-                "\"master_metadata_album_artist_name\":\"Artist\","
-                "\"spotify_track_uri\":\"spotify:track:2\","
-                "\"episode_name\":null,\"episode_show_name\":null,"
-                "\"spotify_episode_uri\":null,\"shuffle\":null,\"skipped\":true}"
+                '{"ts":"2024-02-01T08:00:00Z","username":" pixeluser ",'
+                '"platform":"web","ms_played":2000,"conn_country":"DE",'
+                '"master_metadata_track_name":"Two",'
+                '"master_metadata_album_artist_name":"Artist",'
+                '"spotify_track_uri":"spotify:track:2",'
+                '"episode_name":null,"episode_show_name":null,'
+                '"spotify_episode_uri":null,"shuffle":null,"skipped":true}'
                 "]"
             ),
         )
@@ -292,27 +317,29 @@ def test_spotify_account_identity_groups_rows_by_normalized_username() -> None:
     )
 
 
-def test_spotify_event_candidates_are_sorted_deterministically_across_documents() -> None:
+def test_spotify_event_candidates_are_sorted_deterministically_across_documents() -> (
+    None
+):
     later_path = Path("z-last.json")
     earlier_path = Path("a-first.json")
     later_document = parse_spotify_streaming_history_document(
         descriptor=SpotifyStreamingHistoryDocumentDescriptor(path=later_path),
         text=(
             "["
-            "{\"ts\":\"2024-02-01T08:00:00Z\",\"username\":\"PixelUser\","
-            "\"platform\":\"web\",\"ms_played\":1000,\"conn_country\":\"DE\","
-            "\"master_metadata_track_name\":\"Later\","
-            "\"master_metadata_album_artist_name\":\"Artist\","
-            "\"spotify_track_uri\":\"spotify:track:later\","
-            "\"episode_name\":null,\"episode_show_name\":null,"
-            "\"spotify_episode_uri\":null,\"shuffle\":false,\"skipped\":false},"
-            "{\"ts\":\"2024-02-01T07:00:00Z\",\"username\":\"PixelUser\","
-            "\"platform\":\"web\",\"ms_played\":1000,\"conn_country\":\"DE\","
-            "\"master_metadata_track_name\":\"Second\","
-            "\"master_metadata_album_artist_name\":\"Artist\","
-            "\"spotify_track_uri\":\"spotify:track:second\","
-            "\"episode_name\":null,\"episode_show_name\":null,"
-            "\"spotify_episode_uri\":null,\"shuffle\":false,\"skipped\":false}"
+            '{"ts":"2024-02-01T08:00:00Z","username":"PixelUser",'
+            '"platform":"web","ms_played":1000,"conn_country":"DE",'
+            '"master_metadata_track_name":"Later",'
+            '"master_metadata_album_artist_name":"Artist",'
+            '"spotify_track_uri":"spotify:track:later",'
+            '"episode_name":null,"episode_show_name":null,'
+            '"spotify_episode_uri":null,"shuffle":false,"skipped":false},'
+            '{"ts":"2024-02-01T07:00:00Z","username":"PixelUser",'
+            '"platform":"web","ms_played":1000,"conn_country":"DE",'
+            '"master_metadata_track_name":"Second",'
+            '"master_metadata_album_artist_name":"Artist",'
+            '"spotify_track_uri":"spotify:track:second",'
+            '"episode_name":null,"episode_show_name":null,'
+            '"spotify_episode_uri":null,"shuffle":false,"skipped":false}'
             "]"
         ),
     )
@@ -320,13 +347,13 @@ def test_spotify_event_candidates_are_sorted_deterministically_across_documents(
         descriptor=SpotifyStreamingHistoryDocumentDescriptor(path=earlier_path),
         text=(
             "["
-            "{\"ts\":\"2024-02-01T07:00:00Z\",\"username\":\" pixeluser \","
-            "\"platform\":\"android\",\"ms_played\":1000,\"conn_country\":\"DE\","
-            "\"master_metadata_track_name\":\"First\","
-            "\"master_metadata_album_artist_name\":\"Artist\","
-            "\"spotify_track_uri\":\"spotify:track:first\","
-            "\"episode_name\":null,\"episode_show_name\":null,"
-            "\"spotify_episode_uri\":null,\"shuffle\":true,\"skipped\":false}"
+            '{"ts":"2024-02-01T07:00:00Z","username":" pixeluser ",'
+            '"platform":"android","ms_played":1000,"conn_country":"DE",'
+            '"master_metadata_track_name":"First",'
+            '"master_metadata_album_artist_name":"Artist",'
+            '"spotify_track_uri":"spotify:track:first",'
+            '"episode_name":null,"episode_show_name":null,'
+            '"spotify_episode_uri":null,"shuffle":true,"skipped":false}'
             "]"
         ),
     )
@@ -348,7 +375,7 @@ def test_spotify_parser_rejects_non_array_documents() -> None:
     try:
         parse_spotify_streaming_history_document(
             descriptor=descriptor,
-            text="{\"ts\": \"2024-02-01T07:15:10Z\"}",
+            text='{"ts": "2024-02-01T07:15:10Z"}',
         )
     except ValueError as error:
         assert str(error) == (
@@ -367,13 +394,13 @@ def test_spotify_parser_rejects_rows_without_username() -> None:
             descriptor=descriptor,
             text=(
                 "["
-                "{\"ts\":\"2024-02-01T07:15:10Z\",\"username\":\" \","
-                "\"platform\":\"android\",\"ms_played\":1000,\"conn_country\":\"DE\","
-                "\"master_metadata_track_name\":\"One\","
-                "\"master_metadata_album_artist_name\":\"Artist\","
-                "\"spotify_track_uri\":\"spotify:track:1\","
-                "\"episode_name\":null,\"episode_show_name\":null,"
-                "\"spotify_episode_uri\":null,\"shuffle\":false,\"skipped\":false}"
+                '{"ts":"2024-02-01T07:15:10Z","username":" ",'
+                '"platform":"android","ms_played":1000,"conn_country":"DE",'
+                '"master_metadata_track_name":"One",'
+                '"master_metadata_album_artist_name":"Artist",'
+                '"spotify_track_uri":"spotify:track:1",'
+                '"episode_name":null,"episode_show_name":null,'
+                '"spotify_episode_uri":null,"shuffle":false,"skipped":false}'
                 "]"
             ),
         )

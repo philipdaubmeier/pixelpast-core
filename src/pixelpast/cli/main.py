@@ -11,9 +11,8 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import date
 from enum import IntEnum
-from typing import IO
 from pathlib import Path
-from typing import Annotated
+from typing import IO, Annotated
 
 import typer
 from tqdm import tqdm
@@ -331,8 +330,7 @@ def derive_command(
         str,
         typer.Argument(
             help=(
-                "Derived job name. "
-                f"Available jobs: {', '.join(SUPPORTED_DERIVE_JOBS)}."
+                f"Derived job name. Available jobs: {', '.join(SUPPORTED_DERIVE_JOBS)}."
             ),
         ),
     ],
@@ -532,6 +530,7 @@ def _execute_operation(
         try:
             result = runner(runtime)
             _print_result_errors(result)
+            _print_result_metadata(result)
         except ValueError as error:
             logger.error(
                 "command failed",
@@ -612,6 +611,17 @@ def _print_result_errors(result: object | None) -> None:
                 fg=typer.colors.RED,
                 err=True,
             )
+
+
+def _print_result_metadata(result: object | None) -> None:
+    """Write result-level summary fields not covered by progress snapshots."""
+
+    if result is None:
+        return
+
+    skipped_json_file_count = getattr(result, "skipped_json_file_count", None)
+    if skipped_json_file_count is not None:
+        typer.echo(f"skipped_json_files: {skipped_json_file_count}")
 
 
 if __name__ == "__main__":

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any, Iterable
 
 from pixelpast.ingestion.spotify.contracts import (
@@ -15,6 +16,10 @@ from pixelpast.ingestion.spotify.contracts import (
     SpotifyEventCandidate,
     SpotifyStreamingHistoryDocumentDescriptor,
 )
+
+_AUDIO_FILE_PREFIX = "streaming_history_audio"
+_VIDEO_FILE_PREFIX = "streaming_history_video"
+
 
 def parse_spotify_streaming_history_document(
     *,
@@ -198,7 +203,7 @@ def _build_event_candidate(row: ParsedSpotifyStreamRow) -> SpotifyEventCandidate
     return SpotifyEventCandidate(
         source_external_id=build_spotify_source_external_id(row.normalized_username),
         external_event_id=None,
-        type="music_play",
+        type=_resolve_event_type(row.document_origin_label),
         timestamp_start=timestamp_start,
         timestamp_end=row.timestamp_end,
         title=_build_title(row),
@@ -263,7 +268,8 @@ def _parse_utc_timestamp(value: object) -> datetime:
 def _parse_ms_played(value: object) -> int:
     if not isinstance(value, int):
         raise ValueError(
-            "Spotify streaming-history row is missing a valid integer 'ms_played' value."
+            "Spotify streaming-history row is missing a valid integer "
+            "'ms_played' value."
         )
     if value < 0:
         raise ValueError(
@@ -303,7 +309,9 @@ def _normalize_username(username: str | None) -> str | None:
     return normalized or None
 
 
-def _spotify_row_sort_key(row: ParsedSpotifyStreamRow) -> tuple[str, datetime, str, int]:
+def _spotify_row_sort_key(
+    row: ParsedSpotifyStreamRow,
+) -> tuple[str, datetime, str, int]:
     return (
         row.normalized_username,
         row.timestamp_end,
@@ -314,6 +322,13 @@ def _spotify_row_sort_key(row: ParsedSpotifyStreamRow) -> tuple[str, datetime, s
 
 def build_spotify_source_external_id(normalized_username: str) -> str:
     return f"spotify:{normalized_username}"
+
+
+def _resolve_event_type(document_origin_label: str) -> str:
+    normalized_label = Path(document_origin_label).name.casefold()
+    if normalized_label.startswith(_VIDEO_FILE_PREFIX):
+        return "video_play"
+    return "music_play"
 
 
 __all__ = [

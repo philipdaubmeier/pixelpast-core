@@ -19,8 +19,8 @@ from typer.testing import CliRunner
 
 from pixelpast.analytics.entrypoints import list_supported_derive_jobs
 from pixelpast.cli.main import (
-    CliProgressReporter,
     UI_WORKSPACE,
+    CliProgressReporter,
     IngestionCliProgressReporter,
     _build_dev_process_specs,
     app,
@@ -31,9 +31,16 @@ from pixelpast.ingestion.workdays_vacation.contracts import (
     WorkdaysVacationTransformError,
     WorkdaysVacationWorkbookDescriptor,
 )
-from pixelpast.persistence.models import Asset, DailyAggregate, DailyView, Event, JobRun, Source
-from pixelpast.shared.progress import JobProgressSnapshot
+from pixelpast.persistence.models import (
+    Asset,
+    DailyAggregate,
+    DailyView,
+    Event,
+    JobRun,
+    Source,
+)
 from pixelpast.shared.logging import KeyValueFormatter
+from pixelpast.shared.progress import JobProgressSnapshot
 from pixelpast.shared.runtime import create_runtime_context, initialize_database
 from pixelpast.shared.settings import get_settings
 
@@ -104,7 +111,9 @@ def test_cli_ingest_photos_persists_assets(monkeypatch) -> None:
     photos_root = Path("var") / f"cli-photos-{uuid4().hex}"
     photos_root.mkdir(parents=True, exist_ok=False)
     (photos_root / "IMG_20240102_030405.jpg").write_bytes(b"not-a-real-image")
-    monkeypatch.setenv("PIXELPAST_DATABASE_URL", f"sqlite:///{database_path.as_posix()}")
+    monkeypatch.setenv(
+        "PIXELPAST_DATABASE_URL", f"sqlite:///{database_path.as_posix()}"
+    )
     monkeypatch.setenv("PIXELPAST_PHOTOS_ROOT", str(photos_root))
     get_settings.cache_clear()
 
@@ -204,7 +213,9 @@ def test_cli_ingest_photos_subprocess_completes_with_fixture_assets() -> None:
 def test_cli_ingest_calendar_persists_events_from_fixture(monkeypatch) -> None:
     database_path = _build_test_database_path("cli-calendar-ingest")
     fixture_path = Path("test") / "assets" / "outlook_cal_export_test_fixture.ics"
-    monkeypatch.setenv("PIXELPAST_DATABASE_URL", f"sqlite:///{database_path.as_posix()}")
+    monkeypatch.setenv(
+        "PIXELPAST_DATABASE_URL", f"sqlite:///{database_path.as_posix()}"
+    )
     monkeypatch.setenv("PIXELPAST_CALENDAR_ROOT", str(fixture_path.resolve()))
     get_settings.cache_clear()
 
@@ -287,11 +298,15 @@ def test_cli_ingest_calendar_subprocess_completes_with_zip_fixture() -> None:
 def test_cli_ingest_spotify_persists_events_from_fixture(monkeypatch) -> None:
     database_path = _build_test_database_path("cli-spotify-ingest")
     workspace_root = Path("var") / f"cli-spotify-{uuid4().hex}"
-    fixture_path = Path("test") / "assets" / "spotify_streaming_history_audio_test_fixture.json"
+    fixture_path = (
+        Path("test") / "assets" / "spotify_streaming_history_audio_test_fixture.json"
+    )
     spotify_path = workspace_root / "Streaming_History_Audio_2024.json"
     workspace_root.mkdir(parents=True, exist_ok=False)
     spotify_path.write_text(fixture_path.read_text(encoding="utf-8"), encoding="utf-8")
-    monkeypatch.setenv("PIXELPAST_DATABASE_URL", f"sqlite:///{database_path.as_posix()}")
+    monkeypatch.setenv(
+        "PIXELPAST_DATABASE_URL", f"sqlite:///{database_path.as_posix()}"
+    )
     monkeypatch.setenv("PIXELPAST_SPOTIFY_ROOT", str(spotify_path.resolve()))
     get_settings.cache_clear()
 
@@ -301,6 +316,7 @@ def test_cli_ingest_spotify_persists_events_from_fixture(monkeypatch) -> None:
         assert database_path.exists()
         assert "[spotify] completed" in result.stdout
         assert "inserted: 2" in result.stdout
+        assert "skipped_json_files: 0" in result.stdout
         assert "failed: 0" in result.stdout
 
         engine = create_engine(f"sqlite:///{database_path.as_posix()}")
@@ -308,7 +324,9 @@ def test_cli_ingest_spotify_persists_events_from_fixture(monkeypatch) -> None:
             with Session(engine) as session:
                 sources = list(session.execute(select(Source)).scalars())
                 events = list(
-                    session.execute(select(Event).order_by(Event.timestamp_end)).scalars()
+                    session.execute(
+                        select(Event).order_by(Event.timestamp_end)
+                    ).scalars()
                 )
                 assets = list(session.execute(select(Asset)).scalars())
                 job_runs = list(
@@ -338,12 +356,67 @@ def test_cli_ingest_spotify_persists_events_from_fixture(monkeypatch) -> None:
         shutil.rmtree(workspace_root, ignore_errors=True)
 
 
-def test_cli_ingest_calendar_reports_event_counts_in_terminal_summary(monkeypatch) -> None:
+def test_cli_ingest_spotify_zip_reports_skipped_json_files(monkeypatch) -> None:
+    database_path = _build_test_database_path("cli-spotify-zip-ingest")
+    workspace_root = Path("var") / f"cli-spotify-zip-{uuid4().hex}"
+    archive_path = workspace_root / "spotify-export.zip"
+    workspace_root.mkdir(parents=True, exist_ok=False)
+    with zipfile.ZipFile(archive_path, mode="w") as archive:
+        archive.writestr(
+            "nested/Streaming_History_Audio_2024.json",
+            "\n".join(
+                [
+                    "[",
+                    "  {",
+                    '    "ts": "2024-02-01T07:15:10Z",',
+                    '    "username": "PixelUser",',
+                    '    "platform": "android",',
+                    '    "ms_played": 1000,',
+                    '    "conn_country": "DE",',
+                    '    "master_metadata_track_name": "One",',
+                    '    "master_metadata_album_artist_name": "Artist",',
+                    '    "spotify_track_uri": "spotify:track:one",',
+                    '    "episode_name": null,',
+                    '    "episode_show_name": null,',
+                    '    "spotify_episode_uri": null,',
+                    '    "shuffle": false,',
+                    '    "skipped": false',
+                    "  }",
+                    "]",
+                ]
+            ),
+        )
+        archive.writestr("nested/Profile.json", "{}")
+    monkeypatch.setenv(
+        "PIXELPAST_DATABASE_URL", f"sqlite:///{database_path.as_posix()}"
+    )
+    monkeypatch.setenv("PIXELPAST_SPOTIFY_ROOT", str(archive_path.resolve()))
+    get_settings.cache_clear()
+
+    try:
+        result = runner.invoke(app, ["ingest", "spotify"])
+
+        assert result.exit_code == 0
+        assert "[spotify] completed" in result.stdout
+        assert "skipped_json_files: 1" in result.stdout
+        assert "inserted: 1" in result.stdout
+    finally:
+        get_settings.cache_clear()
+        if database_path.exists():
+            database_path.unlink()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_cli_ingest_calendar_reports_event_counts_in_terminal_summary(
+    monkeypatch,
+) -> None:
     database_path = _build_test_database_path("cli-calendar-ingest-summary")
     workspace_root = Path("var") / f"cli-calendar-summary-{uuid4().hex}"
     calendar_path = workspace_root / "work.ics"
     workspace_root.mkdir(parents=True, exist_ok=False)
-    monkeypatch.setenv("PIXELPAST_DATABASE_URL", f"sqlite:///{database_path.as_posix()}")
+    monkeypatch.setenv(
+        "PIXELPAST_DATABASE_URL", f"sqlite:///{database_path.as_posix()}"
+    )
     monkeypatch.setenv("PIXELPAST_CALENDAR_ROOT", str(calendar_path.resolve()))
     get_settings.cache_clear()
 
@@ -404,7 +477,9 @@ def test_cli_ingest_calendar_reports_missing_from_source_for_removed_events(
     workspace_root = Path("var") / f"cli-calendar-missing-{uuid4().hex}"
     calendar_path = workspace_root / "work.ics"
     workspace_root.mkdir(parents=True, exist_ok=False)
-    monkeypatch.setenv("PIXELPAST_DATABASE_URL", f"sqlite:///{database_path.as_posix()}")
+    monkeypatch.setenv(
+        "PIXELPAST_DATABASE_URL", f"sqlite:///{database_path.as_posix()}"
+    )
     monkeypatch.setenv("PIXELPAST_CALENDAR_ROOT", str(calendar_path.resolve()))
     get_settings.cache_clear()
 
@@ -465,11 +540,15 @@ def test_cli_ingest_calendar_reports_missing_from_source_for_removed_events(
         try:
             with Session(engine) as session:
                 events = list(
-                    session.execute(select(Event).order_by(Event.timestamp_start)).scalars()
+                    session.execute(
+                        select(Event).order_by(Event.timestamp_start)
+                    ).scalars()
                 )
-                job_run = session.execute(
-                    select(JobRun).order_by(JobRun.id.desc())
-                ).scalars().first()
+                job_run = (
+                    session.execute(select(JobRun).order_by(JobRun.id.desc()))
+                    .scalars()
+                    .first()
+                )
         finally:
             engine.dispose()
 
@@ -490,7 +569,9 @@ def test_cli_ingest_workdays_vacation_persists_source_from_fixture(
 ) -> None:
     database_path = _build_test_database_path("cli-workdays-vacation-ingest")
     fixture_path = Path("test") / "assets" / "workday_vacation_test_fixture.xlsx"
-    monkeypatch.setenv("PIXELPAST_DATABASE_URL", f"sqlite:///{database_path.as_posix()}")
+    monkeypatch.setenv(
+        "PIXELPAST_DATABASE_URL", f"sqlite:///{database_path.as_posix()}"
+    )
     monkeypatch.setenv(
         "PIXELPAST_WORKDAYS_VACATION_ROOT",
         str(fixture_path.resolve()),
@@ -541,7 +622,9 @@ def test_cli_returns_invalid_argument_exit_code_when_workdays_vacation_root_is_m
     monkeypatch,
 ) -> None:
     database_path = _build_test_database_path("cli-workdays-vacation-missing-root")
-    monkeypatch.setenv("PIXELPAST_DATABASE_URL", f"sqlite:///{database_path.as_posix()}")
+    monkeypatch.setenv(
+        "PIXELPAST_DATABASE_URL", f"sqlite:///{database_path.as_posix()}"
+    )
     monkeypatch.delenv("PIXELPAST_WORKDAYS_VACATION_ROOT", raising=False)
     get_settings.cache_clear()
 
@@ -559,7 +642,9 @@ def test_cli_ingest_workdays_vacation_prints_transform_errors(
     monkeypatch,
 ) -> None:
     database_path = _build_test_database_path("cli-workdays-vacation-errors")
-    monkeypatch.setenv("PIXELPAST_DATABASE_URL", f"sqlite:///{database_path.as_posix()}")
+    monkeypatch.setenv(
+        "PIXELPAST_DATABASE_URL", f"sqlite:///{database_path.as_posix()}"
+    )
     get_settings.cache_clear()
 
     workbook_path = Path("test") / "assets" / "broken_workday_vacation.xlsx"
@@ -725,7 +810,9 @@ def test_cli_progress_reporter_prints_failure_summary() -> None:
 
 def test_cli_derive_daily_aggregate_rebuilds_rows(monkeypatch) -> None:
     database_path = _build_test_database_path("cli-derive")
-    monkeypatch.setenv("PIXELPAST_DATABASE_URL", f"sqlite:///{database_path.as_posix()}")
+    monkeypatch.setenv(
+        "PIXELPAST_DATABASE_URL", f"sqlite:///{database_path.as_posix()}"
+    )
     get_settings.cache_clear()
 
     try:
@@ -808,7 +895,9 @@ def test_cli_derive_daily_aggregate_rebuilds_rows(monkeypatch) -> None:
                         )
                     ).scalars()
                 )
-                job_runs = list(session.execute(select(JobRun).order_by(JobRun.id)).scalars())
+                job_runs = list(
+                    session.execute(select(JobRun).order_by(JobRun.id)).scalars()
+                )
         finally:
             engine.dispose()
 
@@ -845,7 +934,9 @@ def test_cli_derive_daily_aggregate_rebuilds_rows(monkeypatch) -> None:
 
 def test_cli_derive_daily_aggregate_range_reports_progress(monkeypatch) -> None:
     database_path = _build_test_database_path("cli-derive-range")
-    monkeypatch.setenv("PIXELPAST_DATABASE_URL", f"sqlite:///{database_path.as_posix()}")
+    monkeypatch.setenv(
+        "PIXELPAST_DATABASE_URL", f"sqlite:///{database_path.as_posix()}"
+    )
     get_settings.cache_clear()
 
     try:
@@ -925,7 +1016,9 @@ def test_cli_derive_daily_aggregate_range_reports_progress(monkeypatch) -> None:
         engine = create_engine(f"sqlite:///{database_path.as_posix()}")
         try:
             with Session(engine) as session:
-                job_runs = list(session.execute(select(JobRun).order_by(JobRun.id)).scalars())
+                job_runs = list(
+                    session.execute(select(JobRun).order_by(JobRun.id)).scalars()
+                )
         finally:
             engine.dispose()
 
@@ -943,7 +1036,9 @@ def test_cli_returns_invalid_argument_exit_code_for_unknown_source(
     monkeypatch,
 ) -> None:
     database_path = _build_test_database_path("cli-invalid")
-    monkeypatch.setenv("PIXELPAST_DATABASE_URL", f"sqlite:///{database_path.as_posix()}")
+    monkeypatch.setenv(
+        "PIXELPAST_DATABASE_URL", f"sqlite:///{database_path.as_posix()}"
+    )
     get_settings.cache_clear()
 
     try:
@@ -959,7 +1054,9 @@ def test_cli_returns_invalid_argument_exit_code_when_calendar_root_is_missing(
     monkeypatch,
 ) -> None:
     database_path = _build_test_database_path("cli-calendar-missing-root")
-    monkeypatch.setenv("PIXELPAST_DATABASE_URL", f"sqlite:///{database_path.as_posix()}")
+    monkeypatch.setenv(
+        "PIXELPAST_DATABASE_URL", f"sqlite:///{database_path.as_posix()}"
+    )
     monkeypatch.delenv("PIXELPAST_CALENDAR_ROOT", raising=False)
     get_settings.cache_clear()
 
@@ -976,7 +1073,9 @@ def test_cli_returns_invalid_argument_exit_code_when_spotify_root_is_missing(
     monkeypatch,
 ) -> None:
     database_path = _build_test_database_path("cli-spotify-missing-root")
-    monkeypatch.setenv("PIXELPAST_DATABASE_URL", f"sqlite:///{database_path.as_posix()}")
+    monkeypatch.setenv(
+        "PIXELPAST_DATABASE_URL", f"sqlite:///{database_path.as_posix()}"
+    )
     monkeypatch.delenv("PIXELPAST_SPOTIFY_ROOT", raising=False)
     get_settings.cache_clear()
 
@@ -994,7 +1093,9 @@ def test_cli_returns_invalid_argument_exit_code_for_unknown_derive_job(
     monkeypatch,
 ) -> None:
     database_path = _build_test_database_path("cli-invalid-derive")
-    monkeypatch.setenv("PIXELPAST_DATABASE_URL", f"sqlite:///{database_path.as_posix()}")
+    monkeypatch.setenv(
+        "PIXELPAST_DATABASE_URL", f"sqlite:///{database_path.as_posix()}"
+    )
     get_settings.cache_clear()
 
     try:
@@ -1028,8 +1129,8 @@ def test_key_value_formatter_renders_structured_output() -> None:
         )
     )
 
-    assert 'level=info' in record
-    assert 'logger=pixelpast.cli.main' in record
+    assert "level=info" in record
+    assert "logger=pixelpast.cli.main" in record
     assert 'message="command started"' in record
     assert 'command="ingest"' in record
     assert 'target="photos"' in record
