@@ -4,6 +4,13 @@ from fastapi import APIRouter
 
 router = APIRouter(tags=["health"])
 
+HEALTH_SUCCESS_EXAMPLES = {
+    "ok": {
+        "summary": "Healthy local API process",
+        "value": {"status": "ok"},
+    }
+}
+
 
 @router.get(
     "/health",
@@ -14,6 +21,15 @@ router = APIRouter(tags=["health"])
         "database contents."
     ),
     response_description="Minimal liveness status for the running API process.",
+    responses={
+        200: {
+            "content": {
+                "application/json": {
+                    "examples": HEALTH_SUCCESS_EXAMPLES,
+                }
+            }
+        }
+    },
 )
 def health() -> dict[str, str]:
     """Return a minimal process health payload."""

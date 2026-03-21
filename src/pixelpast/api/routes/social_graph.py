@@ -21,6 +21,36 @@ from pixelpast.api.schemas import SocialGraphResponse
 
 router = APIRouter(tags=["social"])
 
+SOCIAL_GRAPH_SUCCESS_EXAMPLES = {
+    "trip_companions": {
+        "summary": "Social graph for a filtered travel window",
+        "value": {
+            "persons": [
+                {"id": 7, "name": "Anna Becker", "occurrence_count": 12},
+                {"id": 12, "name": "Milo Tan", "occurrence_count": 8},
+                {"id": 19, "name": "Nora Rossi", "occurrence_count": 5},
+            ],
+            "links": [
+                {"person_ids": [7, 12], "weight": 6, "affinity": 0.75},
+                {"person_ids": [7, 19], "weight": 3, "affinity": 0.428571},
+            ],
+        },
+    }
+}
+
+SOCIAL_GRAPH_BAD_REQUEST_EXAMPLES = {
+    **BAD_REQUEST_RESPONSE[400]["content"]["application/json"]["examples"],
+    "unsupported_filters": {
+        "summary": "Rejected tag and filename filters",
+        "value": {
+            "detail": (
+                "unsupported social graph filters: filename_query, tag_paths; "
+                "supported filters: start, end, person_ids, max_people_per_asset"
+            )
+        },
+    },
+}
+
 
 @router.get(
     "/social/graph",
@@ -33,7 +63,28 @@ router = APIRouter(tags=["social"])
     response_description=(
         "Person nodes and weighted links for the filtered social graph."
     ),
-    responses=combine_responses(BAD_REQUEST_RESPONSE, VALIDATION_ERROR_RESPONSE),
+    responses=combine_responses(
+        {
+            200: {
+                "content": {
+                    "application/json": {
+                        "examples": SOCIAL_GRAPH_SUCCESS_EXAMPLES,
+                    }
+                }
+            }
+        },
+        {
+            400: {
+                **BAD_REQUEST_RESPONSE[400],
+                "content": {
+                    "application/json": {
+                        "examples": SOCIAL_GRAPH_BAD_REQUEST_EXAMPLES,
+                    }
+                },
+            }
+        },
+        VALIDATION_ERROR_RESPONSE,
+    ),
 )
 def get_social_graph(
     start: date | None = Query(
@@ -42,6 +93,12 @@ def get_social_graph(
             "Inclusive UTC start date for the requested social-graph window. "
             "Must be provided together with end."
         ),
+        openapi_examples={
+            "trip_window_start": {
+                "summary": "Graph window start",
+                "value": "2026-07-01",
+            }
+        },
     ),
     end: date | None = Query(
         default=None,
@@ -49,6 +106,12 @@ def get_social_graph(
             "Inclusive UTC end date for the requested social-graph window. "
             "Must be provided together with start."
         ),
+        openapi_examples={
+            "trip_window_end": {
+                "summary": "Graph window end",
+                "value": "2026-07-31",
+            }
+        },
     ),
     person_ids: list[int] = Query(
         default=[],
@@ -56,6 +119,12 @@ def get_social_graph(
             "Repeatable seed person identifiers. Only assets containing at "
             "least one selected person qualify when this filter is present."
         ),
+        openapi_examples={
+            "anna": {
+                "summary": "Seed the graph with Anna Becker",
+                "value": 7,
+            }
+        },
     ),
     max_people_per_asset: int = Query(
         default=10,
@@ -65,6 +134,12 @@ def get_social_graph(
             "Ignore assets that contain more than this many linked people to "
             "avoid oversized group shots dominating the graph."
         ),
+        openapi_examples={
+            "medium_group_cap": {
+                "summary": "Ignore large group shots",
+                "value": 8,
+            }
+        },
     ),
     tag_paths: list[str] = Query(
         default=[],
@@ -72,6 +147,12 @@ def get_social_graph(
             "Reserved filter parameter. The current social graph contract "
             "rejects tag-based filtering."
         ),
+        openapi_examples={
+            "unsupported_tag": {
+                "summary": "Rejected tag filter example",
+                "value": "travel/italy/venice",
+            }
+        },
     ),
     location_geometry: str | None = Query(
         default=None,
@@ -79,6 +160,12 @@ def get_social_graph(
             "Reserved filter parameter. The current social graph contract "
             "rejects geometry-based filtering."
         ),
+        openapi_examples={
+            "unsupported_geometry": {
+                "summary": "Rejected geometry filter example",
+                "value": "bbox:12.285,45.423,12.380,45.465",
+            }
+        },
     ),
     distance_latitude: float | None = Query(
         default=None,
@@ -88,6 +175,12 @@ def get_social_graph(
             "Reserved filter parameter. The current social graph contract "
             "rejects radial distance filtering."
         ),
+        openapi_examples={
+            "unsupported_distance_lat": {
+                "summary": "Rejected distance filter latitude",
+                "value": 45.4371,
+            }
+        },
     ),
     distance_longitude: float | None = Query(
         default=None,
@@ -97,6 +190,12 @@ def get_social_graph(
             "Reserved filter parameter. The current social graph contract "
             "rejects radial distance filtering."
         ),
+        openapi_examples={
+            "unsupported_distance_lon": {
+                "summary": "Rejected distance filter longitude",
+                "value": 12.3327,
+            }
+        },
     ),
     distance_radius_meters: int | None = Query(
         default=None,
@@ -105,6 +204,12 @@ def get_social_graph(
             "Reserved filter parameter. The current social graph contract "
             "rejects radial distance filtering."
         ),
+        openapi_examples={
+            "unsupported_distance_radius": {
+                "summary": "Rejected distance filter radius",
+                "value": 5000,
+            }
+        },
     ),
     filename_query: str | None = Query(
         default=None,
@@ -113,6 +218,12 @@ def get_social_graph(
             "Reserved filter parameter. The current social graph contract "
             "rejects filename-based filtering."
         ),
+        openapi_examples={
+            "unsupported_filename": {
+                "summary": "Rejected filename filter example",
+                "value": "IMG_20260703",
+            }
+        },
     ),
     provider: SocialGraphProjectionProvider = Depends(
         get_social_graph_projection_provider

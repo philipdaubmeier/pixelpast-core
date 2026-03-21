@@ -20,6 +20,11 @@
                   "type": "string"
                 "type": "object"
                 "title": "Response Health Api Health Get"
+              "examples":
+                "ok":
+                  "summary": "Healthy local API process"
+                  "value":
+                    "status": "ok"
   "/api/exploration/bootstrap":
     "get":
       "tags":
@@ -42,6 +47,10 @@
             "description": "Inclusive UTC start date for the requested exploration window. Must be provided together with end."
             "title": "Start"
           "description": "Inclusive UTC start date for the requested exploration window. Must be provided together with end."
+          "examples":
+            "winter_window":
+              "summary": "Window start for January 2026"
+              "value": "2026-01-01"
         -
           "name": "end"
           "in": "query"
@@ -56,6 +65,10 @@
             "description": "Inclusive UTC end date for the requested exploration window. Must be provided together with start."
             "title": "End"
           "description": "Inclusive UTC end date for the requested exploration window. Must be provided together with start."
+          "examples":
+            "winter_window":
+              "summary": "Window end for January 2026"
+              "value": "2026-01-31"
       "responses":
         "200":
           "description": "Exploration shell metadata for the resolved inclusive UTC date range."
@@ -63,16 +76,80 @@
             "application/json":
               "schema":
                 "$ref": "#/components/schemas/ExplorationBootstrapResponse"
+              "examples":
+                "winter_overview":
+                  "summary": "Bootstrap metadata for a winter exploration window"
+                  "value":
+                    "range":
+                      "start": "2026-01-01"
+                      "end": "2026-01-31"
+                    "view_modes":
+                      -
+                        "id": "activity"
+                        "label": "Activity"
+                        "description": "Overall day activity score across all imported sources."
+                      -
+                        "id": "workdays_vacation"
+                        "label": "Vacation"
+                        "description": "Workday and vacation classification for each calendar day."
+                    "persons":
+                      -
+                        "id": 7
+                        "name": "Anna Becker"
+                        "role": "family"
+                      -
+                        "id": 12
+                        "name": "Milo Tan"
+                        "role": "friend"
+                    "tags":
+                      -
+                        "path": "travel/italy/venice"
+                        "label": "Venice"
+                      -
+                        "path": "music/concert/live"
+                        "label": "Live Concert"
         "400":
           "description": "The request was syntactically valid but violated a documented PixelPast API contract constraint."
           "content":
             "application/json":
+              "examples":
+                "invalid_range":
+                  "summary": "Start date after end date"
+                  "value":
+                    "detail": "start must be less than or equal to end"
+                "partial_range":
+                  "summary": "Only one range boundary provided"
+                  "value":
+                    "detail": "start and end must both be provided together"
               "schema":
                 "$ref": "#/components/schemas/ApiErrorResponse"
         "422":
           "description": "The request could not be parsed or failed declared parameter validation."
           "content":
             "application/json":
+              "examples":
+                "invalid_date":
+                  "summary": "Unparseable ISO date"
+                  "value":
+                    "detail":
+                      -
+                        "type": "date_from_datetime_parsing"
+                        "loc":
+                          - "query"
+                          - "start"
+                        "msg": "Input should be a valid date or datetime, input is too short"
+                        "input": "2026-02"
+                "invalid_path_date":
+                  "summary": "Invalid path day format"
+                  "value":
+                    "detail":
+                      -
+                        "type": "date_from_datetime_parsing"
+                        "loc":
+                          - "path"
+                          - "day"
+                        "msg": "Input should be a valid date or datetime, invalid date separator"
+                        "input": "2026/07/14"
               "schema":
                 "$ref": "#/components/schemas/ApiValidationErrorResponse"
   "/api/exploration":
@@ -97,6 +174,10 @@
             "description": "Inclusive UTC start date for the requested exploration window. Must be provided together with end."
             "title": "Start"
           "description": "Inclusive UTC start date for the requested exploration window. Must be provided together with end."
+          "examples":
+            "trip_window_start":
+              "summary": "Trip window start"
+              "value": "2026-07-01"
         -
           "name": "end"
           "in": "query"
@@ -111,6 +192,10 @@
             "description": "Inclusive UTC end date for the requested exploration window. Must be provided together with start."
             "title": "End"
           "description": "Inclusive UTC end date for the requested exploration window. Must be provided together with start."
+          "examples":
+            "trip_window_end":
+              "summary": "Trip window end"
+              "value": "2026-07-07"
         -
           "name": "view_mode"
           "in": "query"
@@ -121,6 +206,10 @@
             "default": "activity"
             "title": "View Mode"
           "description": "Backend-defined daily view identifier that determines which derived day rows are projected into the grid."
+          "examples":
+            "travel_view":
+              "summary": "Default activity projection"
+              "value": "activity"
         -
           "name": "person_ids"
           "in": "query"
@@ -133,6 +222,10 @@
             "default": []
             "title": "Person Ids"
           "description": "Repeatable person identifiers. Only canonical items linked to at least one selected person contribute to counts."
+          "examples":
+            "anna":
+              "summary": "Filter to Anna Becker"
+              "value": 7
         -
           "name": "tag_paths"
           "in": "query"
@@ -145,6 +238,10 @@
             "default": []
             "title": "Tag Paths"
           "description": "Repeatable normalized tag paths used to restrict contributing canonical items."
+          "examples":
+            "venice":
+              "summary": "Filter to a travel tag subtree"
+              "value": "travel/italy/venice"
         -
           "name": "location_geometry"
           "in": "query"
@@ -158,6 +255,10 @@
             "description": "Optional serialized geometry filter interpreted by the active projection provider."
             "title": "Location Geometry"
           "description": "Optional serialized geometry filter interpreted by the active projection provider."
+          "examples":
+            "venice_bbox":
+              "summary": "Serialized geometry understood by the active provider"
+              "value": "bbox:12.285,45.423,12.380,45.465"
         -
           "name": "distance_latitude"
           "in": "query"
@@ -173,6 +274,10 @@
             "description": "Latitude for a radial distance filter. Use together with distance_longitude and distance_radius_meters."
             "title": "Distance Latitude"
           "description": "Latitude for a radial distance filter. Use together with distance_longitude and distance_radius_meters."
+          "examples":
+            "venice_center":
+              "summary": "Latitude for a nearby-place filter"
+              "value": 45.4371
         -
           "name": "distance_longitude"
           "in": "query"
@@ -188,6 +293,10 @@
             "description": "Longitude for a radial distance filter. Use together with distance_latitude and distance_radius_meters."
             "title": "Distance Longitude"
           "description": "Longitude for a radial distance filter. Use together with distance_latitude and distance_radius_meters."
+          "examples":
+            "venice_center":
+              "summary": "Longitude for a nearby-place filter"
+              "value": 12.3327
         -
           "name": "distance_radius_meters"
           "in": "query"
@@ -202,6 +311,10 @@
             "description": "Radius in meters for the radial distance filter."
             "title": "Distance Radius Meters"
           "description": "Radius in meters for the radial distance filter."
+          "examples":
+            "walkable_radius":
+              "summary": "Five kilometer radial filter"
+              "value": 5000
         -
           "name": "filename_query"
           "in": "query"
@@ -216,6 +329,10 @@
             "description": "Case-insensitive filename search term applied to contributing assets."
             "title": "Filename Query"
           "description": "Case-insensitive filename search term applied to contributing assets."
+          "examples":
+            "camera_roll":
+              "summary": "Filename substring match"
+              "value": "IMG_20260703"
       "responses":
         "200":
           "description": "Dense exploration grid for the resolved UTC date range."
@@ -223,16 +340,70 @@
             "application/json":
               "schema":
                 "$ref": "#/components/schemas/ExplorationGridResponse"
+              "examples":
+                "filtered_travel_grid":
+                  "summary": "Day grid filtered to one person and a travel tag"
+                  "value":
+                    "range":
+                      "start": "2026-07-01"
+                      "end": "2026-07-07"
+                    "days":
+                      -
+                        "date": "2026-07-01"
+                        "count": 0
+                        "color": "empty"
+                      -
+                        "date": "2026-07-02"
+                        "count": 3
+                        "color": "medium"
+                        "label": "Venice arrival and evening walk"
+                      -
+                        "date": "2026-07-03"
+                        "count": 6
+                        "color": "#E07A5F"
+                        "label": "Biennale and canal photos"
         "400":
           "description": "The request was syntactically valid but violated a documented PixelPast API contract constraint."
           "content":
             "application/json":
+              "examples":
+                "invalid_range":
+                  "summary": "Start date after end date"
+                  "value":
+                    "detail": "start must be less than or equal to end"
+                "partial_range":
+                  "summary": "Only one range boundary provided"
+                  "value":
+                    "detail": "start and end must both be provided together"
               "schema":
                 "$ref": "#/components/schemas/ApiErrorResponse"
         "422":
           "description": "The request could not be parsed or failed declared parameter validation."
           "content":
             "application/json":
+              "examples":
+                "invalid_date":
+                  "summary": "Unparseable ISO date"
+                  "value":
+                    "detail":
+                      -
+                        "type": "date_from_datetime_parsing"
+                        "loc":
+                          - "query"
+                          - "start"
+                        "msg": "Input should be a valid date or datetime, input is too short"
+                        "input": "2026-02"
+                "invalid_path_date":
+                  "summary": "Invalid path day format"
+                  "value":
+                    "detail":
+                      -
+                        "type": "date_from_datetime_parsing"
+                        "loc":
+                          - "path"
+                          - "day"
+                        "msg": "Input should be a valid date or datetime, invalid date separator"
+                        "input": "2026/07/14"
               "schema":
                 "$ref": "#/components/schemas/ApiValidationErrorResponse"
   "/api/days/context":
@@ -253,6 +424,10 @@
             "description": "Inclusive UTC start date for the requested context preload."
             "title": "Start"
           "description": "Inclusive UTC start date for the requested context preload."
+          "examples":
+            "trip_window_start":
+              "summary": "Preload start date"
+              "value": "2026-07-01"
         -
           "name": "end"
           "in": "query"
@@ -263,6 +438,10 @@
             "description": "Inclusive UTC end date for the requested context preload."
             "title": "End"
           "description": "Inclusive UTC end date for the requested context preload."
+          "examples":
+            "trip_window_end":
+              "summary": "Preload end date"
+              "value": "2026-07-03"
         -
           "name": "view_mode"
           "in": "query"
@@ -273,6 +452,10 @@
             "default": "activity"
             "title": "View Mode"
           "description": "Backend-defined daily view identifier that determines which derived day rows provide the context payload."
+          "examples":
+            "activity_view":
+              "summary": "Default activity preload"
+              "value": "activity"
         -
           "name": "person_ids"
           "in": "query"
@@ -285,6 +468,10 @@
             "default": []
             "title": "Person Ids"
           "description": "Repeatable person identifiers used to filter contributing canonical items."
+          "examples":
+            "anna":
+              "summary": "Preload only days involving Anna Becker"
+              "value": 7
         -
           "name": "tag_paths"
           "in": "query"
@@ -297,6 +484,10 @@
             "default": []
             "title": "Tag Paths"
           "description": "Repeatable normalized tag paths used to filter contributing canonical items."
+          "examples":
+            "travel_tag":
+              "summary": "Preload only travel-tagged days"
+              "value": "travel/italy/venice"
         -
           "name": "location_geometry"
           "in": "query"
@@ -310,6 +501,10 @@
             "description": "Optional serialized geometry filter interpreted by the active projection provider."
             "title": "Location Geometry"
           "description": "Optional serialized geometry filter interpreted by the active projection provider."
+          "examples":
+            "venice_bbox":
+              "summary": "Bounding box filter"
+              "value": "bbox:12.285,45.423,12.380,45.465"
         -
           "name": "distance_latitude"
           "in": "query"
@@ -325,6 +520,10 @@
             "description": "Latitude for a radial distance filter. Use together with distance_longitude and distance_radius_meters."
             "title": "Distance Latitude"
           "description": "Latitude for a radial distance filter. Use together with distance_longitude and distance_radius_meters."
+          "examples":
+            "venice_center":
+              "summary": "Radial filter latitude"
+              "value": 45.4371
         -
           "name": "distance_longitude"
           "in": "query"
@@ -340,6 +539,10 @@
             "description": "Longitude for a radial distance filter. Use together with distance_latitude and distance_radius_meters."
             "title": "Distance Longitude"
           "description": "Longitude for a radial distance filter. Use together with distance_latitude and distance_radius_meters."
+          "examples":
+            "venice_center":
+              "summary": "Radial filter longitude"
+              "value": 12.3327
         -
           "name": "distance_radius_meters"
           "in": "query"
@@ -354,6 +557,10 @@
             "description": "Radius in meters for the radial distance filter."
             "title": "Distance Radius Meters"
           "description": "Radius in meters for the radial distance filter."
+          "examples":
+            "walkable_radius":
+              "summary": "Five kilometer radial filter"
+              "value": 5000
         -
           "name": "filename_query"
           "in": "query"
@@ -368,6 +575,10 @@
             "description": "Case-insensitive filename search term applied to contributing assets."
             "title": "Filename Query"
           "description": "Case-insensitive filename search term applied to contributing assets."
+          "examples":
+            "camera_roll":
+              "summary": "Filename substring match"
+              "value": "IMG_20260703"
       "responses":
         "200":
           "description": "Dense day-context payload for the requested UTC range."
@@ -375,16 +586,101 @@
             "application/json":
               "schema":
                 "$ref": "#/components/schemas/DayContextResponse"
+              "examples":
+                "preloaded_trip_week":
+                  "summary": "Context preload for a short trip window"
+                  "value":
+                    "range":
+                      "start": "2026-07-01"
+                      "end": "2026-07-03"
+                    "days":
+                      -
+                        "date": "2026-07-01"
+                        "persons": []
+                        "tags": []
+                        "map_points": []
+                        "summary_counts":
+                          "events": 0
+                          "assets": 0
+                          "places": 0
+                      -
+                        "date": "2026-07-02"
+                        "persons":
+                          -
+                            "id": 7
+                            "name": "Anna Becker"
+                            "role": "family"
+                          -
+                            "id": 12
+                            "name": "Milo Tan"
+                            "role": "friend"
+                        "tags":
+                          -
+                            "path": "travel/italy/venice"
+                            "label": "Venice"
+                          -
+                            "path": "activity/walking"
+                            "label": "Walking"
+                        "map_points":
+                          -
+                            "id": "location:2026-07-02:1"
+                            "label": "Santa Lucia Station"
+                            "latitude": 45.4419
+                            "longitude": 12.3211
+                        "summary_counts":
+                          "events": 2
+                          "assets": 1
+                          "places": 1
         "400":
           "description": "The request was syntactically valid but violated a documented PixelPast API contract constraint."
           "content":
             "application/json":
+              "examples":
+                "invalid_range":
+                  "summary": "Start date after end date"
+                  "value":
+                    "detail": "start must be less than or equal to end"
+                "partial_range":
+                  "summary": "Only one range boundary provided"
+                  "value":
+                    "detail": "start and end must both be provided together"
+                "window_limit":
+                  "summary": "Requested preload window too large"
+                  "value":
+                    "detail": "requested range exceeds maximum day context window of 31 days"
+                "unsupported_view_mode":
+                  "summary": "Unknown daily view identifier"
+                  "value":
+                    "detail": "unsupported view_mode: travel-intensity"
               "schema":
                 "$ref": "#/components/schemas/ApiErrorResponse"
         "422":
           "description": "The request could not be parsed or failed declared parameter validation."
           "content":
             "application/json":
+              "examples":
+                "invalid_date":
+                  "summary": "Unparseable ISO date"
+                  "value":
+                    "detail":
+                      -
+                        "type": "date_from_datetime_parsing"
+                        "loc":
+                          - "query"
+                          - "start"
+                        "msg": "Input should be a valid date or datetime, input is too short"
+                        "input": "2026-02"
+                "invalid_path_date":
+                  "summary": "Invalid path day format"
+                  "value":
+                    "detail":
+                      -
+                        "type": "date_from_datetime_parsing"
+                        "loc":
+                          - "path"
+                          - "day"
+                        "msg": "Input should be a valid date or datetime, invalid date separator"
+                        "input": "2026/07/14"
               "schema":
                 "$ref": "#/components/schemas/ApiValidationErrorResponse"
   "/api/days/{day}":
@@ -405,6 +701,10 @@
             "description": "UTC calendar day to inspect in ISO format (YYYY-MM-DD)."
             "title": "Day"
           "description": "UTC calendar day to inspect in ISO format (YYYY-MM-DD)."
+          "examples":
+            "summer_day":
+              "summary": "One summer travel day"
+              "value": "2026-07-14"
       "responses":
         "200":
           "description": "Chronological event and asset items for one UTC day."
@@ -412,10 +712,59 @@
             "application/json":
               "schema":
                 "$ref": "#/components/schemas/DayDetailResponse"
+              "examples":
+                "mixed_day_timeline":
+                  "summary": "Chronological event and asset timeline for one day"
+                  "value":
+                    "date": "2026-07-14"
+                    "items":
+                      -
+                        "item_type": "event"
+                        "id": 1042
+                        "timestamp": "2026-07-14T08:30:00Z"
+                        "event_type": "calendar"
+                        "title": "Flight to Lisbon"
+                        "summary": "TXL to LIS with morning check-in"
+                      -
+                        "item_type": "asset"
+                        "id": 8801
+                        "timestamp": "2026-07-14T14:12:43Z"
+                        "media_type": "image"
+                        "external_id": "photos/2026/07/IMG_1042.JPG"
+                      -
+                        "item_type": "event"
+                        "id": 1043
+                        "timestamp": "2026-07-14T19:00:00Z"
+                        "event_type": "music_play"
+                        "title": "Fado Playlist"
+                        "summary": "Spotify playback during evening walk"
         "422":
           "description": "The request could not be parsed or failed declared parameter validation."
           "content":
             "application/json":
+              "examples":
+                "invalid_date":
+                  "summary": "Unparseable ISO date"
+                  "value":
+                    "detail":
+                      -
+                        "type": "date_from_datetime_parsing"
+                        "loc":
+                          - "query"
+                          - "start"
+                        "msg": "Input should be a valid date or datetime, input is too short"
+                        "input": "2026-02"
+                "invalid_path_date":
+                  "summary": "Invalid path day format"
+                  "value":
+                    "detail":
+                      -
+                        "type": "date_from_datetime_parsing"
+                        "loc":
+                          - "path"
+                          - "day"
+                        "msg": "Input should be a valid date or datetime, invalid date separator"
+                        "input": "2026/07/14"
               "schema":
                 "$ref": "#/components/schemas/ApiValidationErrorResponse"
   "/api/social/graph":
@@ -440,6 +789,10 @@
             "description": "Inclusive UTC start date for the requested social-graph window. Must be provided together with end."
             "title": "Start"
           "description": "Inclusive UTC start date for the requested social-graph window. Must be provided together with end."
+          "examples":
+            "trip_window_start":
+              "summary": "Graph window start"
+              "value": "2026-07-01"
         -
           "name": "end"
           "in": "query"
@@ -454,6 +807,10 @@
             "description": "Inclusive UTC end date for the requested social-graph window. Must be provided together with start."
             "title": "End"
           "description": "Inclusive UTC end date for the requested social-graph window. Must be provided together with start."
+          "examples":
+            "trip_window_end":
+              "summary": "Graph window end"
+              "value": "2026-07-31"
         -
           "name": "person_ids"
           "in": "query"
@@ -466,6 +823,10 @@
             "default": []
             "title": "Person Ids"
           "description": "Repeatable seed person identifiers. Only assets containing at least one selected person qualify when this filter is present."
+          "examples":
+            "anna":
+              "summary": "Seed the graph with Anna Becker"
+              "value": 7
         -
           "name": "max_people_per_asset"
           "in": "query"
@@ -478,6 +839,10 @@
             "default": 10
             "title": "Max People Per Asset"
           "description": "Ignore assets that contain more than this many linked people to avoid oversized group shots dominating the graph."
+          "examples":
+            "medium_group_cap":
+              "summary": "Ignore large group shots"
+              "value": 8
         -
           "name": "tag_paths"
           "in": "query"
@@ -490,6 +855,10 @@
             "default": []
             "title": "Tag Paths"
           "description": "Reserved filter parameter. The current social graph contract rejects tag-based filtering."
+          "examples":
+            "unsupported_tag":
+              "summary": "Rejected tag filter example"
+              "value": "travel/italy/venice"
         -
           "name": "location_geometry"
           "in": "query"
@@ -503,6 +872,10 @@
             "description": "Reserved filter parameter. The current social graph contract rejects geometry-based filtering."
             "title": "Location Geometry"
           "description": "Reserved filter parameter. The current social graph contract rejects geometry-based filtering."
+          "examples":
+            "unsupported_geometry":
+              "summary": "Rejected geometry filter example"
+              "value": "bbox:12.285,45.423,12.380,45.465"
         -
           "name": "distance_latitude"
           "in": "query"
@@ -518,6 +891,10 @@
             "description": "Reserved filter parameter. The current social graph contract rejects radial distance filtering."
             "title": "Distance Latitude"
           "description": "Reserved filter parameter. The current social graph contract rejects radial distance filtering."
+          "examples":
+            "unsupported_distance_lat":
+              "summary": "Rejected distance filter latitude"
+              "value": 45.4371
         -
           "name": "distance_longitude"
           "in": "query"
@@ -533,6 +910,10 @@
             "description": "Reserved filter parameter. The current social graph contract rejects radial distance filtering."
             "title": "Distance Longitude"
           "description": "Reserved filter parameter. The current social graph contract rejects radial distance filtering."
+          "examples":
+            "unsupported_distance_lon":
+              "summary": "Rejected distance filter longitude"
+              "value": 12.3327
         -
           "name": "distance_radius_meters"
           "in": "query"
@@ -547,6 +928,10 @@
             "description": "Reserved filter parameter. The current social graph contract rejects radial distance filtering."
             "title": "Distance Radius Meters"
           "description": "Reserved filter parameter. The current social graph contract rejects radial distance filtering."
+          "examples":
+            "unsupported_distance_radius":
+              "summary": "Rejected distance filter radius"
+              "value": 5000
         -
           "name": "filename_query"
           "in": "query"
@@ -561,6 +946,10 @@
             "description": "Reserved filter parameter. The current social graph contract rejects filename-based filtering."
             "title": "Filename Query"
           "description": "Reserved filter parameter. The current social graph contract rejects filename-based filtering."
+          "examples":
+            "unsupported_filename":
+              "summary": "Rejected filename filter example"
+              "value": "IMG_20260703"
       "responses":
         "200":
           "description": "Person nodes and weighted links for the filtered social graph."
@@ -568,16 +957,82 @@
             "application/json":
               "schema":
                 "$ref": "#/components/schemas/SocialGraphResponse"
+              "examples":
+                "trip_companions":
+                  "summary": "Social graph for a filtered travel window"
+                  "value":
+                    "persons":
+                      -
+                        "id": 7
+                        "name": "Anna Becker"
+                        "occurrence_count": 12
+                      -
+                        "id": 12
+                        "name": "Milo Tan"
+                        "occurrence_count": 8
+                      -
+                        "id": 19
+                        "name": "Nora Rossi"
+                        "occurrence_count": 5
+                    "links":
+                      -
+                        "person_ids":
+                          - 7
+                          - 12
+                        "weight": 6
+                        "affinity": 0.75
+                      -
+                        "person_ids":
+                          - 7
+                          - 19
+                        "weight": 3
+                        "affinity": 0.428571
         "400":
           "description": "The request was syntactically valid but violated a documented PixelPast API contract constraint."
           "content":
             "application/json":
+              "examples":
+                "invalid_range":
+                  "summary": "Start date after end date"
+                  "value":
+                    "detail": "start must be less than or equal to end"
+                "partial_range":
+                  "summary": "Only one range boundary provided"
+                  "value":
+                    "detail": "start and end must both be provided together"
+                "unsupported_filters":
+                  "summary": "Rejected tag and filename filters"
+                  "value":
+                    "detail": "unsupported social graph filters: filename_query, tag_paths; supported filters: start, end, person_ids, max_people_per_asset"
               "schema":
                 "$ref": "#/components/schemas/ApiErrorResponse"
         "422":
           "description": "The request could not be parsed or failed declared parameter validation."
           "content":
             "application/json":
+              "examples":
+                "invalid_date":
+                  "summary": "Unparseable ISO date"
+                  "value":
+                    "detail":
+                      -
+                        "type": "date_from_datetime_parsing"
+                        "loc":
+                          - "query"
+                          - "start"
+                        "msg": "Input should be a valid date or datetime, input is too short"
+                        "input": "2026-02"
+                "invalid_path_date":
+                  "summary": "Invalid path day format"
+                  "value":
+                    "detail":
+                      -
+                        "type": "date_from_datetime_parsing"
+                        "loc":
+                          - "path"
+                          - "day"
+                        "msg": "Input should be a valid date or datetime, invalid date separator"
+                        "input": "2026/07/14"
               "schema":
                 "$ref": "#/components/schemas/ApiValidationErrorResponse"
 "components":

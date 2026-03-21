@@ -20,6 +20,35 @@ from pixelpast.api.schemas import ExplorationBootstrapResponse
 
 router = APIRouter(tags=["timeline"])
 
+BOOTSTRAP_SUCCESS_EXAMPLES = {
+    "winter_overview": {
+        "summary": "Bootstrap metadata for a winter exploration window",
+        "value": {
+            "range": {"start": "2026-01-01", "end": "2026-01-31"},
+            "view_modes": [
+                {
+                    "id": "activity",
+                    "label": "Activity",
+                    "description": "Overall day activity score across all imported sources.",
+                },
+                {
+                    "id": "workdays_vacation",
+                    "label": "Vacation",
+                    "description": "Workday and vacation classification for each calendar day.",
+                },
+            ],
+            "persons": [
+                {"id": 7, "name": "Anna Becker", "role": "family"},
+                {"id": 12, "name": "Milo Tan", "role": "friend"},
+            ],
+            "tags": [
+                {"path": "travel/italy/venice", "label": "Venice"},
+                {"path": "music/concert/live", "label": "Live Concert"},
+            ],
+        },
+    }
+}
+
 
 @router.get(
     "/exploration/bootstrap",
@@ -33,7 +62,19 @@ router = APIRouter(tags=["timeline"])
     response_description=(
         "Exploration shell metadata for the resolved inclusive UTC date range."
     ),
-    responses=combine_responses(BAD_REQUEST_RESPONSE, VALIDATION_ERROR_RESPONSE),
+    responses=combine_responses(
+        {
+            200: {
+                "content": {
+                    "application/json": {
+                        "examples": BOOTSTRAP_SUCCESS_EXAMPLES,
+                    }
+                }
+            }
+        },
+        BAD_REQUEST_RESPONSE,
+        VALIDATION_ERROR_RESPONSE,
+    ),
 )
 def get_exploration_bootstrap(
     start: date | None = Query(
@@ -42,6 +83,12 @@ def get_exploration_bootstrap(
             "Inclusive UTC start date for the requested exploration window. "
             "Must be provided together with end."
         ),
+        openapi_examples={
+            "winter_window": {
+                "summary": "Window start for January 2026",
+                "value": "2026-01-01",
+            }
+        },
     ),
     end: date | None = Query(
         default=None,
@@ -49,6 +96,12 @@ def get_exploration_bootstrap(
             "Inclusive UTC end date for the requested exploration window. "
             "Must be provided together with start."
         ),
+        openapi_examples={
+            "winter_window": {
+                "summary": "Window end for January 2026",
+                "value": "2026-01-31",
+            }
+        },
     ),
     provider: TimelineProjectionProvider = Depends(get_timeline_projection_provider),
 ) -> ExplorationBootstrapResponse:

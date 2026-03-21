@@ -39,6 +39,7 @@ def test_health_route_exposes_meaningful_openapi_metadata() -> None:
     assert operation["responses"]["200"]["description"] == (
         "Minimal liveness status for the running API process."
     )
+    assert "ok" in _response_examples(operation, 200)
 
 
 def test_exploration_routes_document_contract_metadata_and_errors() -> None:
@@ -60,6 +61,12 @@ def test_exploration_routes_document_contract_metadata_and_errors() -> None:
     assert _parameters_by_name(bootstrap_operation)["end"]["description"].startswith(
         "Inclusive UTC end date"
     )
+    assert "winter_overview" in _response_examples(bootstrap_operation, 200)
+    assert "partial_range" in _response_examples(bootstrap_operation, 400)
+    assert "invalid_date" in _response_examples(bootstrap_operation, 422)
+    assert "winter_window" in _parameter_examples(
+        _parameters_by_name(bootstrap_operation)["start"]
+    )
 
     grid_parameters = _parameters_by_name(grid_operation)
     assert grid_operation["summary"] == "Get exploration day grid"
@@ -74,6 +81,10 @@ def test_exploration_routes_document_contract_metadata_and_errors() -> None:
     assert _non_null_schema(grid_parameters["filename_query"])["minLength"] == 1
     assert "daily view identifier" in grid_parameters["view_mode"]["description"]
     assert "Repeatable person identifiers" in grid_parameters["person_ids"]["description"]
+    assert "filtered_travel_grid" in _response_examples(grid_operation, 200)
+    assert "trip_window_start" in _parameter_examples(grid_parameters["start"])
+    assert "anna" in _parameter_examples(grid_parameters["person_ids"])
+    assert "venice" in _parameter_examples(grid_parameters["tag_paths"])
 
 
 def test_day_routes_document_parameter_semantics_and_errors() -> None:
@@ -90,6 +101,10 @@ def test_day_routes_document_parameter_semantics_and_errors() -> None:
     assert context_parameters["end"]["required"] is True
     assert "context preload" in context_parameters["start"]["description"]
     assert _non_null_schema(context_parameters["filename_query"])["minLength"] == 1
+    assert "preloaded_trip_week" in _response_examples(context_operation, 200)
+    assert "window_limit" in _response_examples(context_operation, 400)
+    assert "trip_window_start" in _parameter_examples(context_parameters["start"])
+    assert "travel_tag" in _parameter_examples(context_parameters["tag_paths"])
 
     detail_parameters = _parameters_by_name(detail_operation)
     assert detail_operation["summary"] == "Get one day timeline"
@@ -100,6 +115,9 @@ def test_day_routes_document_parameter_semantics_and_errors() -> None:
     assert detail_parameters["day"]["description"] == (
         "UTC calendar day to inspect in ISO format (YYYY-MM-DD)."
     )
+    assert "mixed_day_timeline" in _response_examples(detail_operation, 200)
+    assert "invalid_path_date" in _response_examples(detail_operation, 422)
+    assert "summer_day" in _parameter_examples(detail_parameters["day"])
 
 
 def test_social_graph_route_documents_supported_and_rejected_filters() -> None:
@@ -117,6 +135,10 @@ def test_social_graph_route_documents_supported_and_rejected_filters() -> None:
     assert "seed person identifiers" in parameters["person_ids"]["description"]
     assert "rejects tag-based filtering" in parameters["tag_paths"]["description"]
     assert "rejects filename-based filtering" in parameters["filename_query"]["description"]
+    assert "trip_companions" in _response_examples(operation, 200)
+    assert "unsupported_filters" in _response_examples(operation, 400)
+    assert "anna" in _parameter_examples(parameters["person_ids"])
+    assert "unsupported_tag" in _parameter_examples(parameters["tag_paths"])
 
 
 def _build_openapi_schema() -> dict[str, object]:
@@ -139,6 +161,21 @@ def _parameters_by_name(operation: dict[str, object]) -> dict[str, dict[str, obj
         for parameter in operation.get("parameters", [])
         if isinstance(parameter, dict) and "name" in parameter
     }
+
+
+def _response_examples(
+    operation: dict[str, object],
+    status_code: int,
+) -> dict[str, object]:
+    return (
+        operation["responses"][str(status_code)]["content"]["application/json"].get(
+            "examples", {}
+        )
+    )
+
+
+def _parameter_examples(parameter: dict[str, object]) -> dict[str, object]:
+    return parameter.get("examples", {})
 
 
 def _non_null_schema(parameter: dict[str, object]) -> dict[str, object]:
