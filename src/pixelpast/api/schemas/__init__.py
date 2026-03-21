@@ -12,6 +12,11 @@ from pixelpast.api.schemas.day_detail import (
     DayDetailResponse,
     DayEventItem,
 )
+from pixelpast.api.schemas.errors import (
+    ApiErrorResponse,
+    ApiValidationErrorItem,
+    ApiValidationErrorResponse,
+)
 from pixelpast.api.schemas.daygrid import (
     ExplorationGridDay,
     ExplorationGridResponse,
@@ -29,6 +34,9 @@ from pixelpast.api.schemas.social_graph import (
 )
 
 __all__ = [
+    "ApiErrorResponse",
+    "ApiValidationErrorItem",
+    "ApiValidationErrorResponse",
     "DayAssetItem",
     "DayContextDay",
     "DayContextMapPoint",

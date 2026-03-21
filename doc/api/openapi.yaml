@@ -7,12 +7,12 @@
     "get":
       "tags":
         - "health"
-      "summary": "Health"
-      "description": "Return a minimal process health payload."
+      "summary": "Check API process health"
+      "description": "Return a lightweight liveness payload for the local PixelPast API process. This endpoint does not verify connector availability or database contents."
       "operationId": "health_api_health_get"
       "responses":
         "200":
-          "description": "Successful Response"
+          "description": "Minimal liveness status for the running API process."
           "content":
             "application/json":
               "schema":
@@ -24,8 +24,8 @@
     "get":
       "tags":
         - "timeline"
-      "summary": "Get Exploration Bootstrap"
-      "description": "Return exploration shell metadata without dense grid payloads."
+      "summary": "Get exploration bootstrap metadata"
+      "description": "Return exploration shell metadata for the resolved date range, including available view modes, known people, and tags, without the dense day grid payload."
       "operationId": "get_exploration_bootstrap_api_exploration_bootstrap_get"
       "parameters":
         -
@@ -39,7 +39,9 @@
                 "format": "date"
               -
                 "type": "null"
+            "description": "Inclusive UTC start date for the requested exploration window. Must be provided together with end."
             "title": "Start"
+          "description": "Inclusive UTC start date for the requested exploration window. Must be provided together with end."
         -
           "name": "end"
           "in": "query"
@@ -51,26 +53,34 @@
                 "format": "date"
               -
                 "type": "null"
+            "description": "Inclusive UTC end date for the requested exploration window. Must be provided together with start."
             "title": "End"
+          "description": "Inclusive UTC end date for the requested exploration window. Must be provided together with start."
       "responses":
         "200":
-          "description": "Successful Response"
+          "description": "Exploration shell metadata for the resolved inclusive UTC date range."
           "content":
             "application/json":
               "schema":
                 "$ref": "#/components/schemas/ExplorationBootstrapResponse"
-        "422":
-          "description": "Validation Error"
+        "400":
+          "description": "The request was syntactically valid but violated a documented PixelPast API contract constraint."
           "content":
             "application/json":
               "schema":
-                "$ref": "#/components/schemas/HTTPValidationError"
+                "$ref": "#/components/schemas/ApiErrorResponse"
+        "422":
+          "description": "The request could not be parsed or failed declared parameter validation."
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/ApiValidationErrorResponse"
   "/api/exploration":
     "get":
       "tags":
         - "timeline"
-      "summary": "Get Exploration"
-      "description": "Return derived-only dense grid activity with server-owned filters."
+      "summary": "Get exploration day grid"
+      "description": "Return the dense exploration day grid for the resolved inclusive UTC date range. Optional server-side filters constrain which canonical items contribute to each day."
       "operationId": "get_exploration_api_exploration_get"
       "parameters":
         -
@@ -84,7 +94,9 @@
                 "format": "date"
               -
                 "type": "null"
+            "description": "Inclusive UTC start date for the requested exploration window. Must be provided together with end."
             "title": "Start"
+          "description": "Inclusive UTC start date for the requested exploration window. Must be provided together with end."
         -
           "name": "end"
           "in": "query"
@@ -96,15 +108,19 @@
                 "format": "date"
               -
                 "type": "null"
+            "description": "Inclusive UTC end date for the requested exploration window. Must be provided together with start."
             "title": "End"
+          "description": "Inclusive UTC end date for the requested exploration window. Must be provided together with start."
         -
           "name": "view_mode"
           "in": "query"
           "required": false
           "schema":
             "type": "string"
+            "description": "Backend-defined daily view identifier that determines which derived day rows are projected into the grid."
             "default": "activity"
             "title": "View Mode"
+          "description": "Backend-defined daily view identifier that determines which derived day rows are projected into the grid."
         -
           "name": "person_ids"
           "in": "query"
@@ -113,8 +129,10 @@
             "type": "array"
             "items":
               "type": "integer"
+            "description": "Repeatable person identifiers. Only canonical items linked to at least one selected person contribute to counts."
             "default": []
             "title": "Person Ids"
+          "description": "Repeatable person identifiers. Only canonical items linked to at least one selected person contribute to counts."
         -
           "name": "tag_paths"
           "in": "query"
@@ -123,8 +141,10 @@
             "type": "array"
             "items":
               "type": "string"
+            "description": "Repeatable normalized tag paths used to restrict contributing canonical items."
             "default": []
             "title": "Tag Paths"
+          "description": "Repeatable normalized tag paths used to restrict contributing canonical items."
         -
           "name": "location_geometry"
           "in": "query"
@@ -135,7 +155,9 @@
                 "type": "string"
               -
                 "type": "null"
+            "description": "Optional serialized geometry filter interpreted by the active projection provider."
             "title": "Location Geometry"
+          "description": "Optional serialized geometry filter interpreted by the active projection provider."
         -
           "name": "distance_latitude"
           "in": "query"
@@ -144,9 +166,13 @@
             "anyOf":
               -
                 "type": "number"
+                "maximum": 90
+                "minimum": -90
               -
                 "type": "null"
+            "description": "Latitude for a radial distance filter. Use together with distance_longitude and distance_radius_meters."
             "title": "Distance Latitude"
+          "description": "Latitude for a radial distance filter. Use together with distance_longitude and distance_radius_meters."
         -
           "name": "distance_longitude"
           "in": "query"
@@ -155,9 +181,13 @@
             "anyOf":
               -
                 "type": "number"
+                "maximum": 180
+                "minimum": -180
               -
                 "type": "null"
+            "description": "Longitude for a radial distance filter. Use together with distance_latitude and distance_radius_meters."
             "title": "Distance Longitude"
+          "description": "Longitude for a radial distance filter. Use together with distance_latitude and distance_radius_meters."
         -
           "name": "distance_radius_meters"
           "in": "query"
@@ -169,7 +199,9 @@
                 "minimum": 1
               -
                 "type": "null"
+            "description": "Radius in meters for the radial distance filter."
             "title": "Distance Radius Meters"
+          "description": "Radius in meters for the radial distance filter."
         -
           "name": "filename_query"
           "in": "query"
@@ -178,28 +210,37 @@
             "anyOf":
               -
                 "type": "string"
+                "minLength": 1
               -
                 "type": "null"
+            "description": "Case-insensitive filename search term applied to contributing assets."
             "title": "Filename Query"
+          "description": "Case-insensitive filename search term applied to contributing assets."
       "responses":
         "200":
-          "description": "Successful Response"
+          "description": "Dense exploration grid for the resolved UTC date range."
           "content":
             "application/json":
               "schema":
                 "$ref": "#/components/schemas/ExplorationGridResponse"
-        "422":
-          "description": "Validation Error"
+        "400":
+          "description": "The request was syntactically valid but violated a documented PixelPast API contract constraint."
           "content":
             "application/json":
               "schema":
-                "$ref": "#/components/schemas/HTTPValidationError"
+                "$ref": "#/components/schemas/ApiErrorResponse"
+        "422":
+          "description": "The request could not be parsed or failed declared parameter validation."
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/ApiValidationErrorResponse"
   "/api/days/context":
     "get":
       "tags":
         - "timeline"
-      "summary": "Get Day Context"
-      "description": "Return dense hover-context data for an inclusive UTC date range."
+      "summary": "Get day context preload"
+      "description": "Return per-day context panels for an inclusive UTC range so the UI can preload hover data, tags, people, map points, and summary counts."
       "operationId": "get_day_context_api_days_context_get"
       "parameters":
         -
@@ -209,7 +250,9 @@
           "schema":
             "type": "string"
             "format": "date"
+            "description": "Inclusive UTC start date for the requested context preload."
             "title": "Start"
+          "description": "Inclusive UTC start date for the requested context preload."
         -
           "name": "end"
           "in": "query"
@@ -217,15 +260,19 @@
           "schema":
             "type": "string"
             "format": "date"
+            "description": "Inclusive UTC end date for the requested context preload."
             "title": "End"
+          "description": "Inclusive UTC end date for the requested context preload."
         -
           "name": "view_mode"
           "in": "query"
           "required": false
           "schema":
             "type": "string"
+            "description": "Backend-defined daily view identifier that determines which derived day rows provide the context payload."
             "default": "activity"
             "title": "View Mode"
+          "description": "Backend-defined daily view identifier that determines which derived day rows provide the context payload."
         -
           "name": "person_ids"
           "in": "query"
@@ -234,8 +281,10 @@
             "type": "array"
             "items":
               "type": "integer"
+            "description": "Repeatable person identifiers used to filter contributing canonical items."
             "default": []
             "title": "Person Ids"
+          "description": "Repeatable person identifiers used to filter contributing canonical items."
         -
           "name": "tag_paths"
           "in": "query"
@@ -244,8 +293,10 @@
             "type": "array"
             "items":
               "type": "string"
+            "description": "Repeatable normalized tag paths used to filter contributing canonical items."
             "default": []
             "title": "Tag Paths"
+          "description": "Repeatable normalized tag paths used to filter contributing canonical items."
         -
           "name": "location_geometry"
           "in": "query"
@@ -256,7 +307,9 @@
                 "type": "string"
               -
                 "type": "null"
+            "description": "Optional serialized geometry filter interpreted by the active projection provider."
             "title": "Location Geometry"
+          "description": "Optional serialized geometry filter interpreted by the active projection provider."
         -
           "name": "distance_latitude"
           "in": "query"
@@ -265,9 +318,13 @@
             "anyOf":
               -
                 "type": "number"
+                "maximum": 90
+                "minimum": -90
               -
                 "type": "null"
+            "description": "Latitude for a radial distance filter. Use together with distance_longitude and distance_radius_meters."
             "title": "Distance Latitude"
+          "description": "Latitude for a radial distance filter. Use together with distance_longitude and distance_radius_meters."
         -
           "name": "distance_longitude"
           "in": "query"
@@ -276,9 +333,13 @@
             "anyOf":
               -
                 "type": "number"
+                "maximum": 180
+                "minimum": -180
               -
                 "type": "null"
+            "description": "Longitude for a radial distance filter. Use together with distance_latitude and distance_radius_meters."
             "title": "Distance Longitude"
+          "description": "Longitude for a radial distance filter. Use together with distance_latitude and distance_radius_meters."
         -
           "name": "distance_radius_meters"
           "in": "query"
@@ -290,7 +351,9 @@
                 "minimum": 1
               -
                 "type": "null"
+            "description": "Radius in meters for the radial distance filter."
             "title": "Distance Radius Meters"
+          "description": "Radius in meters for the radial distance filter."
         -
           "name": "filename_query"
           "in": "query"
@@ -299,28 +362,37 @@
             "anyOf":
               -
                 "type": "string"
+                "minLength": 1
               -
                 "type": "null"
+            "description": "Case-insensitive filename search term applied to contributing assets."
             "title": "Filename Query"
+          "description": "Case-insensitive filename search term applied to contributing assets."
       "responses":
         "200":
-          "description": "Successful Response"
+          "description": "Dense day-context payload for the requested UTC range."
           "content":
             "application/json":
               "schema":
                 "$ref": "#/components/schemas/DayContextResponse"
-        "422":
-          "description": "Validation Error"
+        "400":
+          "description": "The request was syntactically valid but violated a documented PixelPast API contract constraint."
           "content":
             "application/json":
               "schema":
-                "$ref": "#/components/schemas/HTTPValidationError"
+                "$ref": "#/components/schemas/ApiErrorResponse"
+        "422":
+          "description": "The request could not be parsed or failed declared parameter validation."
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/ApiValidationErrorResponse"
   "/api/days/{day}":
     "get":
       "tags":
         - "timeline"
-      "summary": "Get Day Detail"
-      "description": "Return a unified event and asset view for one UTC day."
+      "summary": "Get one day timeline"
+      "description": "Return the unified canonical event and asset timeline for a single UTC calendar day, ordered by timestamp."
       "operationId": "get_day_detail_api_days__day__get"
       "parameters":
         -
@@ -330,26 +402,28 @@
           "schema":
             "type": "string"
             "format": "date"
+            "description": "UTC calendar day to inspect in ISO format (YYYY-MM-DD)."
             "title": "Day"
+          "description": "UTC calendar day to inspect in ISO format (YYYY-MM-DD)."
       "responses":
         "200":
-          "description": "Successful Response"
+          "description": "Chronological event and asset items for one UTC day."
           "content":
             "application/json":
               "schema":
                 "$ref": "#/components/schemas/DayDetailResponse"
         "422":
-          "description": "Validation Error"
+          "description": "The request could not be parsed or failed declared parameter validation."
           "content":
             "application/json":
               "schema":
-                "$ref": "#/components/schemas/HTTPValidationError"
+                "$ref": "#/components/schemas/ApiValidationErrorResponse"
   "/api/social/graph":
     "get":
       "tags":
         - "social"
-      "summary": "Get Social Graph"
-      "description": "Return the social graph filtered by date range and person selection only."
+      "summary": "Get social graph projection"
+      "description": "Return a person co-occurrence graph derived from qualifying assets within the resolved inclusive UTC date range."
       "operationId": "get_social_graph_api_social_graph_get"
       "parameters":
         -
@@ -363,7 +437,9 @@
                 "format": "date"
               -
                 "type": "null"
+            "description": "Inclusive UTC start date for the requested social-graph window. Must be provided together with end."
             "title": "Start"
+          "description": "Inclusive UTC start date for the requested social-graph window. Must be provided together with end."
         -
           "name": "end"
           "in": "query"
@@ -375,7 +451,9 @@
                 "format": "date"
               -
                 "type": "null"
+            "description": "Inclusive UTC end date for the requested social-graph window. Must be provided together with start."
             "title": "End"
+          "description": "Inclusive UTC end date for the requested social-graph window. Must be provided together with start."
         -
           "name": "person_ids"
           "in": "query"
@@ -384,8 +462,10 @@
             "type": "array"
             "items":
               "type": "integer"
+            "description": "Repeatable seed person identifiers. Only assets containing at least one selected person qualify when this filter is present."
             "default": []
             "title": "Person Ids"
+          "description": "Repeatable seed person identifiers. Only assets containing at least one selected person qualify when this filter is present."
         -
           "name": "max_people_per_asset"
           "in": "query"
@@ -394,8 +474,10 @@
             "type": "integer"
             "maximum": 30
             "minimum": 2
+            "description": "Ignore assets that contain more than this many linked people to avoid oversized group shots dominating the graph."
             "default": 10
             "title": "Max People Per Asset"
+          "description": "Ignore assets that contain more than this many linked people to avoid oversized group shots dominating the graph."
         -
           "name": "tag_paths"
           "in": "query"
@@ -404,8 +486,10 @@
             "type": "array"
             "items":
               "type": "string"
+            "description": "Reserved filter parameter. The current social graph contract rejects tag-based filtering."
             "default": []
             "title": "Tag Paths"
+          "description": "Reserved filter parameter. The current social graph contract rejects tag-based filtering."
         -
           "name": "location_geometry"
           "in": "query"
@@ -416,7 +500,9 @@
                 "type": "string"
               -
                 "type": "null"
+            "description": "Reserved filter parameter. The current social graph contract rejects geometry-based filtering."
             "title": "Location Geometry"
+          "description": "Reserved filter parameter. The current social graph contract rejects geometry-based filtering."
         -
           "name": "distance_latitude"
           "in": "query"
@@ -425,9 +511,13 @@
             "anyOf":
               -
                 "type": "number"
+                "maximum": 90
+                "minimum": -90
               -
                 "type": "null"
+            "description": "Reserved filter parameter. The current social graph contract rejects radial distance filtering."
             "title": "Distance Latitude"
+          "description": "Reserved filter parameter. The current social graph contract rejects radial distance filtering."
         -
           "name": "distance_longitude"
           "in": "query"
@@ -436,9 +526,13 @@
             "anyOf":
               -
                 "type": "number"
+                "maximum": 180
+                "minimum": -180
               -
                 "type": "null"
+            "description": "Reserved filter parameter. The current social graph contract rejects radial distance filtering."
             "title": "Distance Longitude"
+          "description": "Reserved filter parameter. The current social graph contract rejects radial distance filtering."
         -
           "name": "distance_radius_meters"
           "in": "query"
@@ -450,7 +544,9 @@
                 "minimum": 1
               -
                 "type": "null"
+            "description": "Reserved filter parameter. The current social graph contract rejects radial distance filtering."
             "title": "Distance Radius Meters"
+          "description": "Reserved filter parameter. The current social graph contract rejects radial distance filtering."
         -
           "name": "filename_query"
           "in": "query"
@@ -459,24 +555,85 @@
             "anyOf":
               -
                 "type": "string"
+                "minLength": 1
               -
                 "type": "null"
+            "description": "Reserved filter parameter. The current social graph contract rejects filename-based filtering."
             "title": "Filename Query"
+          "description": "Reserved filter parameter. The current social graph contract rejects filename-based filtering."
       "responses":
         "200":
-          "description": "Successful Response"
+          "description": "Person nodes and weighted links for the filtered social graph."
           "content":
             "application/json":
               "schema":
                 "$ref": "#/components/schemas/SocialGraphResponse"
-        "422":
-          "description": "Validation Error"
+        "400":
+          "description": "The request was syntactically valid but violated a documented PixelPast API contract constraint."
           "content":
             "application/json":
               "schema":
-                "$ref": "#/components/schemas/HTTPValidationError"
+                "$ref": "#/components/schemas/ApiErrorResponse"
+        "422":
+          "description": "The request could not be parsed or failed declared parameter validation."
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/ApiValidationErrorResponse"
 "components":
   "schemas":
+    "ApiErrorResponse":
+      "properties":
+        "detail":
+          "type": "string"
+          "title": "Detail"
+      "type": "object"
+      "required":
+        - "detail"
+      "title": "ApiErrorResponse"
+      "description": "Error payload for contract-level request rejections."
+    "ApiValidationErrorItem":
+      "properties":
+        "type":
+          "type": "string"
+          "title": "Type"
+        "loc":
+          "items":
+            "anyOf":
+              -
+                "type": "string"
+              -
+                "type": "integer"
+          "type": "array"
+          "title": "Loc"
+        "msg":
+          "type": "string"
+          "title": "Msg"
+        "input":
+          "anyOf":
+            - {}
+            -
+              "type": "null"
+          "title": "Input"
+      "type": "object"
+      "required":
+        - "type"
+        - "loc"
+        - "msg"
+      "title": "ApiValidationErrorItem"
+      "description": "One FastAPI request validation error entry."
+    "ApiValidationErrorResponse":
+      "properties":
+        "detail":
+          "items":
+            "$ref": "#/components/schemas/ApiValidationErrorItem"
+          "type": "array"
+          "title": "Detail"
+      "type": "object"
+      "required":
+        - "detail"
+      "title": "ApiValidationErrorResponse"
+      "description": "Error payload returned when declared request validation fails."
     "DayAssetItem":
       "properties":
         "item_type":
@@ -802,15 +959,6 @@
         - "description"
       "title": "ExplorationViewMode"
       "description": "Backend-defined exploration view mode metadata."
-    "HTTPValidationError":
-      "properties":
-        "detail":
-          "items":
-            "$ref": "#/components/schemas/ValidationError"
-          "type": "array"
-          "title": "Detail"
-      "type": "object"
-      "title": "HTTPValidationError"
     "SocialGraphLink":
       "properties":
         "person_ids":
@@ -867,31 +1015,13 @@
         - "links"
       "title": "SocialGraphResponse"
       "description": "Canonical social-graph projection response."
-    "ValidationError":
-      "properties":
-        "loc":
-          "items":
-            "anyOf":
-              -
-                "type": "string"
-              -
-                "type": "integer"
-          "type": "array"
-          "title": "Location"
-        "msg":
-          "type": "string"
-          "title": "Message"
-        "type":
-          "type": "string"
-          "title": "Error Type"
-        "input":
-          "title": "Input"
-        "ctx":
-          "type": "object"
-          "title": "Context"
-      "type": "object"
-      "required":
-        - "loc"
-        - "msg"
-        - "type"
-      "title": "ValidationError"
+"tags":
+  -
+    "name": "health"
+    "description": "Operational liveness endpoints for local process checks."
+  -
+    "name": "timeline"
+    "description": "Timeline exploration, day context preload, and day detail reads."
+  -
+    "name": "social"
+    "description": "Person relationship projections derived from canonical assets."

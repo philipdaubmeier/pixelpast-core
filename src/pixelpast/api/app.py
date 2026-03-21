@@ -3,6 +3,7 @@
 from fastapi import FastAPI
 
 from pixelpast.api.router import create_api_router
+from pixelpast.api.routes.metadata import OPENAPI_TAGS
 from pixelpast.shared.runtime import create_runtime_context, initialize_database
 from pixelpast.shared.settings import Settings, get_settings
 
@@ -16,6 +17,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(
         title=runtime.settings.app_name,
         debug=runtime.settings.debug,
+        openapi_tags=OPENAPI_TAGS,
     )
     app.state.settings = runtime.settings
     app.state.engine = runtime.engine
