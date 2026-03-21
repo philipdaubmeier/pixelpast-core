@@ -86,7 +86,22 @@ def test_cli_export_openapi_writes_canonical_contract(monkeypatch) -> None:
     monkeypatch.setenv(
         "PIXELPAST_DATABASE_URL", f"sqlite:///{database_path.as_posix()}"
     )
+    render_calls: list[tuple[tuple[str, ...], Path]] = []
     get_settings.cache_clear()
+
+    def fake_render_command(*args, **kwargs) -> subprocess.CompletedProcess[str]:
+        command = tuple(args[0])
+        cwd = kwargs["cwd"]
+        render_calls.append((command, cwd))
+        return subprocess.CompletedProcess(
+            args=command,
+            returncode=0,
+            stdout="",
+            stderr="",
+        )
+
+    monkeypatch.setattr(cli_main_module, "_resolve_npx_executable", lambda: "npx")
+    monkeypatch.setattr(cli_main_module.subprocess, "run", fake_render_command)
 
     original_contract = (
         DEFAULT_OPENAPI_EXPORT_PATH.read_text(encoding="utf-8")
@@ -106,6 +121,64 @@ def test_cli_export_openapi_writes_canonical_contract(monkeypatch) -> None:
         assert (
             f"exported OpenAPI contract to {DEFAULT_OPENAPI_EXPORT_PATH.as_posix()}"
             in result.stdout
+        )
+        assert (
+            "rendered OpenAPI HTML to "
+            f"{(Path.cwd() / 'doc' / 'api' / 'html' / 'index.html').as_posix()}"
+        ) in result.stdout
+        assert render_calls == [
+            (
+                (
+                    "npx",
+                    "@redocly/cli",
+                    "build-docs",
+                    DEFAULT_OPENAPI_EXPORT_PATH.as_posix(),
+                    "--output",
+                    (Path.cwd() / "doc" / "api" / "html" / "index.html").as_posix(),
+                ),
+                Path.cwd(),
+            )
+        ]
+    finally:
+        get_settings.cache_clear()
+        if original_contract is None:
+            if DEFAULT_OPENAPI_EXPORT_PATH.exists():
+                DEFAULT_OPENAPI_EXPORT_PATH.unlink()
+        else:
+            DEFAULT_OPENAPI_EXPORT_PATH.write_text(
+                original_contract,
+                encoding="utf-8",
+            )
+        if database_path.exists():
+            database_path.unlink()
+
+
+def test_cli_export_openapi_check_fails_for_stale_contract(monkeypatch) -> None:
+    database_path = _build_test_database_path("cli-openapi-check")
+    monkeypatch.setenv(
+        "PIXELPAST_DATABASE_URL", f"sqlite:///{database_path.as_posix()}"
+    )
+    get_settings.cache_clear()
+
+    original_contract = (
+        DEFAULT_OPENAPI_EXPORT_PATH.read_text(encoding="utf-8")
+        if DEFAULT_OPENAPI_EXPORT_PATH.exists()
+        else None
+    )
+
+    try:
+        DEFAULT_OPENAPI_EXPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
+        DEFAULT_OPENAPI_EXPORT_PATH.write_text(
+            '"openapi": "3.1.0"\n"info": "stale"\n',
+            encoding="utf-8",
+        )
+
+        result = runner.invoke(app, ["export-openapi", "--check", "--no-render"])
+
+        assert result.exit_code == 1
+        assert (
+            "error: OpenAPI contract is stale. Run `pixelpast export-openapi`."
+            in result.stderr
         )
     finally:
         get_settings.cache_clear()

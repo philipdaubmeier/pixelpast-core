@@ -11,10 +11,11 @@ from pixelpast.api.app import create_app
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_OPENAPI_EXPORT_PATH = REPOSITORY_ROOT / "doc" / "api" / "openapi.yaml"
+DEFAULT_OPENAPI_HTML_PATH = REPOSITORY_ROOT / "doc" / "api" / "html" / "index.html"
 
 
-def export_openapi_schema(*, output_path: Path = DEFAULT_OPENAPI_EXPORT_PATH) -> Path:
-    """Export the current FastAPI OpenAPI contract to the canonical repository path."""
+def build_openapi_schema_document() -> str:
+    """Return the current FastAPI OpenAPI contract as stable YAML text."""
 
     app = create_app()
     try:
@@ -22,9 +23,27 @@ def export_openapi_schema(*, output_path: Path = DEFAULT_OPENAPI_EXPORT_PATH) ->
     finally:
         _dispose_app_engine(app)
 
+    return _render_yaml_document(schema)
+
+
+def export_openapi_schema(*, output_path: Path = DEFAULT_OPENAPI_EXPORT_PATH) -> Path:
+    """Export the current FastAPI OpenAPI contract to the canonical repository path."""
+
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(_render_yaml_document(schema), encoding="utf-8")
+    output_path.write_text(build_openapi_schema_document(), encoding="utf-8")
     return output_path
+
+
+def openapi_contract_is_synced(
+    *,
+    output_path: Path = DEFAULT_OPENAPI_EXPORT_PATH,
+) -> bool:
+    """Return whether the committed OpenAPI contract matches the current app schema."""
+
+    if not output_path.exists():
+        return False
+
+    return output_path.read_text(encoding="utf-8") == build_openapi_schema_document()
 
 
 def _dispose_app_engine(app: FastAPI) -> None:
@@ -50,7 +69,8 @@ def _render_yaml_value(value: Any, *, indent: int) -> str:
             rendered_key = json.dumps(str(key), ensure_ascii=False)
             if _is_inline_value(nested_value):
                 lines.append(
-                    f"{' ' * indent}{rendered_key}: {_render_inline_value(nested_value)}"
+                    f"{' ' * indent}{rendered_key}: "
+                    f"{_render_inline_value(nested_value)}"
                 )
                 continue
             lines.append(f"{' ' * indent}{rendered_key}:")

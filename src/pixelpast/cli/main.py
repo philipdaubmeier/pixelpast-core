@@ -23,7 +23,9 @@ from pixelpast.analytics.entrypoints import (
 )
 from pixelpast.api.openapi import (
     DEFAULT_OPENAPI_EXPORT_PATH,
+    DEFAULT_OPENAPI_HTML_PATH,
     export_openapi_schema,
+    openapi_contract_is_synced,
 )
 from pixelpast.ingestion.entrypoints import (
     list_supported_ingest_sources,
@@ -382,12 +384,52 @@ def derive_command(
 
 
 @app.command("export-openapi")
-def export_openapi_command() -> None:
-    """Export the FastAPI OpenAPI contract to the repository documentation path."""
+def export_openapi_command(
+    check: Annotated[
+        bool,
+        typer.Option(
+            "--check",
+            help=(
+                "Fail when the committed OpenAPI contract is stale instead of "
+                "rewriting it."
+            ),
+        ),
+    ] = False,
+    render: Annotated[
+        bool,
+        typer.Option(
+            "--render/--no-render",
+            help="Render static HTML documentation after the contract step.",
+        ),
+    ] = True,
+) -> None:
+    """Export or validate the OpenAPI contract and optionally render static HTML."""
 
     configure_logging(debug=False)
-    output_path = export_openapi_schema(output_path=DEFAULT_OPENAPI_EXPORT_PATH)
-    typer.echo(f"exported OpenAPI contract to {output_path.as_posix()}")
+    if check:
+        if not openapi_contract_is_synced(output_path=DEFAULT_OPENAPI_EXPORT_PATH):
+            typer.secho(
+                "error: OpenAPI contract is stale. Run `pixelpast export-openapi`.",
+                fg=typer.colors.RED,
+                err=True,
+            )
+            raise typer.Exit(code=ExitCode.FAILURE)
+
+        typer.echo(
+            f"OpenAPI contract is in sync at {DEFAULT_OPENAPI_EXPORT_PATH.as_posix()}"
+        )
+    else:
+        output_path = export_openapi_schema(output_path=DEFAULT_OPENAPI_EXPORT_PATH)
+        typer.echo(f"exported OpenAPI contract to {output_path.as_posix()}")
+
+    if not render:
+        return
+
+    html_output_path = _render_openapi_html(
+        input_path=DEFAULT_OPENAPI_EXPORT_PATH,
+        output_path=DEFAULT_OPENAPI_HTML_PATH,
+    )
+    typer.echo(f"rendered OpenAPI HTML to {html_output_path.as_posix()}")
 
 
 def main() -> None:
@@ -454,12 +496,58 @@ def _build_dev_process_specs(
 def _resolve_npm_executable() -> str:
     """Return the available npm executable for the current platform."""
 
-    for candidate in ("npm", "npm.cmd"):
+    return _resolve_node_tool_executable(("npm", "npm.cmd"), tool_name="npm")
+
+
+def _resolve_npx_executable() -> str:
+    """Return the available npx executable for the current platform."""
+
+    return _resolve_node_tool_executable(("npx", "npx.cmd"), tool_name="npx")
+
+
+def _resolve_node_tool_executable(
+    candidates: Sequence[str],
+    *,
+    tool_name: str,
+) -> str:
+    """Return the first available Node.js package manager executable."""
+
+    for candidate in candidates:
         executable = shutil.which(candidate)
         if executable is not None:
             return executable
 
-    raise ValueError("Could not find npm on PATH. Install Node.js first.")
+    raise ValueError(f"Could not find {tool_name} on PATH. Install Node.js first.")
+
+
+def _render_openapi_html(*, input_path: Path, output_path: Path) -> Path:
+    """Render static HTML API documentation from the committed OpenAPI contract."""
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    npx_executable = _resolve_npx_executable()
+    result = subprocess.run(
+        (
+            npx_executable,
+            "@redocly/cli",
+            "build-docs",
+            input_path.as_posix(),
+            "--output",
+            output_path.as_posix(),
+        ),
+        cwd=REPOSITORY_ROOT,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
+    if result.returncode != 0:
+        error_output = (result.stderr or result.stdout).strip()
+        if not error_output:
+            error_output = "Redocly CLI exited with a non-zero status."
+        raise ValueError(f"OpenAPI HTML rendering failed: {error_output}")
+
+    return output_path
 
 
 def _run_dev_processes(process_specs: Sequence[DevProcessSpec]) -> None:
