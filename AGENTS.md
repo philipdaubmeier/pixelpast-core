@@ -462,6 +462,15 @@ Prefer:
 
 Do not leak ORM models directly through the API.
 
+### API Documentation Guidance
+
+- Treat FastAPI route and schema metadata as the primary OpenAPI source of truth
+- Publish the exported contract under `doc/api/openapi.yaml`
+- Keep API documentation artifacts under `doc/api/`, not `doc/apidoc`
+- Check in the raw OpenAPI file and related config or scripts
+- Do not check in generated HTML docs by default
+- Document explicit examples for representative success and important error cases on every public endpoint
+
 ## UI Core Principles
 
 PixelPast is a visual exploration instrument centered around chronology.
