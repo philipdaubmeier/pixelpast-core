@@ -9,6 +9,9 @@ __pycache__/
 .coverage
 htmlcov/
 
+# Generated API docs
+doc/api/html/
+
 # Packaging
 *.egg-info/
 .eggs/

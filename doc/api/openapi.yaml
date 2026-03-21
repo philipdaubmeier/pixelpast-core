@@ -1,0 +1,897 @@
+"openapi": "3.1.0"
+"info":
+  "title": "PixelPast"
+  "version": "0.1.0"
+"paths":
+  "/api/health":
+    "get":
+      "tags":
+        - "health"
+      "summary": "Health"
+      "description": "Return a minimal process health payload."
+      "operationId": "health_api_health_get"
+      "responses":
+        "200":
+          "description": "Successful Response"
+          "content":
+            "application/json":
+              "schema":
+                "additionalProperties":
+                  "type": "string"
+                "type": "object"
+                "title": "Response Health Api Health Get"
+  "/api/exploration/bootstrap":
+    "get":
+      "tags":
+        - "timeline"
+      "summary": "Get Exploration Bootstrap"
+      "description": "Return exploration shell metadata without dense grid payloads."
+      "operationId": "get_exploration_bootstrap_api_exploration_bootstrap_get"
+      "parameters":
+        -
+          "name": "start"
+          "in": "query"
+          "required": false
+          "schema":
+            "anyOf":
+              -
+                "type": "string"
+                "format": "date"
+              -
+                "type": "null"
+            "title": "Start"
+        -
+          "name": "end"
+          "in": "query"
+          "required": false
+          "schema":
+            "anyOf":
+              -
+                "type": "string"
+                "format": "date"
+              -
+                "type": "null"
+            "title": "End"
+      "responses":
+        "200":
+          "description": "Successful Response"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/ExplorationBootstrapResponse"
+        "422":
+          "description": "Validation Error"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/HTTPValidationError"
+  "/api/exploration":
+    "get":
+      "tags":
+        - "timeline"
+      "summary": "Get Exploration"
+      "description": "Return derived-only dense grid activity with server-owned filters."
+      "operationId": "get_exploration_api_exploration_get"
+      "parameters":
+        -
+          "name": "start"
+          "in": "query"
+          "required": false
+          "schema":
+            "anyOf":
+              -
+                "type": "string"
+                "format": "date"
+              -
+                "type": "null"
+            "title": "Start"
+        -
+          "name": "end"
+          "in": "query"
+          "required": false
+          "schema":
+            "anyOf":
+              -
+                "type": "string"
+                "format": "date"
+              -
+                "type": "null"
+            "title": "End"
+        -
+          "name": "view_mode"
+          "in": "query"
+          "required": false
+          "schema":
+            "type": "string"
+            "default": "activity"
+            "title": "View Mode"
+        -
+          "name": "person_ids"
+          "in": "query"
+          "required": false
+          "schema":
+            "type": "array"
+            "items":
+              "type": "integer"
+            "default": []
+            "title": "Person Ids"
+        -
+          "name": "tag_paths"
+          "in": "query"
+          "required": false
+          "schema":
+            "type": "array"
+            "items":
+              "type": "string"
+            "default": []
+            "title": "Tag Paths"
+        -
+          "name": "location_geometry"
+          "in": "query"
+          "required": false
+          "schema":
+            "anyOf":
+              -
+                "type": "string"
+              -
+                "type": "null"
+            "title": "Location Geometry"
+        -
+          "name": "distance_latitude"
+          "in": "query"
+          "required": false
+          "schema":
+            "anyOf":
+              -
+                "type": "number"
+              -
+                "type": "null"
+            "title": "Distance Latitude"
+        -
+          "name": "distance_longitude"
+          "in": "query"
+          "required": false
+          "schema":
+            "anyOf":
+              -
+                "type": "number"
+              -
+                "type": "null"
+            "title": "Distance Longitude"
+        -
+          "name": "distance_radius_meters"
+          "in": "query"
+          "required": false
+          "schema":
+            "anyOf":
+              -
+                "type": "integer"
+                "minimum": 1
+              -
+                "type": "null"
+            "title": "Distance Radius Meters"
+        -
+          "name": "filename_query"
+          "in": "query"
+          "required": false
+          "schema":
+            "anyOf":
+              -
+                "type": "string"
+              -
+                "type": "null"
+            "title": "Filename Query"
+      "responses":
+        "200":
+          "description": "Successful Response"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/ExplorationGridResponse"
+        "422":
+          "description": "Validation Error"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/HTTPValidationError"
+  "/api/days/context":
+    "get":
+      "tags":
+        - "timeline"
+      "summary": "Get Day Context"
+      "description": "Return dense hover-context data for an inclusive UTC date range."
+      "operationId": "get_day_context_api_days_context_get"
+      "parameters":
+        -
+          "name": "start"
+          "in": "query"
+          "required": true
+          "schema":
+            "type": "string"
+            "format": "date"
+            "title": "Start"
+        -
+          "name": "end"
+          "in": "query"
+          "required": true
+          "schema":
+            "type": "string"
+            "format": "date"
+            "title": "End"
+        -
+          "name": "view_mode"
+          "in": "query"
+          "required": false
+          "schema":
+            "type": "string"
+            "default": "activity"
+            "title": "View Mode"
+        -
+          "name": "person_ids"
+          "in": "query"
+          "required": false
+          "schema":
+            "type": "array"
+            "items":
+              "type": "integer"
+            "default": []
+            "title": "Person Ids"
+        -
+          "name": "tag_paths"
+          "in": "query"
+          "required": false
+          "schema":
+            "type": "array"
+            "items":
+              "type": "string"
+            "default": []
+            "title": "Tag Paths"
+        -
+          "name": "location_geometry"
+          "in": "query"
+          "required": false
+          "schema":
+            "anyOf":
+              -
+                "type": "string"
+              -
+                "type": "null"
+            "title": "Location Geometry"
+        -
+          "name": "distance_latitude"
+          "in": "query"
+          "required": false
+          "schema":
+            "anyOf":
+              -
+                "type": "number"
+              -
+                "type": "null"
+            "title": "Distance Latitude"
+        -
+          "name": "distance_longitude"
+          "in": "query"
+          "required": false
+          "schema":
+            "anyOf":
+              -
+                "type": "number"
+              -
+                "type": "null"
+            "title": "Distance Longitude"
+        -
+          "name": "distance_radius_meters"
+          "in": "query"
+          "required": false
+          "schema":
+            "anyOf":
+              -
+                "type": "integer"
+                "minimum": 1
+              -
+                "type": "null"
+            "title": "Distance Radius Meters"
+        -
+          "name": "filename_query"
+          "in": "query"
+          "required": false
+          "schema":
+            "anyOf":
+              -
+                "type": "string"
+              -
+                "type": "null"
+            "title": "Filename Query"
+      "responses":
+        "200":
+          "description": "Successful Response"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/DayContextResponse"
+        "422":
+          "description": "Validation Error"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/HTTPValidationError"
+  "/api/days/{day}":
+    "get":
+      "tags":
+        - "timeline"
+      "summary": "Get Day Detail"
+      "description": "Return a unified event and asset view for one UTC day."
+      "operationId": "get_day_detail_api_days__day__get"
+      "parameters":
+        -
+          "name": "day"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "string"
+            "format": "date"
+            "title": "Day"
+      "responses":
+        "200":
+          "description": "Successful Response"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/DayDetailResponse"
+        "422":
+          "description": "Validation Error"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/HTTPValidationError"
+  "/api/social/graph":
+    "get":
+      "tags":
+        - "social"
+      "summary": "Get Social Graph"
+      "description": "Return the social graph filtered by date range and person selection only."
+      "operationId": "get_social_graph_api_social_graph_get"
+      "parameters":
+        -
+          "name": "start"
+          "in": "query"
+          "required": false
+          "schema":
+            "anyOf":
+              -
+                "type": "string"
+                "format": "date"
+              -
+                "type": "null"
+            "title": "Start"
+        -
+          "name": "end"
+          "in": "query"
+          "required": false
+          "schema":
+            "anyOf":
+              -
+                "type": "string"
+                "format": "date"
+              -
+                "type": "null"
+            "title": "End"
+        -
+          "name": "person_ids"
+          "in": "query"
+          "required": false
+          "schema":
+            "type": "array"
+            "items":
+              "type": "integer"
+            "default": []
+            "title": "Person Ids"
+        -
+          "name": "max_people_per_asset"
+          "in": "query"
+          "required": false
+          "schema":
+            "type": "integer"
+            "maximum": 30
+            "minimum": 2
+            "default": 10
+            "title": "Max People Per Asset"
+        -
+          "name": "tag_paths"
+          "in": "query"
+          "required": false
+          "schema":
+            "type": "array"
+            "items":
+              "type": "string"
+            "default": []
+            "title": "Tag Paths"
+        -
+          "name": "location_geometry"
+          "in": "query"
+          "required": false
+          "schema":
+            "anyOf":
+              -
+                "type": "string"
+              -
+                "type": "null"
+            "title": "Location Geometry"
+        -
+          "name": "distance_latitude"
+          "in": "query"
+          "required": false
+          "schema":
+            "anyOf":
+              -
+                "type": "number"
+              -
+                "type": "null"
+            "title": "Distance Latitude"
+        -
+          "name": "distance_longitude"
+          "in": "query"
+          "required": false
+          "schema":
+            "anyOf":
+              -
+                "type": "number"
+              -
+                "type": "null"
+            "title": "Distance Longitude"
+        -
+          "name": "distance_radius_meters"
+          "in": "query"
+          "required": false
+          "schema":
+            "anyOf":
+              -
+                "type": "integer"
+                "minimum": 1
+              -
+                "type": "null"
+            "title": "Distance Radius Meters"
+        -
+          "name": "filename_query"
+          "in": "query"
+          "required": false
+          "schema":
+            "anyOf":
+              -
+                "type": "string"
+              -
+                "type": "null"
+            "title": "Filename Query"
+      "responses":
+        "200":
+          "description": "Successful Response"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/SocialGraphResponse"
+        "422":
+          "description": "Validation Error"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/HTTPValidationError"
+"components":
+  "schemas":
+    "DayAssetItem":
+      "properties":
+        "item_type":
+          "type": "string"
+          "const": "asset"
+          "title": "Item Type"
+        "id":
+          "type": "integer"
+          "title": "Id"
+        "timestamp":
+          "type": "string"
+          "format": "date-time"
+          "title": "Timestamp"
+        "media_type":
+          "type": "string"
+          "title": "Media Type"
+        "external_id":
+          "type": "string"
+          "title": "External Id"
+      "type": "object"
+      "required":
+        - "item_type"
+        - "id"
+        - "timestamp"
+        - "media_type"
+        - "external_id"
+      "title": "DayAssetItem"
+      "description": "Serialized day-detail item for a canonical asset."
+    "DayContextDay":
+      "properties":
+        "date":
+          "type": "string"
+          "format": "date"
+          "title": "Date"
+        "persons":
+          "items":
+            "$ref": "#/components/schemas/ExplorationPerson"
+          "type": "array"
+          "title": "Persons"
+        "tags":
+          "items":
+            "$ref": "#/components/schemas/ExplorationTag"
+          "type": "array"
+          "title": "Tags"
+        "map_points":
+          "items":
+            "$ref": "#/components/schemas/DayContextMapPoint"
+          "type": "array"
+          "title": "Map Points"
+        "summary_counts":
+          "$ref": "#/components/schemas/DayContextSummaryCounts"
+      "type": "object"
+      "required":
+        - "date"
+        - "persons"
+        - "tags"
+        - "map_points"
+        - "summary_counts"
+      "title": "DayContextDay"
+      "description": "Dense hover-context payload for one UTC calendar day."
+    "DayContextMapPoint":
+      "properties":
+        "id":
+          "type": "string"
+          "title": "Id"
+        "label":
+          "type": "string"
+          "title": "Label"
+        "latitude":
+          "type": "number"
+          "title": "Latitude"
+        "longitude":
+          "type": "number"
+          "title": "Longitude"
+      "type": "object"
+      "required":
+        - "id"
+        - "label"
+        - "latitude"
+        - "longitude"
+      "title": "DayContextMapPoint"
+      "description": "Serialized real-world map point for one UTC day."
+    "DayContextResponse":
+      "properties":
+        "range":
+          "$ref": "#/components/schemas/ExplorationRange"
+        "days":
+          "items":
+            "$ref": "#/components/schemas/DayContextDay"
+          "type": "array"
+          "title": "Days"
+      "type": "object"
+      "required":
+        - "range"
+        - "days"
+      "title": "DayContextResponse"
+      "description": "Serialized response for an inclusive day-context preload range."
+    "DayContextSummaryCounts":
+      "properties":
+        "events":
+          "type": "integer"
+          "title": "Events"
+        "assets":
+          "type": "integer"
+          "title": "Assets"
+        "places":
+          "type": "integer"
+          "title": "Places"
+      "type": "object"
+      "required":
+        - "events"
+        - "assets"
+        - "places"
+      "title": "DayContextSummaryCounts"
+      "description": "Lightweight per-day counts for hover context panels."
+    "DayDetailResponse":
+      "properties":
+        "date":
+          "type": "string"
+          "format": "date"
+          "title": "Date"
+        "items":
+          "items":
+            "oneOf":
+              -
+                "$ref": "#/components/schemas/DayEventItem"
+              -
+                "$ref": "#/components/schemas/DayAssetItem"
+            "discriminator":
+              "propertyName": "item_type"
+              "mapping":
+                "asset": "#/components/schemas/DayAssetItem"
+                "event": "#/components/schemas/DayEventItem"
+          "type": "array"
+          "title": "Items"
+      "type": "object"
+      "required":
+        - "date"
+        - "items"
+      "title": "DayDetailResponse"
+      "description": "Serialized response for a single UTC calendar day."
+    "DayEventItem":
+      "properties":
+        "item_type":
+          "type": "string"
+          "const": "event"
+          "title": "Item Type"
+        "id":
+          "type": "integer"
+          "title": "Id"
+        "timestamp":
+          "type": "string"
+          "format": "date-time"
+          "title": "Timestamp"
+        "event_type":
+          "type": "string"
+          "title": "Event Type"
+        "title":
+          "type": "string"
+          "title": "Title"
+        "summary":
+          "anyOf":
+            -
+              "type": "string"
+            -
+              "type": "null"
+          "title": "Summary"
+      "type": "object"
+      "required":
+        - "item_type"
+        - "id"
+        - "timestamp"
+        - "event_type"
+        - "title"
+        - "summary"
+      "title": "DayEventItem"
+      "description": "Serialized day-detail item for a canonical event."
+    "ExplorationBootstrapResponse":
+      "properties":
+        "range":
+          "$ref": "#/components/schemas/ExplorationRange"
+        "view_modes":
+          "items":
+            "$ref": "#/components/schemas/ExplorationViewMode"
+          "type": "array"
+          "title": "View Modes"
+        "persons":
+          "items":
+            "$ref": "#/components/schemas/ExplorationPerson"
+          "type": "array"
+          "title": "Persons"
+        "tags":
+          "items":
+            "$ref": "#/components/schemas/ExplorationTag"
+          "type": "array"
+          "title": "Tags"
+      "type": "object"
+      "required":
+        - "range"
+        - "view_modes"
+        - "persons"
+        - "tags"
+      "title": "ExplorationBootstrapResponse"
+      "description": "Lightweight shell metadata for exploration initialization."
+    "ExplorationGridDay":
+      "properties":
+        "date":
+          "type": "string"
+          "format": "date"
+          "title": "Date"
+        "count":
+          "type": "integer"
+          "title": "Count"
+        "color":
+          "anyOf":
+            -
+              "type": "string"
+              "enum":
+                - "empty"
+                - "low"
+                - "medium"
+                - "high"
+            -
+              "type": "string"
+              "pattern": "^#[0-9A-Fa-f]{6}$"
+          "title": "Color"
+        "label":
+          "anyOf":
+            -
+              "type": "string"
+            -
+              "type": "null"
+          "title": "Label"
+      "type": "object"
+      "required":
+        - "date"
+        - "count"
+        - "color"
+      "title": "ExplorationGridDay"
+      "description": "Minimal derived activity payload for one calendar day."
+    "ExplorationGridResponse":
+      "properties":
+        "range":
+          "$ref": "#/components/schemas/ExplorationRange"
+        "days":
+          "items":
+            "$ref": "#/components/schemas/ExplorationGridDay"
+          "type": "array"
+          "title": "Days"
+      "type": "object"
+      "required":
+        - "range"
+        - "days"
+      "title": "ExplorationGridResponse"
+      "description": "Derived-only dense grid response for an inclusive date range."
+    "ExplorationPerson":
+      "properties":
+        "id":
+          "type": "integer"
+          "title": "Id"
+        "name":
+          "type": "string"
+          "title": "Name"
+        "role":
+          "anyOf":
+            -
+              "type": "string"
+            -
+              "type": "null"
+          "title": "Role"
+      "type": "object"
+      "required":
+        - "id"
+        - "name"
+        - "role"
+      "title": "ExplorationPerson"
+      "description": "Person item used by the exploration shell."
+    "ExplorationRange":
+      "properties":
+        "start":
+          "type": "string"
+          "format": "date"
+          "title": "Start"
+        "end":
+          "type": "string"
+          "format": "date"
+          "title": "End"
+      "type": "object"
+      "required":
+        - "start"
+        - "end"
+      "title": "ExplorationRange"
+      "description": "Resolved inclusive date range for exploration responses."
+    "ExplorationTag":
+      "properties":
+        "path":
+          "type": "string"
+          "title": "Path"
+        "label":
+          "type": "string"
+          "title": "Label"
+      "type": "object"
+      "required":
+        - "path"
+        - "label"
+      "title": "ExplorationTag"
+      "description": "Tag item used by the exploration shell."
+    "ExplorationViewMode":
+      "properties":
+        "id":
+          "type": "string"
+          "title": "Id"
+        "label":
+          "type": "string"
+          "title": "Label"
+        "description":
+          "type": "string"
+          "title": "Description"
+      "type": "object"
+      "required":
+        - "id"
+        - "label"
+        - "description"
+      "title": "ExplorationViewMode"
+      "description": "Backend-defined exploration view mode metadata."
+    "HTTPValidationError":
+      "properties":
+        "detail":
+          "items":
+            "$ref": "#/components/schemas/ValidationError"
+          "type": "array"
+          "title": "Detail"
+      "type": "object"
+      "title": "HTTPValidationError"
+    "SocialGraphLink":
+      "properties":
+        "person_ids":
+          "items":
+            "type": "integer"
+          "type": "array"
+          "title": "Person Ids"
+        "weight":
+          "type": "integer"
+          "title": "Weight"
+        "affinity":
+          "type": "number"
+          "title": "Affinity"
+      "type": "object"
+      "required":
+        - "person_ids"
+        - "weight"
+        - "affinity"
+      "title": "SocialGraphLink"
+      "description": "Weighted unordered person-pair edge in the social graph."
+    "SocialGraphPerson":
+      "properties":
+        "id":
+          "type": "integer"
+          "title": "Id"
+        "name":
+          "type": "string"
+          "title": "Name"
+        "occurrence_count":
+          "type": "integer"
+          "title": "Occurrence Count"
+      "type": "object"
+      "required":
+        - "id"
+        - "name"
+        - "occurrence_count"
+      "title": "SocialGraphPerson"
+      "description": "Person node exposed by the social-graph API contract."
+    "SocialGraphResponse":
+      "properties":
+        "persons":
+          "items":
+            "$ref": "#/components/schemas/SocialGraphPerson"
+          "type": "array"
+          "title": "Persons"
+        "links":
+          "items":
+            "$ref": "#/components/schemas/SocialGraphLink"
+          "type": "array"
+          "title": "Links"
+      "type": "object"
+      "required":
+        - "persons"
+        - "links"
+      "title": "SocialGraphResponse"
+      "description": "Canonical social-graph projection response."
+    "ValidationError":
+      "properties":
+        "loc":
+          "items":
+            "anyOf":
+              -
+                "type": "string"
+              -
+                "type": "integer"
+          "type": "array"
+          "title": "Location"
+        "msg":
+          "type": "string"
+          "title": "Message"
+        "type":
+          "type": "string"
+          "title": "Error Type"
+        "input":
+          "title": "Input"
+        "ctx":
+          "type": "object"
+          "title": "Context"
+      "type": "object"
+      "required":
+        - "loc"
+        - "msg"
+        - "type"
+      "title": "ValidationError"

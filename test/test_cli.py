@@ -19,6 +19,7 @@ from typer.testing import CliRunner
 
 from pixelpast.analytics.entrypoints import list_supported_derive_jobs
 from pixelpast.cli.main import (
+    DEFAULT_OPENAPI_EXPORT_PATH,
     UI_WORKSPACE,
     CliProgressReporter,
     IngestionCliProgressReporter,
@@ -71,6 +72,53 @@ def test_cli_derive_help_lists_supported_jobs() -> None:
     assert result.exit_code == 0
     for job in list_supported_derive_jobs():
         assert job in result.stdout
+
+
+def test_cli_help_lists_openapi_export_command() -> None:
+    result = runner.invoke(app, ["--help"])
+
+    assert result.exit_code == 0
+    assert "export-openapi" in result.stdout
+
+
+def test_cli_export_openapi_writes_canonical_contract(monkeypatch) -> None:
+    database_path = _build_test_database_path("cli-openapi-export")
+    monkeypatch.setenv(
+        "PIXELPAST_DATABASE_URL", f"sqlite:///{database_path.as_posix()}"
+    )
+    get_settings.cache_clear()
+
+    original_contract = (
+        DEFAULT_OPENAPI_EXPORT_PATH.read_text(encoding="utf-8")
+        if DEFAULT_OPENAPI_EXPORT_PATH.exists()
+        else None
+    )
+
+    try:
+        result = runner.invoke(app, ["export-openapi"])
+
+        assert result.exit_code == 0
+        assert DEFAULT_OPENAPI_EXPORT_PATH.exists()
+        exported_contract = DEFAULT_OPENAPI_EXPORT_PATH.read_text(encoding="utf-8")
+        assert '"openapi": "3.1.0"' in exported_contract
+        assert '"/api/health"' in exported_contract
+        assert '"title": "PixelPast"' in exported_contract
+        assert (
+            f"exported OpenAPI contract to {DEFAULT_OPENAPI_EXPORT_PATH.as_posix()}"
+            in result.stdout
+        )
+    finally:
+        get_settings.cache_clear()
+        if original_contract is None:
+            if DEFAULT_OPENAPI_EXPORT_PATH.exists():
+                DEFAULT_OPENAPI_EXPORT_PATH.unlink()
+        else:
+            DEFAULT_OPENAPI_EXPORT_PATH.write_text(
+                original_contract,
+                encoding="utf-8",
+            )
+        if database_path.exists():
+            database_path.unlink()
 
 
 def test_build_dev_process_specs_returns_api_and_ui_commands(monkeypatch) -> None:

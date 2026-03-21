@@ -21,6 +21,10 @@ from pixelpast.analytics.entrypoints import (
     list_supported_derive_jobs,
     run_derive_job,
 )
+from pixelpast.api.openapi import (
+    DEFAULT_OPENAPI_EXPORT_PATH,
+    export_openapi_schema,
+)
 from pixelpast.ingestion.entrypoints import (
     list_supported_ingest_sources,
     run_ingest_source,
@@ -375,6 +379,15 @@ def derive_command(
         )
     finally:
         progress_reporter.close()
+
+
+@app.command("export-openapi")
+def export_openapi_command() -> None:
+    """Export the FastAPI OpenAPI contract to the repository documentation path."""
+
+    configure_logging(debug=False)
+    output_path = export_openapi_schema(output_path=DEFAULT_OPENAPI_EXPORT_PATH)
+    typer.echo(f"exported OpenAPI contract to {output_path.as_posix()}")
 
 
 def main() -> None:
