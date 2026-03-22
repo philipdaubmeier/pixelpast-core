@@ -20,6 +20,10 @@ from pixelpast.analytics.google_places.provider import (
     GooglePlacesProviderSourceDefinition,
     GooglePlacesProviderSourceResolver,
 )
+from pixelpast.analytics.google_places.persistence import (
+    GooglePlacesPersister,
+    GooglePlacesPersistenceResult,
+)
 
 __all__ = [
     "GOOGLE_PLACES_PROVIDER_EXTERNAL_ID",
@@ -33,6 +37,8 @@ __all__ = [
     "GooglePlacesClientResponseError",
     "GooglePlacesProviderSourceDefinition",
     "GooglePlacesProviderSourceResolver",
+    "GooglePlacesPersister",
+    "GooglePlacesPersistenceResult",
     "GooglePlacesRequest",
     "GooglePlacesResolvePlan",
     "GooglePlacesResponse",

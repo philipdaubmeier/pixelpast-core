@@ -251,6 +251,57 @@ class PlaceRepository:
             status="updated",
         )
 
+    def reconcile_event_place_link(
+        self,
+        *,
+        event_id: int,
+        place_id: int,
+        confidence: float | None,
+    ) -> EventPlaceLinkUpsertResult:
+        """Ensure one event keeps exactly one resolved place link for this derive path."""
+
+        statement = (
+            select(EventPlace)
+            .where(EventPlace.event_id == event_id)
+            .order_by(EventPlace.place_id)
+        )
+        existing_links = list(self._session.execute(statement).scalars())
+        target_link = next(
+            (link for link in existing_links if link.place_id == place_id),
+            None,
+        )
+        conflicting_links = [
+            link for link in existing_links if link.place_id != place_id
+        ]
+
+        changed = False
+        for conflicting_link in conflicting_links:
+            self._session.delete(conflicting_link)
+            changed = True
+
+        if target_link is None:
+            target_link = EventPlace(
+                event_id=event_id,
+                place_id=place_id,
+                confidence=confidence,
+            )
+            self._session.add(target_link)
+            self._session.flush()
+            return EventPlaceLinkUpsertResult(
+                event_place=target_link,
+                status="updated" if changed else "inserted",
+            )
+
+        if target_link.confidence != confidence:
+            target_link.confidence = confidence
+            changed = True
+
+        self._session.flush()
+        return EventPlaceLinkUpsertResult(
+            event_place=target_link,
+            status="updated" if changed else "unchanged",
+        )
+
 
 def _normalize_google_place_id(value: object) -> str | None:
     if not isinstance(value, str):
