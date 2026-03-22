@@ -18,10 +18,12 @@ from pixelpast.persistence.models import (
     DailyAggregate,
     DailyView,
     Event,
+    EventPlace,
     JobRun,
+    Place,
     Source,
 )
-from pixelpast.persistence.repositories import SourceRepository
+from pixelpast.persistence.repositories import PlaceRepository, SourceRepository
 from pixelpast.persistence.session import session_scope
 from pixelpast.shared.runtime import create_runtime_context, initialize_database
 from pixelpast.shared.settings import Settings
@@ -80,12 +82,14 @@ def test_alembic_upgrade_head_runs() -> None:
                 "daily_view",
                 "event",
                 "event_asset",
+                "event_place",
                 "event_person",
                 "event_tag",
                 "import_run",
                 "person",
                 "person_group",
                 "person_group_member",
+                "place",
                 "source",
                 "tag",
             }
@@ -111,6 +115,12 @@ def test_alembic_upgrade_head_runs() -> None:
             source_columns = {
                 column["name"] for column in inspector.get_columns("source")
             }
+            place_columns = {
+                column["name"] for column in inspector.get_columns("place")
+            }
+            event_place_columns = {
+                column["name"] for column in inspector.get_columns("event_place")
+            }
             import_run_columns = {
                 column["name"] for column in inspector.get_columns("import_run")
             }
@@ -120,6 +130,11 @@ def test_alembic_upgrade_head_runs() -> None:
             daily_aggregate_indexes = {
                 index["name"] for index in inspector.get_indexes("daily_aggregate")
             }
+            place_indexes = {
+                index["name"] for index in inspector.get_indexes("place")
+            }
+            place_unique_constraints = inspector.get_unique_constraints("place")
+            event_place_pk = inspector.get_pk_constraint("event_place")
             daily_aggregate_pk = inspector.get_pk_constraint("daily_aggregate")
             daily_view_columns = {
                 column["name"] for column in inspector.get_columns("daily_view")
@@ -132,6 +147,17 @@ def test_alembic_upgrade_head_runs() -> None:
                 "progress",
             } <= import_run_columns
             assert {"external_id", "name", "type", "config", "created_at"} <= source_columns
+            assert place_columns == {
+                "id",
+                "source_id",
+                "external_id",
+                "display_name",
+                "formatted_address",
+                "latitude",
+                "longitude",
+                "lastupdate_at",
+            }
+            assert event_place_columns == {"event_id", "place_id", "confidence"}
             assert {
                 "date",
                 "daily_view_id",
@@ -155,6 +181,15 @@ def test_alembic_upgrade_head_runs() -> None:
             assert daily_aggregate_indexes == {
                 "ix_daily_aggregate_view_date",
             }
+            assert place_indexes == {
+                "ix_place_lastupdate_at",
+                "ix_place_latitude_longitude",
+                "ix_place_source_external_id",
+            }
+            assert {
+                constraint["name"] for constraint in place_unique_constraints
+            } == {"uq_place_source_external_id"}
+            assert event_place_pk["constrained_columns"] == ["event_id", "place_id"]
             assert daily_aggregate_pk["constrained_columns"] == ["date", "daily_view_id"]
         finally:
             engine.dispose()
@@ -172,12 +207,14 @@ def test_metadata_contains_canonical_tables() -> None:
         "daily_view",
         "event",
         "event_asset",
+        "event_place",
         "event_person",
         "event_tag",
         "import_run",
         "person",
         "person_group",
         "person_group_member",
+        "place",
         "source",
         "tag",
     }
@@ -336,6 +373,125 @@ def test_source_repository_reconciles_sources_by_external_identity() -> None:
         "origin_path": "/tmp/archive.zip",
         "archive_member_path": "nested/work.ics",
     }
+
+
+def test_place_repository_upserts_provider_scoped_place_and_event_place_links() -> None:
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    refreshed_at = datetime(2026, 3, 22, 10, 15, tzinfo=UTC)
+    second_refresh = datetime(2026, 3, 23, 8, 30, tzinfo=UTC)
+
+    with Session(engine) as session:
+        source = Source(
+            name="Google Places API",
+            type="google_places_api",
+            external_id="google_places_api",
+            config={},
+        )
+        event_source = Source(
+            name="Timeline",
+            type="google_maps_timeline",
+            external_id="timeline-source",
+            config={},
+        )
+        session.add_all([source, event_source])
+        session.flush()
+        event = Event(
+            source_id=event_source.id,
+            type="timeline_visit",
+            timestamp_start=datetime(2026, 3, 22, 9, 0, tzinfo=UTC),
+            timestamp_end=None,
+            title="Cafe visit",
+            summary=None,
+            latitude=52.52,
+            longitude=13.405,
+            raw_payload={"googlePlaceId": "places/123"},
+            derived_payload={},
+        )
+        session.add(event)
+        session.flush()
+        source_id = source.id
+        event_id = event.id
+
+        repository = PlaceRepository(session)
+        inserted_place = repository.upsert(
+            source_id=source_id,
+            external_id="places/123",
+            display_name="Cafe Central",
+            formatted_address="Mitte, Berlin",
+            latitude=52.52,
+            longitude=13.405,
+            lastupdate_at=refreshed_at,
+        )
+        unchanged_place = repository.upsert(
+            source_id=source_id,
+            external_id="places/123",
+            display_name="Cafe Central",
+            formatted_address="Mitte, Berlin",
+            latitude=52.52,
+            longitude=13.405,
+            lastupdate_at=refreshed_at,
+        )
+        updated_place = repository.upsert(
+            source_id=source_id,
+            external_id="places/123",
+            display_name="Cafe Central Berlin",
+            formatted_address="Mitte, Berlin, Germany",
+            latitude=52.5201,
+            longitude=13.4051,
+            lastupdate_at=second_refresh,
+        )
+
+        inserted_link = repository.upsert_event_place_link(
+            event_id=event_id,
+            place_id=inserted_place.place.id,
+            confidence=0.87,
+        )
+        unchanged_link = repository.upsert_event_place_link(
+            event_id=event_id,
+            place_id=inserted_place.place.id,
+            confidence=0.87,
+        )
+        updated_link = repository.upsert_event_place_link(
+            event_id=event_id,
+            place_id=inserted_place.place.id,
+            confidence=None,
+        )
+        fetched_place = repository.get_by_source_and_external_id(
+            source_id=source_id,
+            external_id="places/123",
+        )
+        fetched_links = repository.list_event_place_links(
+            event_ids=[event_id],
+            place_ids=[inserted_place.place.id],
+        )
+        fetched_link_rows = [
+            (link.event_id, link.place_id, link.confidence) for link in fetched_links
+        ]
+        session.commit()
+
+    with Session(engine) as session:
+        stored_place = session.query(Place).one()
+        stored_link = session.query(EventPlace).one()
+
+    assert inserted_place.status == "inserted"
+    assert unchanged_place.status == "unchanged"
+    assert updated_place.status == "updated"
+    assert inserted_link.status == "inserted"
+    assert unchanged_link.status == "unchanged"
+    assert updated_link.status == "updated"
+    assert fetched_place is not None
+    assert fetched_link_rows == [(event_id, stored_place.id, None)]
+    assert stored_place.source_id == source_id
+    assert stored_place.external_id == "places/123"
+    assert stored_place.display_name == "Cafe Central Berlin"
+    assert stored_place.formatted_address == "Mitte, Berlin, Germany"
+    assert stored_place.latitude == 52.5201
+    assert stored_place.longitude == 13.4051
+    assert stored_place.lastupdate_at == second_refresh
+    assert stored_link.event_id == event_id
+    assert stored_link.place_id == stored_place.id
+    assert stored_link.confidence is None
 
 
 def test_daily_aggregate_date_roundtrip_uses_python_date() -> None:

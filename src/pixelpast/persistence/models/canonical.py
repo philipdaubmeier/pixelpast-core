@@ -125,6 +125,27 @@ class Event(Base):
     )
 
 
+class Place(Base):
+    """Derived cache entry for one provider-scoped place record."""
+
+    __tablename__ = "place"
+    __table_args__ = (
+        UniqueConstraint("source_id", "external_id", name="uq_place_source_external_id"),
+        Index("ix_place_source_external_id", "source_id", "external_id"),
+        Index("ix_place_lastupdate_at", "lastupdate_at"),
+        Index("ix_place_latitude_longitude", "latitude", "longitude"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source_id: Mapped[int] = mapped_column(ForeignKey("source.id"), nullable=False)
+    external_id: Mapped[str] = mapped_column(String(512), nullable=False)
+    display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    formatted_address: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    latitude: Mapped[float | None] = mapped_column(Float(), nullable=True)
+    longitude: Mapped[float | None] = mapped_column(Float(), nullable=True)
+    lastupdate_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
+
+
 class Asset(Base):
     """Represents a time-located digital object."""
 
@@ -263,6 +284,22 @@ class EventAsset(Base):
         primary_key=True,
     )
     link_type: Mapped[str] = mapped_column(String(50), nullable=False)
+
+
+class EventPlace(Base):
+    """Associates canonical events with derived place records."""
+
+    __tablename__ = "event_place"
+
+    event_id: Mapped[int] = mapped_column(
+        ForeignKey("event.id"),
+        primary_key=True,
+    )
+    place_id: Mapped[int] = mapped_column(
+        ForeignKey("place.id"),
+        primary_key=True,
+    )
+    confidence: Mapped[float | None] = mapped_column(Float(), nullable=True)
 
 
 class Tag(Base):

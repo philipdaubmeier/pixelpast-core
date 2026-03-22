@@ -17,6 +17,11 @@ from pixelpast.persistence.repositories.daily_aggregates import (
     DailyAggregateSnapshot,
     DailyViewRepository,
 )
+from pixelpast.persistence.repositories.places import (
+    EventPlaceLinkUpsertResult,
+    PlaceRepository,
+    PlaceUpsertResult,
+)
 from pixelpast.persistence.repositories.timeline_read import (
     DailyAggregateReadRepository,
     DailyAggregateReadSnapshot,
@@ -58,7 +63,10 @@ __all__ = [
     "DayTimelineRepository",
     "ExplorationReadRepository",
     "JobRunRepository",
+    "EventPlaceLinkUpsertResult",
     "PersonRepository",
+    "PlaceRepository",
+    "PlaceUpsertResult",
     "PersonAssetMembershipSnapshot",
     "SocialGraphLinkSnapshot",
     "SocialGraphPersonSnapshot",
