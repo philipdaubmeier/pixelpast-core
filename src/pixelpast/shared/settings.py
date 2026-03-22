@@ -1,5 +1,6 @@
 """Application settings for PixelPast runtime services."""
 
+from datetime import timedelta
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -54,11 +55,40 @@ class Settings(BaseSettings):
         default=None,
         description="Root path for the workdays-vacation ingestion connector.",
     )
+    google_places_api_key: str | None = Field(
+        default=None,
+        description="API key for the Google Places derive job.",
+    )
+    google_places_language_code: str | None = Field(
+        default=None,
+        description="Optional language code for Google Places detail requests.",
+    )
+    google_places_region_code: str | None = Field(
+        default=None,
+        description="Optional region code for Google Places detail requests.",
+    )
+    google_places_refresh_max_age_days: int = Field(
+        default=365 * 3,
+        ge=1,
+        description=(
+            "Maximum cache age in days before the Google Places derive job "
+            "refreshes a place snapshot."
+        ),
+    )
     day_context_max_days: int = Field(
         default=366,
         ge=1,
-        description="Maximum inclusive day count allowed for /api/days/context requests.",
+        description=(
+            "Maximum inclusive day count allowed for "
+            "/api/days/context requests."
+        ),
     )
+
+    @property
+    def google_places_refresh_max_age(self) -> timedelta:
+        """Return the Google Places cache staleness threshold as a timedelta."""
+
+        return timedelta(days=self.google_places_refresh_max_age_days)
 
 
 @lru_cache(maxsize=1)

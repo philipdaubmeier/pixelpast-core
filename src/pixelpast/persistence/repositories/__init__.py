@@ -19,21 +19,10 @@ from pixelpast.persistence.repositories.daily_aggregates import (
 )
 from pixelpast.persistence.repositories.places import (
     EventPlaceLinkUpsertResult,
+    GooglePlaceEventCandidateLoadResult,
+    GooglePlaceEventCandidateSnapshot,
     PlaceRepository,
     PlaceUpsertResult,
-)
-from pixelpast.persistence.repositories.timeline_read import (
-    DailyAggregateReadRepository,
-    DailyAggregateReadSnapshot,
-    DayActivityItemSnapshot,
-    DayMapPointSnapshot,
-    DayPersonLinkSnapshot,
-    DayTagLinkSnapshot,
-    DayTimelineItemSnapshot,
-    DailyViewCatalogSnapshot,
-    DayTimelineRepository,
-    ExplorationReadRepository,
-    TimelineBoundsSnapshot,
 )
 from pixelpast.persistence.repositories.social_graph_read import (
     PersonAssetMembershipSnapshot,
@@ -41,6 +30,19 @@ from pixelpast.persistence.repositories.social_graph_read import (
     SocialGraphPersonSnapshot,
     SocialGraphReadRepository,
     SocialGraphReadSnapshot,
+)
+from pixelpast.persistence.repositories.timeline_read import (
+    DailyAggregateReadRepository,
+    DailyAggregateReadSnapshot,
+    DailyViewCatalogSnapshot,
+    DayActivityItemSnapshot,
+    DayMapPointSnapshot,
+    DayPersonLinkSnapshot,
+    DayTagLinkSnapshot,
+    DayTimelineItemSnapshot,
+    DayTimelineRepository,
+    ExplorationReadRepository,
+    TimelineBoundsSnapshot,
 )
 
 __all__ = [
@@ -64,6 +66,8 @@ __all__ = [
     "ExplorationReadRepository",
     "JobRunRepository",
     "EventPlaceLinkUpsertResult",
+    "GooglePlaceEventCandidateLoadResult",
+    "GooglePlaceEventCandidateSnapshot",
     "PersonRepository",
     "PlaceRepository",
     "PlaceUpsertResult",

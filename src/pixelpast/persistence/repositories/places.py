@@ -3,12 +3,33 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from dataclasses import dataclass
 from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from pixelpast.persistence.models import EventPlace, Place
+from pixelpast.persistence.models import Event, EventPlace, Place
+
+
+@dataclass(slots=True, frozen=True)
+class GooglePlaceEventCandidateSnapshot:
+    """Canonical event fields required for Google place resolution planning."""
+
+    event_id: int
+    source_id: int
+    event_type: str
+    timestamp_start: datetime
+    google_place_id: str
+    confidence: float | None
+
+
+@dataclass(slots=True, frozen=True)
+class GooglePlaceEventCandidateLoadResult:
+    """Result of scanning canonical events for Google place candidates."""
+
+    scanned_event_count: int
+    candidate_events: tuple[GooglePlaceEventCandidateSnapshot, ...]
 
 
 class PlaceUpsertResult:
@@ -50,6 +71,71 @@ class PlaceRepository:
             Place.external_id == external_id,
         )
         return self._session.execute(statement).scalar_one_or_none()
+
+    def list_by_source_and_external_ids(
+        self,
+        *,
+        source_id: int,
+        external_ids: Iterable[str],
+    ) -> list[Place]:
+        """Return deterministic provider-scoped place cache rows."""
+
+        normalized_external_ids = sorted(
+            {
+                normalized
+                for external_id in external_ids
+                if (normalized := _normalize_google_place_id(external_id)) is not None
+            }
+        )
+        if not normalized_external_ids:
+            return []
+
+        statement = (
+            select(Place)
+            .where(
+                Place.source_id == source_id,
+                Place.external_id.in_(normalized_external_ids),
+            )
+            .order_by(Place.external_id, Place.id)
+        )
+        return list(self._session.execute(statement).scalars())
+
+    def load_google_place_event_candidates(
+        self,
+    ) -> GooglePlaceEventCandidateLoadResult:
+        """Scan canonical events for non-empty Google place identifiers."""
+
+        statement = select(Event).order_by(Event.timestamp_start, Event.id)
+        candidate_events: list[GooglePlaceEventCandidateSnapshot] = []
+        scanned_event_count = 0
+
+        for event in self._session.execute(statement).scalars():
+            scanned_event_count += 1
+            raw_payload = (
+                event.raw_payload if isinstance(event.raw_payload, dict) else {}
+            )
+            google_place_id = _normalize_google_place_id(
+                raw_payload.get("googlePlaceId")
+            )
+            if google_place_id is None:
+                continue
+            candidate_events.append(
+                GooglePlaceEventCandidateSnapshot(
+                    event_id=event.id,
+                    source_id=event.source_id,
+                    event_type=event.type,
+                    timestamp_start=event.timestamp_start,
+                    google_place_id=google_place_id,
+                    confidence=_coerce_confidence(
+                        raw_payload.get("candidateProbability")
+                    ),
+                )
+            )
+
+        return GooglePlaceEventCandidateLoadResult(
+            scanned_event_count=scanned_event_count,
+            candidate_events=tuple(candidate_events),
+        )
 
     def upsert(
         self,
@@ -164,3 +250,26 @@ class PlaceRepository:
             event_place=event_place,
             status="updated",
         )
+
+
+def _normalize_google_place_id(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    return normalized or None
+
+
+def _coerce_confidence(value: object) -> float | None:
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        normalized = value.strip()
+        if not normalized:
+            return None
+        try:
+            return float(normalized)
+        except ValueError:
+            return None
+    return None
