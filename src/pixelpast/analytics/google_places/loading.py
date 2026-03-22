@@ -45,14 +45,23 @@ class GooglePlacesCanonicalLoader:
         repository: PlaceRepository,
         provider_source_id: int,
         refresh_max_age: timedelta,
+        max_place_ids: int | None = None,
         now: datetime | None = None,
     ) -> GooglePlacesResolvePlan:
         """Return deduplicated place ids split into fresh and refresh-required sets."""
 
         load_result = self.load_candidates(repository=repository)
-        candidate_events = tuple(load_result.candidate_events)
+        all_candidate_events = tuple(load_result.candidate_events)
         place_ids = sorted(
-            {candidate.google_place_id for candidate in candidate_events}
+            {candidate.google_place_id for candidate in all_candidate_events}
+        )
+        if max_place_ids is not None:
+            place_ids = place_ids[:max_place_ids]
+        selected_place_ids = set(place_ids)
+        candidate_events = tuple(
+            candidate
+            for candidate in all_candidate_events
+            if candidate.google_place_id in selected_place_ids
         )
         cached_places = repository.list_by_source_and_external_ids(
             source_id=provider_source_id,

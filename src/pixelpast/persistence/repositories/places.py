@@ -174,7 +174,6 @@ class PlaceRepository:
                 place.formatted_address != formatted_address,
                 place.latitude != latitude,
                 place.longitude != longitude,
-                place.lastupdate_at != lastupdate_at,
             ]
         )
         if changed:
@@ -182,7 +181,7 @@ class PlaceRepository:
             place.formatted_address = formatted_address
             place.latitude = latitude
             place.longitude = longitude
-            place.lastupdate_at = lastupdate_at
+        place.lastupdate_at = lastupdate_at
         self._session.flush()
         return PlaceUpsertResult(
             place=place,

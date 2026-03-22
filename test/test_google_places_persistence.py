@@ -283,3 +283,86 @@ def test_google_places_persister_reconciles_conflicting_event_links() -> None:
     assert [(link.event_id, link.place_id, link.confidence) for link in stored_links] == [
         (event_id, current_place_id, 0.61)
     ]
+
+
+def test_google_places_persister_counts_stale_refresh_without_data_changes_as_unchanged() -> None:
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    reference_now = datetime(2026, 3, 22, 12, 0, tzinfo=UTC)
+    refreshed_at = datetime(2026, 3, 22, 12, 45, tzinfo=UTC)
+
+    with Session(engine) as session:
+        provider_source = Source(
+            name="Google Places API",
+            type="google_places_api",
+            external_id="google_places_api",
+            config={},
+        )
+        timeline_source = Source(
+            name="Timeline",
+            type="google_maps_timeline",
+            external_id="timeline-source",
+            config={},
+        )
+        session.add_all([provider_source, timeline_source])
+        session.flush()
+
+        session.add(
+            Event(
+                source_id=timeline_source.id,
+                type="timeline_visit",
+                timestamp_start=datetime(2026, 3, 21, 8, 0, tzinfo=UTC),
+                timestamp_end=None,
+                title="Visit",
+                summary=None,
+                latitude=None,
+                longitude=None,
+                raw_payload={"googlePlaceId": "places/stale"},
+                derived_payload={},
+            )
+        )
+        session.add(
+            Place(
+                source_id=provider_source.id,
+                external_id="places/stale",
+                display_name="Museum",
+                formatted_address="Paris",
+                latitude=48.8566,
+                longitude=2.3522,
+                lastupdate_at=reference_now - timedelta(days=1200),
+            )
+        )
+        session.commit()
+
+        repository = PlaceRepository(session)
+        plan = GooglePlacesCanonicalLoader().build_plan(
+            repository=repository,
+            provider_source_id=provider_source.id,
+            refresh_max_age=timedelta(days=365 * 3),
+            now=reference_now,
+        )
+
+        result = GooglePlacesPersister().persist(
+            repository=repository,
+            provider_source_id=provider_source.id,
+            plan=plan,
+            fetched_places_by_place_id={
+                "places/stale": GooglePlaceSnapshot(
+                    external_id="places/stale",
+                    display_name="Museum",
+                    formatted_address="Paris",
+                    latitude=48.8566,
+                    longitude=2.3522,
+                )
+            },
+            refreshed_at=refreshed_at,
+        )
+        session.commit()
+
+    with Session(engine) as session:
+        stored_place = session.query(Place).one()
+
+    assert result.inserted_place_count == 0
+    assert result.updated_place_count == 0
+    assert result.unchanged_place_count == 1
+    assert stored_place.lastupdate_at == refreshed_at

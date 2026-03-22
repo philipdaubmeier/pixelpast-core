@@ -169,6 +169,84 @@ def test_google_places_loader_builds_deduplicated_refresh_plan() -> None:
     assert stale_confidences == [None]
 
 
+def test_google_places_loader_can_limit_to_top_n_place_ids() -> None:
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    reference_now = datetime(2026, 3, 22, 12, 0, tzinfo=UTC)
+
+    with Session(engine) as session:
+        provider_source = Source(
+            name="Google Places API",
+            type="google_places_api",
+            external_id="google_places_api",
+            config={},
+        )
+        timeline_source = Source(
+            name="Timeline",
+            type="google_maps_timeline",
+            external_id="timeline-source",
+            config={},
+        )
+        session.add_all([provider_source, timeline_source])
+        session.flush()
+
+        session.add_all(
+            [
+                Event(
+                    source_id=timeline_source.id,
+                    type="timeline_visit",
+                    timestamp_start=datetime(2026, 3, 20, 9, 0, tzinfo=UTC),
+                    timestamp_end=None,
+                    title="A",
+                    summary=None,
+                    latitude=None,
+                    longitude=None,
+                    raw_payload={"googlePlaceId": "places/c"},
+                    derived_payload={},
+                ),
+                Event(
+                    source_id=timeline_source.id,
+                    type="timeline_visit",
+                    timestamp_start=datetime(2026, 3, 20, 10, 0, tzinfo=UTC),
+                    timestamp_end=None,
+                    title="B",
+                    summary=None,
+                    latitude=None,
+                    longitude=None,
+                    raw_payload={"googlePlaceId": "places/a"},
+                    derived_payload={},
+                ),
+                Event(
+                    source_id=timeline_source.id,
+                    type="timeline_visit",
+                    timestamp_start=datetime(2026, 3, 20, 11, 0, tzinfo=UTC),
+                    timestamp_end=None,
+                    title="C",
+                    summary=None,
+                    latitude=None,
+                    longitude=None,
+                    raw_payload={"googlePlaceId": "places/b"},
+                    derived_payload={},
+                ),
+            ]
+        )
+        session.commit()
+
+        plan = GooglePlacesCanonicalLoader().build_plan(
+            repository=PlaceRepository(session),
+            provider_source_id=provider_source.id,
+            refresh_max_age=timedelta(days=365 * 3),
+            max_place_ids=2,
+            now=reference_now,
+        )
+
+    assert plan.scanned_event_count == 3
+    assert plan.candidate_event_count == 2
+    assert plan.unique_place_id_count == 2
+    assert sorted(plan.candidates_by_place_id) == ["places/a", "places/b"]
+    assert plan.place_ids_requiring_refresh == ("places/a", "places/b")
+
+
 def test_google_places_provider_source_resolver_is_deterministic() -> None:
     engine = create_engine("sqlite://")
     Base.metadata.create_all(engine)
@@ -264,6 +342,7 @@ def test_google_places_client_raises_explicit_http_error() -> None:
 
     assert error.value.status_code == 403
     assert "forbidden" in error.value.body
+    assert "forbidden" in str(error.value)
 
 
 def test_google_places_client_rejects_unmappable_response_payload() -> None:

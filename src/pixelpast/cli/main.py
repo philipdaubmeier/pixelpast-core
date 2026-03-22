@@ -354,6 +354,17 @@ def derive_command(
             help="Inclusive end date for a range recomputation (YYYY-MM-DD).",
         ),
     ] = None,
+    top_place_ids: Annotated[
+        int | None,
+        typer.Option(
+            "--top-place-ids",
+            min=1,
+            help=(
+                "Limit Google Places derivation to the first N unique place ids "
+                "after deterministic sorting. Intended for debugging."
+            ),
+        ),
+    ] = None,
 ) -> None:
     """Run a derived-data job entrypoint."""
 
@@ -376,6 +387,7 @@ def derive_command(
                 runtime=runtime,
                 start_date=parsed_start_date,
                 end_date=parsed_end_date,
+                max_place_ids=top_place_ids,
                 progress_callback=progress_reporter,
             ),
         )
@@ -724,25 +736,6 @@ def _print_result_metadata(result: object | None) -> None:
     skipped_json_file_count = getattr(result, "skipped_json_file_count", None)
     if skipped_json_file_count is not None:
         typer.echo(f"skipped_json_files: {skipped_json_file_count}")
-
-    summary_fields = (
-        "mode",
-        "scanned_event_count",
-        "qualifying_event_count",
-        "unique_place_id_count",
-        "remote_fetch_count",
-        "cached_reuse_count",
-        "inserted_place_count",
-        "updated_place_count",
-        "unchanged_place_count",
-        "inserted_event_place_link_count",
-        "updated_event_place_link_count",
-        "unchanged_event_place_link_count",
-    )
-    for field_name in summary_fields:
-        value = getattr(result, field_name, None)
-        if value is not None:
-            typer.echo(f"{field_name}: {value}")
 
 
 def _print_result_warnings(result: object | None) -> None:

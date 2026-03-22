@@ -132,18 +132,16 @@ def test_google_places_job_resolves_places_reuses_cache_and_is_idempotent() -> N
         ]
         assert first_job_run.status == "completed"
         assert first_job_run.phase == "finalization"
-        assert first_job_run.progress_json is not None
-        assert first_job_run.progress_json["scanned_event_count"] == 5
-        assert first_job_run.progress_json["candidate_event_count"] == 4
-        assert first_job_run.progress_json["unique_place_id_count"] == 3
-        assert first_job_run.progress_json["remote_fetch_count"] == 2
-        assert first_job_run.progress_json["cached_reuse_count"] == 1
-        assert first_job_run.progress_json["inserted_place_count"] == 1
-        assert first_job_run.progress_json["updated_place_count"] == 1
-        assert first_job_run.progress_json["unchanged_place_count"] == 1
-        assert first_job_run.progress_json["inserted_event_place_link_count"] == 4
-        assert first_job_run.progress_json["updated_event_place_link_count"] == 0
-        assert first_job_run.progress_json["unchanged_event_place_link_count"] == 0
+        assert first_job_run.progress_json == {
+            "total": 1,
+            "completed": 1,
+            "inserted": 1,
+            "updated": 1,
+            "unchanged": 1,
+            "skipped": 0,
+            "failed": 0,
+            "missing_from_source": 0,
+        }
 
         second_result = GooglePlacesJob(
             client_factory=lambda settings: FakeGooglePlacesClient(
@@ -239,6 +237,49 @@ def test_google_places_job_fails_when_provider_request_errors() -> None:
             database_path.unlink()
 
 
+def test_google_places_job_can_limit_processed_place_ids() -> None:
+    database_path = _build_test_database_path("google-places-job-top-place-ids")
+    fetch_calls: list[str] = []
+    runtime = _create_runtime(database_path=database_path, api_key="secret-key")
+    try:
+        initialize_database(runtime)
+        with runtime.session_factory() as session:
+            _seed_google_places_scenario(session=session)
+
+        result = GooglePlacesJob(
+            client_factory=lambda settings: FakeGooglePlacesClient(
+                {
+                    "places/new": GooglePlaceSnapshot(
+                        external_id="places/new",
+                        display_name="New Bakery",
+                        formatted_address="Hamburg, Germany",
+                        latitude=53.5511,
+                        longitude=9.9937,
+                    ),
+                    "places/stale": GooglePlaceSnapshot(
+                        external_id="places/stale",
+                        display_name="Musee D'Orsay",
+                        formatted_address="Paris, France",
+                        latitude=48.86,
+                        longitude=2.3266,
+                    ),
+                },
+                fetch_calls,
+            )
+        ).run(runtime=runtime, max_place_ids=2)
+
+        assert result.scanned_event_count == 5
+        assert result.qualifying_event_count == 3
+        assert result.unique_place_id_count == 2
+        assert result.remote_fetch_count == 1
+        assert result.cached_reuse_count == 1
+        assert fetch_calls == ["places/new"]
+    finally:
+        runtime.engine.dispose()
+        if database_path.exists():
+            database_path.unlink()
+
+
 def test_cli_derive_google_places_prints_progress_and_summary(monkeypatch: pytest.MonkeyPatch) -> None:
     database_path = _build_test_database_path("cli-google-places")
     monkeypatch.setenv(
@@ -290,18 +331,72 @@ def test_cli_derive_google_places_prints_progress_and_summary(monkeypatch: pytes
         assert "collecting place ids" in result.stdout
         assert "fetching place details" in result.stdout
         assert "persisting places and links" in result.stdout
-        assert "scanned_event_count: 5" in result.stdout
-        assert "qualifying_event_count: 4" in result.stdout
-        assert "unique_place_id_count: 3" in result.stdout
-        assert "remote_fetch_count: 2" in result.stdout
-        assert "cached_reuse_count: 1" in result.stdout
-        assert "inserted_place_count: 1" in result.stdout
-        assert "updated_place_count: 1" in result.stdout
-        assert "unchanged_place_count: 1" in result.stdout
-        assert "inserted_event_place_link_count: 4" in result.stdout
-        assert "updated_event_place_link_count: 0" in result.stdout
-        assert "unchanged_event_place_link_count: 0" in result.stdout
+        assert "inserted: 1" in result.stdout
+        assert "updated: 1" in result.stdout
+        assert "unchanged: 1" in result.stdout
+        assert "skipped: 0" in result.stdout
+        assert "failed: 0" in result.stdout
+        assert "missing_from_source: 0" in result.stdout
+        assert "scanned_event_count:" not in result.stdout
         assert fetch_calls == ["places/new", "places/stale"]
+    finally:
+        get_settings.cache_clear()
+        if database_path.exists():
+            database_path.unlink()
+
+
+def test_cli_derive_google_places_top_place_ids_limits_work(monkeypatch: pytest.MonkeyPatch) -> None:
+    database_path = _build_test_database_path("cli-google-places-top-place-ids")
+    monkeypatch.setenv(
+        "PIXELPAST_DATABASE_URL",
+        f"sqlite:///{database_path.as_posix()}",
+    )
+    monkeypatch.setenv("PIXELPAST_GOOGLE_PLACES_API_KEY", "secret-key")
+    get_settings.cache_clear()
+
+    job_module = pytest.importorskip("pixelpast.analytics.google_places.job")
+    fetch_calls: list[str] = []
+
+    def fake_client_factory(settings: Settings) -> FakeGooglePlacesClient:
+        return FakeGooglePlacesClient(
+            {
+                "places/new": GooglePlaceSnapshot(
+                    external_id="places/new",
+                    display_name="New Bakery",
+                    formatted_address="Hamburg, Germany",
+                    latitude=53.5511,
+                    longitude=9.9937,
+                ),
+                "places/stale": GooglePlaceSnapshot(
+                    external_id="places/stale",
+                    display_name="Musee D'Orsay",
+                    formatted_address="Paris, France",
+                    latitude=48.86,
+                    longitude=2.3266,
+                ),
+            },
+            fetch_calls,
+        )
+
+    monkeypatch.setattr(job_module, "_build_google_places_client", fake_client_factory)
+
+    runtime = create_runtime_context(settings=get_settings())
+    try:
+        initialize_database(runtime)
+        with runtime.session_factory() as session:
+            _seed_google_places_scenario(session=session)
+    finally:
+        runtime.engine.dispose()
+
+    try:
+        result = runner.invoke(app, ["derive", "google_places", "--top-place-ids", "2"])
+
+        assert result.exit_code == 0
+        assert "inserted: 1" in result.stdout
+        assert "updated: 0" in result.stdout
+        assert "unchanged: 1" in result.stdout
+        assert "qualifying_event_count:" not in result.stdout
+        assert fetch_calls == ["places/new"]
     finally:
         get_settings.cache_clear()
         if database_path.exists():

@@ -74,11 +74,16 @@ class GooglePlacesJob:
         runtime: RuntimeContext,
         start_date: date | None = None,
         end_date: date | None = None,
+        max_place_ids: int | None = None,
         progress_callback: JobProgressCallback | None = None,
     ) -> GooglePlacesJobResult:
         """Resolve provider place snapshots and event-place links."""
 
-        _validate_date_range(start_date=start_date, end_date=end_date)
+        _validate_options(
+            start_date=start_date,
+            end_date=end_date,
+            max_place_ids=max_place_ids,
+        )
         client = self._client_factory(runtime.settings)
 
         run_id = self._lifecycle.create_run(
@@ -104,6 +109,7 @@ class GooglePlacesJob:
                 repository=place_repository,
                 provider_source_id=provider_source.id,
                 refresh_max_age=runtime.settings.google_places_refresh_max_age,
+                max_place_ids=max_place_ids,
             )
             progress.mark_collecting_completed(
                 scanned_event_count=plan.scanned_event_count,
@@ -196,10 +202,20 @@ def _build_google_places_client(settings: Settings) -> GooglePlacesClient:
     )
 
 
-def _validate_date_range(*, start_date: date | None, end_date: date | None) -> None:
+def _validate_options(
+    *,
+    start_date: date | None,
+    end_date: date | None,
+    max_place_ids: int | None,
+) -> None:
     if start_date is None and end_date is None:
-        return
-    raise ValueError("Google Places derivation does not support --start-date/--end-date.")
+        pass
+    else:
+        raise ValueError(
+            "Google Places derivation does not support --start-date/--end-date."
+        )
+    if max_place_ids is not None and max_place_ids < 1:
+        raise ValueError("Google Places derivation requires --top-place-ids >= 1.")
 
 
 def _utc_now() -> datetime:

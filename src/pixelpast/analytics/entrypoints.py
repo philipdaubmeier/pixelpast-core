@@ -27,6 +27,7 @@ def run_derive_job(
     runtime: RuntimeContext,
     start_date: date | None = None,
     end_date: date | None = None,
+    max_place_ids: int | None = None,
     progress_callback: Callable[[JobProgressSnapshot], None] | None = None,
 ) -> DailyAggregateJobResult | GooglePlacesJobResult:
     """Run a derived-data job entrypoint."""
@@ -69,6 +70,7 @@ def run_derive_job(
             runtime=runtime,
             start_date=start_date,
             end_date=end_date,
+            max_place_ids=max_place_ids,
             progress_callback=progress_callback,
         )
         logger.info(

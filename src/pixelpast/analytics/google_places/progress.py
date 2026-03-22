@@ -47,27 +47,12 @@ class GooglePlacesProgressState:
         return {
             "total": total,
             "completed": completed,
-            "inserted": (
-                self.inserted_place_count + self.inserted_event_place_link_count
-            ),
-            "updated": self.updated_place_count
-            + self.updated_event_place_link_count,
-            "unchanged": self.unchanged_place_count
-            + self.unchanged_event_place_link_count,
-            "skipped": self.cached_reuse_count,
+            "inserted": self.inserted_place_count,
+            "updated": self.updated_place_count,
+            "unchanged": self.unchanged_place_count,
+            "skipped": 0,
             "failed": self.failed,
             "missing_from_source": 0,
-            "scanned_event_count": self.scanned_event_count,
-            "candidate_event_count": self.candidate_event_count,
-            "unique_place_id_count": self.unique_place_id_count,
-            "remote_fetch_count": self.remote_fetch_count,
-            "cached_reuse_count": self.cached_reuse_count,
-            "inserted_place_count": self.inserted_place_count,
-            "updated_place_count": self.updated_place_count,
-            "unchanged_place_count": self.unchanged_place_count,
-            "inserted_event_place_link_count": self.inserted_event_place_link_count,
-            "updated_event_place_link_count": self.updated_event_place_link_count,
-            "unchanged_event_place_link_count": self.unchanged_event_place_link_count,
         }
 
 

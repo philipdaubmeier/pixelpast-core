@@ -41,7 +41,10 @@ class GooglePlacesClientHttpError(GooglePlacesClientError):
     """Raised when Google Places returns a non-success HTTP response."""
 
     def __init__(self, *, status_code: int, body: str) -> None:
-        super().__init__(f"Google Places request failed with HTTP {status_code}.")
+        message_suffix = _format_http_error_body(body)
+        super().__init__(
+            f"Google Places request failed with HTTP {status_code}.{message_suffix}"
+        )
         self.status_code = status_code
         self.body = body
 
@@ -211,3 +214,29 @@ def _parse_optional_number(value: object) -> float | None:
             "Google Places numeric field must contain a number when present."
         )
     return float(value)
+
+
+def _format_http_error_body(body: str) -> str:
+    normalized_body = body.strip()
+    if not normalized_body:
+        return ""
+
+    try:
+        payload = json.loads(normalized_body)
+    except json.JSONDecodeError:
+        return f" Response body: {_truncate_error_text(normalized_body)}"
+
+    if isinstance(payload, dict):
+        error_payload = payload.get("error")
+        if isinstance(error_payload, dict):
+            message = error_payload.get("message")
+            if isinstance(message, str) and message.strip():
+                return f" Response body: {_truncate_error_text(message.strip())}"
+
+    return f" Response body: {_truncate_error_text(normalized_body)}"
+
+
+def _truncate_error_text(value: str, *, max_length: int = 300) -> str:
+    if len(value) <= max_length:
+        return value
+    return f"{value[: max_length - 3]}..."
