@@ -156,16 +156,21 @@ def build_day_context_map_points(
         label = summary.get("label")
         latitude = summary.get("latitude")
         longitude = summary.get("longitude")
-        if (
-            not isinstance(label, str)
-            or not isinstance(latitude, (int, float))
-            or not isinstance(longitude, (int, float))
+        if not isinstance(latitude, (int, float)) or not isinstance(
+            longitude, (int, float)
         ):
             continue
+        normalized_label = (
+            label.strip() if isinstance(label, str) and label.strip() else None
+        )
         points.append(
             DayContextMapPoint(
-                id=f"location:{day.isoformat()}:{index}",
-                label=label.strip() or "Location",
+                id=(
+                    f"location:{day.isoformat()}:{index}"
+                    if normalized_label is not None
+                    else None
+                ),
+                label=normalized_label,
                 latitude=float(latitude),
                 longitude=float(longitude),
             )

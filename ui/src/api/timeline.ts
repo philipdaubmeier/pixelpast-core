@@ -103,8 +103,8 @@ function mapDayContextDay(
     persons: day.persons.map(mapPerson),
     tags: day.tags.map(mapTag),
     mapPoints: day.map_points.map((point) => ({
-      id: point.id,
-      label: point.label,
+      id: point.id ?? null,
+      label: point.label ?? null,
       latitude: point.latitude,
       longitude: point.longitude,
     })),

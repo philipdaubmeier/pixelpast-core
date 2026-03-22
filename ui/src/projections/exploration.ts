@@ -192,7 +192,10 @@ export function buildMapProjection(
 
   const mapPoints = uniqueBy(
     matchingContexts.flatMap((context) => context.mapPoints),
-    (point) => point.label,
+    (point) =>
+      point.id ??
+      point.label ??
+      `${point.latitude.toFixed(6)}:${point.longitude.toFixed(6)}`,
   ).slice(0, 12);
   const mapSummary = matchingContexts.reduce<SummaryCounts>(
     (summary, context) => ({

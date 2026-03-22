@@ -486,6 +486,89 @@ def test_day_context_endpoint_rejects_ranges_beyond_configured_limit() -> None:
         shutil.rmtree(workspace_root, ignore_errors=True)
 
 
+def test_day_context_endpoint_keeps_unlabeled_map_coordinates() -> None:
+    workspace_root = _create_workspace_dir(prefix="timeline-api-day-context-path")
+    runtime = None
+    try:
+        runtime = _create_runtime(workspace_root=workspace_root)
+
+        with runtime.session_factory() as session:
+            overall_view = DailyView(
+                aggregate_scope="overall",
+                source_type=None,
+                label="Activity",
+                description="Default heat intensity across all timeline sources.",
+                metadata_json=build_default_daily_view_metadata(),
+            )
+            session.add(overall_view)
+            session.flush()
+            session.add(
+                DailyAggregate(
+                    date=datetime(2024, 1, 2, tzinfo=UTC).date(),
+                    daily_view_id=overall_view.id,
+                    total_events=2,
+                    media_count=0,
+                    activity_score=4,
+                    tag_summary_json=[],
+                    person_summary_json=[],
+                    location_summary_json=[
+                        {"latitude": 52.52, "longitude": 13.405},
+                        {"latitude": 52.521, "longitude": 13.406},
+                        {"label": "Cafe", "latitude": 52.522, "longitude": 13.407, "count": 1},
+                    ],
+                )
+            )
+            session.commit()
+
+        app = create_app(settings=runtime.settings)
+        with TestClient(app) as client:
+            response = client.get("/api/days/context?start=2024-01-02&end=2024-01-02")
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "range": {
+                "start": "2024-01-02",
+                "end": "2024-01-02",
+            },
+            "days": [
+                {
+                    "date": "2024-01-02",
+                    "persons": [],
+                    "tags": [],
+                    "map_points": [
+                        {
+                            "id": None,
+                            "label": None,
+                            "latitude": 52.52,
+                            "longitude": 13.405,
+                        },
+                        {
+                            "id": None,
+                            "label": None,
+                            "latitude": 52.521,
+                            "longitude": 13.406,
+                        },
+                        {
+                            "id": "location:2024-01-02:3",
+                            "label": "Cafe",
+                            "latitude": 52.522,
+                            "longitude": 13.407,
+                        },
+                    ],
+                    "summary_counts": {
+                        "events": 2,
+                        "assets": 0,
+                        "places": 3,
+                    },
+                }
+            ],
+        }
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
 def test_day_detail_endpoint_returns_events_only() -> None:
     workspace_root = _create_workspace_dir(prefix="timeline-api-day-events")
     runtime = None

@@ -27,8 +27,8 @@ export type TagProjection = {
 };
 
 export type MapPointProjection = {
-  id: string;
-  label: string;
+  id: string | null;
+  label: string | null;
   latitude: number;
   longitude: number;
 };

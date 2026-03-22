@@ -36,6 +36,15 @@ export function MapPanel({
   hoverContextError,
   summary,
 }: MapPanelProps) {
+  const labeledPoints = mapPoints.filter((point) => point.label !== null);
+  const unlabeledPoints = mapPoints.filter((point) => point.label === null);
+  const pathPolylinePoints = unlabeledPoints
+    .map(
+      (point) =>
+        `${projectLongitude(point.longitude)},${projectLatitude(point.latitude)}`,
+    )
+    .join(" ");
+
   return (
     <PanelCard title="Map">
       {hoveredDate !== null && hoverContextStatus !== "ready" ? (
@@ -65,9 +74,37 @@ export function MapPanel({
           </div>
         ) : (
           <>
-            {mapPoints.map((point) => (
+            {unlabeledPoints.length > 0 ? (
+              <svg
+                className="pointer-events-none absolute inset-0 h-full w-full"
+                viewBox="0 0 100 100"
+                preserveAspectRatio="none"
+                aria-hidden="true"
+              >
+                {unlabeledPoints.length >= 2 ? (
+                  <polyline
+                    points={pathPolylinePoints}
+                    fill="none"
+                    stroke="rgba(15, 23, 42, 0.85)"
+                    strokeWidth="0.9"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                ) : null}
+                {unlabeledPoints.map((point, index) => (
+                  <circle
+                    key={`path-point-${point.id ?? index}`}
+                    cx={projectLongitude(point.longitude)}
+                    cy={projectLatitude(point.latitude)}
+                    r={unlabeledPoints.length >= 2 ? 0.55 : 1.2}
+                    fill="rgba(15, 23, 42, 0.88)"
+                  />
+                ))}
+              </svg>
+            ) : null}
+            {labeledPoints.map((point, index) => (
               <div
-                key={point.id}
+                key={point.id ?? `labeled-point-${index}`}
                 className="absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1"
                 style={{
                   left: `${projectLongitude(point.longitude)}%`,

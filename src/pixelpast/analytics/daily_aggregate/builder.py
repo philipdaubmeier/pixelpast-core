@@ -57,7 +57,8 @@ class _AggregateState:
     persons: Counter[tuple[int, str, str | None]] | None = None
     locations: Counter[tuple[str, float, float]] | None = None
     visit_locations: Counter[tuple[str, float, float]] | None = None
-    activity_locations: set[tuple[float, float]] | None = None
+    activity_locations: list[tuple[float, float]] | None = None
+    activity_location_identities: set[tuple[float, float]] | None = None
     activity_distance_meters: float = 0.0
     movement_distance_meters_by_label: Counter[str] | None = None
     direct_color_selection: _DirectColorSelection | None = None
@@ -72,7 +73,9 @@ class _AggregateState:
         if self.visit_locations is None:
             self.visit_locations = Counter()
         if self.activity_locations is None:
-            self.activity_locations = set()
+            self.activity_locations = []
+        if self.activity_location_identities is None:
+            self.activity_location_identities = set()
         if self.movement_distance_meters_by_label is None:
             self.movement_distance_meters_by_label = Counter()
 
@@ -314,7 +317,7 @@ def _build_location_summary(
 
 
 def _build_activity_location_summary(
-    points: set[tuple[float, float]],
+    points: list[tuple[float, float]],
 ) -> list[dict[str, Any]]:
     """Return raw coordinate points without labels or timestamps."""
 
@@ -323,7 +326,7 @@ def _build_activity_location_summary(
             "latitude": latitude,
             "longitude": longitude,
         }
-        for latitude, longitude in sorted(points)
+        for latitude, longitude in points
     ]
 
 
@@ -394,7 +397,11 @@ def _merge_activity_metrics(
         state.movement_distance_meters_by_label[normalized_label] += distance_meters
 
     for latitude, longitude in _extract_path_points(event_input.raw_payload):
-        state.activity_locations.add((latitude, longitude))
+        identity = (latitude, longitude)
+        if identity in state.activity_location_identities:
+            continue
+        state.activity_location_identities.add(identity)
+        state.activity_locations.append(identity)
 
 
 def _merge_direct_color_selection(

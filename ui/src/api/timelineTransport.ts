@@ -55,8 +55,8 @@ export type ApiDayContextResponse = {
       label: string;
     }>;
     map_points: Array<{
-      id: string;
-      label: string;
+      id?: string | null;
+      label?: string | null;
       latitude: number;
       longitude: number;
     }>;

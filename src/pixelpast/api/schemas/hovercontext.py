@@ -16,8 +16,8 @@ from pixelpast.api.schemas.bootstrap_ui import (
 class DayContextMapPoint(BaseModel):
     """Serialized real-world map point for one UTC day."""
 
-    id: str
-    label: str
+    id: str | None = None
+    label: str | None = None
     latitude: float
     longitude: float
 
