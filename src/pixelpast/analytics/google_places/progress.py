@@ -34,6 +34,7 @@ class GooglePlacesProgressState:
     inserted_event_place_link_count: int = 0
     updated_event_place_link_count: int = 0
     unchanged_event_place_link_count: int = 0
+    skipped_place_count: int = 0
     failed: int = 0
 
     def to_progress_payload(
@@ -50,7 +51,7 @@ class GooglePlacesProgressState:
             "inserted": self.inserted_place_count,
             "updated": self.updated_place_count,
             "unchanged": self.unchanged_place_count,
-            "skipped": 0,
+            "skipped": self.skipped_place_count,
             "failed": self.failed,
             "missing_from_source": 0,
         }
@@ -130,6 +131,13 @@ class GooglePlacesProgressTracker:
         """Record one completed remote place fetch."""
 
         self._state.remote_fetch_count += 1
+        self._engine.state.increment_phase_completed()
+        self._emit(event="progress", force_persist=True)
+
+    def mark_place_skipped(self) -> None:
+        """Record one skipped place id during provider fetch recovery."""
+
+        self._state.skipped_place_count += 1
         self._engine.state.increment_phase_completed()
         self._emit(event="progress", force_persist=True)
 

@@ -57,6 +57,7 @@ class GooglePlacesClient:
     """Resolve one Google place id into the minimal derived snapshot shape."""
 
     _FIELD_MASK = "id,displayName,formattedAddress,location"
+    _REFRESH_FIELD_MASK = "id"
 
     def __init__(
         self,
@@ -81,30 +82,9 @@ class GooglePlacesClient:
         """Fetch one Google place and map it onto the derived snapshot fields."""
 
         external_id = _normalize_place_id(place_id)
-        resource_name = (
-            external_id
-            if external_id.startswith("places/")
-            else f"places/{external_id}"
-        )
-        query_params: dict[str, str] = {}
-        if self._language_code is not None:
-            query_params["languageCode"] = self._language_code
-        if self._region_code is not None:
-            query_params["regionCode"] = self._region_code
-
-        url = f"https://places.googleapis.com/v1/{resource_name}"
-        if query_params:
-            url = f"{url}?{parse.urlencode(query_params)}"
-
-        response = self._transport(
-            GooglePlacesRequest(
-                url=url,
-                headers={
-                    "Accept": "application/json",
-                    "X-Goog-Api-Key": self._api_key,
-                    "X-Goog-FieldMask": self._FIELD_MASK,
-                },
-            )
+        response = self._request_place_details(
+            place_id=external_id,
+            field_mask=self._FIELD_MASK,
         )
         if response.status_code != 200:
             raise GooglePlacesClientHttpError(
@@ -133,6 +113,71 @@ class GooglePlacesClient:
             formatted_address=formatted_address,
             latitude=latitude,
             longitude=longitude,
+        )
+
+    def refresh_place_id(self, *, place_id: str) -> str:
+        """Attempt to refresh an obsolete place id using a minimal details call."""
+
+        external_id = _normalize_place_id(place_id)
+        response = self._request_place_details(
+            place_id=external_id,
+            field_mask=self._REFRESH_FIELD_MASK,
+        )
+        if response.status_code != 200:
+            raise GooglePlacesClientHttpError(
+                status_code=response.status_code,
+                body=response.body,
+            )
+
+        try:
+            payload = json.loads(response.body)
+        except json.JSONDecodeError as error:
+            raise GooglePlacesClientResponseError(
+                "Google Places response is not valid JSON."
+            ) from error
+        if not isinstance(payload, dict):
+            raise GooglePlacesClientResponseError(
+                "Google Places response must be a JSON object."
+            )
+
+        refreshed_id = _parse_refreshed_place_id(
+            payload.get("id"),
+            original_place_id=external_id,
+        )
+        if refreshed_id is None:
+            raise GooglePlacesClientResponseError(
+                "Google Places refresh response did not contain a usable id."
+            )
+        return refreshed_id
+
+    def _request_place_details(
+        self,
+        *,
+        place_id: str,
+        field_mask: str,
+    ) -> GooglePlacesResponse:
+        resource_name = (
+            place_id if place_id.startswith("places/") else f"places/{place_id}"
+        )
+        query_params: dict[str, str] = {}
+        if self._language_code is not None:
+            query_params["languageCode"] = self._language_code
+        if self._region_code is not None:
+            query_params["regionCode"] = self._region_code
+
+        url = f"https://places.googleapis.com/v1/{resource_name}"
+        if query_params:
+            url = f"{url}?{parse.urlencode(query_params)}"
+
+        return self._transport(
+            GooglePlacesRequest(
+                url=url,
+                headers={
+                    "Accept": "application/json",
+                    "X-Goog-Api-Key": self._api_key,
+                    "X-Goog-FieldMask": field_mask,
+                },
+            )
         )
 
     def _send_request(self, request_data: GooglePlacesRequest) -> GooglePlacesResponse:
@@ -214,6 +259,23 @@ def _parse_optional_number(value: object) -> float | None:
             "Google Places numeric field must contain a number when present."
         )
     return float(value)
+
+
+def _parse_refreshed_place_id(
+    value: object,
+    *,
+    original_place_id: str,
+) -> str | None:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    if not normalized:
+        return None
+    if normalized.startswith("places/"):
+        return normalized
+    if original_place_id.startswith("places/"):
+        return f"places/{normalized}"
+    return normalized
 
 
 def _format_http_error_body(body: str) -> str:

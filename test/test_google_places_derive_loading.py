@@ -356,3 +356,25 @@ def test_google_places_client_rejects_unmappable_response_payload() -> None:
 
     with pytest.raises(GooglePlacesClientResponseError):
         client.fetch_place(place_id="place-123")
+
+
+def test_google_places_client_can_refresh_place_id() -> None:
+    captured: list[object] = []
+
+    def fake_transport(request):
+        captured.append(request)
+        return GooglePlacesResponse(
+            status_code=200,
+            body=json.dumps({"id": "new-place-123"}),
+        )
+
+    client = GooglePlacesClient(
+        api_key="secret-key",
+        transport=fake_transport,
+    )
+
+    refreshed_id = client.refresh_place_id(place_id="places/old-place-123")
+
+    assert refreshed_id == "places/new-place-123"
+    assert len(captured) == 1
+    assert captured[0].headers["X-Goog-FieldMask"] == "id"

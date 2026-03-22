@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from pixelpast.analytics.google_places import (
     GooglePlaceSnapshot,
     GooglePlacesClientError,
+    GooglePlacesClientHttpError,
     GooglePlacesJob,
 )
 from pixelpast.cli.main import app
@@ -280,6 +281,133 @@ def test_google_places_job_can_limit_processed_place_ids() -> None:
             database_path.unlink()
 
 
+def test_google_places_job_refreshes_obsolete_place_ids_and_reports_info() -> None:
+    database_path = _build_test_database_path("google-places-job-refresh-id")
+    fetch_calls: list[str] = []
+    refresh_calls: list[str] = []
+    runtime = _create_runtime(database_path=database_path, api_key="secret-key")
+
+    class RefreshingClient(FakeGooglePlacesClient):
+        def fetch_place(self, *, place_id: str) -> GooglePlaceSnapshot:
+            self._calls.append(place_id)
+            if self._error_place_id == place_id:
+                raise GooglePlacesClientHttpError(
+                    status_code=404,
+                    body='{"error":{"message":"obsolete"}}',
+                )
+            return self._responses_by_place_id[place_id]
+
+        def refresh_place_id(self, *, place_id: str) -> str:
+            refresh_calls.append(place_id)
+            return "places/new-current"
+
+    try:
+        initialize_database(runtime)
+        with runtime.session_factory() as session:
+            _seed_google_places_scenario(session=session)
+
+        result = GooglePlacesJob(
+            client_factory=lambda settings: RefreshingClient(
+                {
+                    "places/new": GooglePlaceSnapshot(
+                        external_id="places/new",
+                        display_name="New Bakery",
+                        formatted_address="Hamburg, Germany",
+                        latitude=53.5511,
+                        longitude=9.9937,
+                    ),
+                    "places/new-current": GooglePlaceSnapshot(
+                        external_id="places/new-current",
+                        display_name="Musee D'Orsay",
+                        formatted_address="Paris, France",
+                        latitude=48.86,
+                        longitude=2.3266,
+                    ),
+                },
+                fetch_calls,
+                error_place_id="places/stale",
+            )
+        ).run(runtime=runtime)
+
+        assert refresh_calls == ["places/stale"]
+        assert fetch_calls == ["places/new", "places/stale", "places/new-current"]
+        assert result.info_messages == (
+            "Refreshed Google Place ID places/stale -> places/new-current",
+        )
+        assert result.warning_messages == ()
+        assert result.inserted_place_count == 2
+        assert result.updated_place_count == 0
+        assert result.unchanged_place_count == 1
+    finally:
+        runtime.engine.dispose()
+        if database_path.exists():
+            database_path.unlink()
+
+
+def test_google_places_job_skips_obsolete_place_ids_when_refresh_fails() -> None:
+    database_path = _build_test_database_path("google-places-job-skip-obsolete")
+    fetch_calls: list[str] = []
+    refresh_calls: list[str] = []
+    runtime = _create_runtime(database_path=database_path, api_key="secret-key")
+
+    class RefreshFailingClient(FakeGooglePlacesClient):
+        def fetch_place(self, *, place_id: str) -> GooglePlaceSnapshot:
+            self._calls.append(place_id)
+            if self._error_place_id == place_id:
+                raise GooglePlacesClientHttpError(
+                    status_code=404,
+                    body='{"error":{"message":"obsolete"}}',
+                )
+            return self._responses_by_place_id[place_id]
+
+        def refresh_place_id(self, *, place_id: str) -> str:
+            refresh_calls.append(place_id)
+            raise GooglePlacesClientError(f"refresh failed for {place_id}")
+
+    try:
+        initialize_database(runtime)
+        with runtime.session_factory() as session:
+            _seed_google_places_scenario(session=session)
+
+        result = GooglePlacesJob(
+            client_factory=lambda settings: RefreshFailingClient(
+                {
+                    "places/new": GooglePlaceSnapshot(
+                        external_id="places/new",
+                        display_name="New Bakery",
+                        formatted_address="Hamburg, Germany",
+                        latitude=53.5511,
+                        longitude=9.9937,
+                    ),
+                },
+                fetch_calls,
+                error_place_id="places/stale",
+            )
+        ).run(runtime=runtime)
+
+        assert refresh_calls == ["places/stale"]
+        assert fetch_calls == ["places/new", "places/stale"]
+        assert result.warning_messages == (
+            "Skipping obsolete Google Place ID places/stale because it could not be refreshed.",
+        )
+        assert result.info_messages == ()
+
+        with runtime.session_factory() as session:
+            job_run = session.execute(select(JobRun).order_by(JobRun.id.desc())).scalar_one()
+            event_links = list(
+                session.execute(
+                    select(EventPlace).order_by(EventPlace.event_id, EventPlace.place_id)
+                ).scalars()
+            )
+        assert job_run.progress_json is not None
+        assert job_run.progress_json["skipped"] == 1
+        assert len(event_links) == 3
+    finally:
+        runtime.engine.dispose()
+        if database_path.exists():
+            database_path.unlink()
+
+
 def test_cli_derive_google_places_prints_progress_and_summary(monkeypatch: pytest.MonkeyPatch) -> None:
     database_path = _build_test_database_path("cli-google-places")
     monkeypatch.setenv(
@@ -339,6 +467,87 @@ def test_cli_derive_google_places_prints_progress_and_summary(monkeypatch: pytes
         assert "missing_from_source: 0" in result.stdout
         assert "scanned_event_count:" not in result.stdout
         assert fetch_calls == ["places/new", "places/stale"]
+    finally:
+        get_settings.cache_clear()
+        if database_path.exists():
+            database_path.unlink()
+
+
+def test_cli_derive_google_places_reports_refreshed_and_skipped_ids(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database_path = _build_test_database_path("cli-google-places-refresh-skip")
+    monkeypatch.setenv(
+        "PIXELPAST_DATABASE_URL",
+        f"sqlite:///{database_path.as_posix()}",
+    )
+    monkeypatch.setenv("PIXELPAST_GOOGLE_PLACES_API_KEY", "secret-key")
+    get_settings.cache_clear()
+
+    job_module = pytest.importorskip("pixelpast.analytics.google_places.job")
+    fetch_calls: list[str] = []
+    refresh_calls: list[str] = []
+
+    class MixedClient(FakeGooglePlacesClient):
+        def fetch_place(self, *, place_id: str) -> GooglePlaceSnapshot:
+            self._calls.append(place_id)
+            if self._error_place_id == place_id:
+                raise GooglePlacesClientHttpError(
+                    status_code=404,
+                    body='{"error":{"message":"obsolete"}}',
+                )
+            return self._responses_by_place_id[place_id]
+
+        def refresh_place_id(self, *, place_id: str) -> str:
+            refresh_calls.append(place_id)
+            if place_id == "places/stale":
+                return "places/new-current"
+            raise GooglePlacesClientError(f"refresh failed for {place_id}")
+
+    def fake_client_factory(settings: Settings) -> MixedClient:
+        return MixedClient(
+            {
+                "places/new": GooglePlaceSnapshot(
+                    external_id="places/new",
+                    display_name="New Bakery",
+                    formatted_address="Hamburg, Germany",
+                    latitude=53.5511,
+                    longitude=9.9937,
+                ),
+                "places/new-current": GooglePlaceSnapshot(
+                    external_id="places/new-current",
+                    display_name="Musee D'Orsay",
+                    formatted_address="Paris, France",
+                    latitude=48.86,
+                    longitude=2.3266,
+                ),
+            },
+            fetch_calls,
+            error_place_id="places/stale",
+        )
+
+    monkeypatch.setattr(job_module, "_build_google_places_client", fake_client_factory)
+
+    runtime = create_runtime_context(settings=get_settings())
+    try:
+        initialize_database(runtime)
+        with runtime.session_factory() as session:
+            _seed_google_places_scenario(session=session)
+    finally:
+        runtime.engine.dispose()
+
+    try:
+        result = runner.invoke(app, ["derive", "google_places"])
+
+        assert result.exit_code == 0
+        assert (
+            "info: Refreshed Google Place ID places/stale -> places/new-current"
+            in result.stdout
+        )
+        assert "warning:" not in result.stderr
+        assert "skipped: 0" in result.stdout
+        assert refresh_calls == ["places/stale"]
+        assert fetch_calls == ["places/new", "places/stale", "places/new-current"]
     finally:
         get_settings.cache_clear()
         if database_path.exists():

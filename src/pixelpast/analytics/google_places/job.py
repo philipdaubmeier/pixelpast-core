@@ -9,6 +9,7 @@ from datetime import UTC, date, datetime
 from pixelpast.analytics.google_places.client import (
     GooglePlacesClient,
     GooglePlacesClientError,
+    GooglePlacesClientHttpError,
 )
 from pixelpast.analytics.google_places.loading import GooglePlacesCanonicalLoader
 from pixelpast.analytics.google_places.persistence import GooglePlacesPersister
@@ -44,6 +45,8 @@ class GooglePlacesJobResult:
     inserted_event_place_link_count: int
     updated_event_place_link_count: int
     unchanged_event_place_link_count: int
+    warning_messages: tuple[str, ...] = ()
+    info_messages: tuple[str, ...] = ()
 
 
 class GooglePlacesJob:
@@ -101,6 +104,8 @@ class GooglePlacesJob:
         source_repository = SourceRepository(session)
 
         try:
+            warning_messages: list[str] = []
+            info_messages: list[str] = []
             progress.start_collecting()
             provider_source = self._provider_source_resolver.resolve(
                 repository=source_repository
@@ -121,22 +126,51 @@ class GooglePlacesJob:
 
             progress.start_fetching(total_place_count=len(plan.place_ids_requiring_refresh))
             fetched_places_by_place_id = {}
+            skipped_place_ids: set[str] = set()
             for place_id in plan.place_ids_requiring_refresh:
-                fetched_places_by_place_id[place_id] = client.fetch_place(
-                    place_id=place_id
-                )
-                progress.mark_place_fetched()
+                try:
+                    fetched_places_by_place_id[place_id] = client.fetch_place(
+                        place_id=place_id
+                    )
+                    progress.mark_place_fetched()
+                except GooglePlacesClientHttpError as error:
+                    if error.status_code != 404:
+                        raise
+                    refreshed_snapshot = _try_refresh_obsolete_place_id(
+                        client=client,
+                        place_id=place_id,
+                    )
+                    if refreshed_snapshot is None:
+                        skipped_place_ids.add(place_id)
+                        warning_messages.append(
+                            "Skipping obsolete Google Place ID "
+                            f"{place_id} because it could not be refreshed."
+                        )
+                        progress.mark_place_skipped()
+                        continue
+                    fetched_places_by_place_id[place_id] = refreshed_snapshot
+                    progress.mark_place_fetched()
+                    if refreshed_snapshot.external_id != place_id:
+                        info_messages.append(
+                            "Refreshed Google Place ID "
+                            f"{place_id} -> {refreshed_snapshot.external_id}"
+                        )
             progress.finish_phase()
 
+            effective_plan = _exclude_skipped_place_ids(
+                plan=plan,
+                skipped_place_ids=skipped_place_ids,
+            )
             progress.start_persisting(
                 total_write_count=(
-                    len(plan.place_ids_requiring_refresh) + len(plan.candidate_events)
+                    len(effective_plan.place_ids_requiring_refresh)
+                    + len(effective_plan.candidate_events)
                 )
             )
             persistence_result = self._persister.persist(
                 repository=place_repository,
                 provider_source_id=provider_source.id,
-                plan=plan,
+                plan=effective_plan,
                 fetched_places_by_place_id=fetched_places_by_place_id,
                 refreshed_at=self._refreshed_at_factory(),
             )
@@ -164,10 +198,13 @@ class GooglePlacesJob:
                 mode="full",
                 status="completed",
                 scanned_event_count=plan.scanned_event_count,
-                qualifying_event_count=plan.candidate_event_count,
-                unique_place_id_count=plan.unique_place_id_count,
-                remote_fetch_count=len(plan.place_ids_requiring_refresh),
-                cached_reuse_count=len(plan.fresh_cached_place_ids),
+                qualifying_event_count=effective_plan.candidate_event_count,
+                unique_place_id_count=effective_plan.unique_place_id_count,
+                remote_fetch_count=(
+                    len(effective_plan.place_ids_requiring_refresh)
+                    + len(skipped_place_ids)
+                ),
+                cached_reuse_count=len(effective_plan.fresh_cached_place_ids),
                 inserted_place_count=persistence_result.inserted_place_count,
                 updated_place_count=persistence_result.updated_place_count,
                 unchanged_place_count=persistence_result.unchanged_place_count,
@@ -180,6 +217,8 @@ class GooglePlacesJob:
                 unchanged_event_place_link_count=(
                     persistence_result.unchanged_event_place_link_count
                 ),
+                warning_messages=tuple(warning_messages),
+                info_messages=tuple(info_messages),
             )
         except Exception:
             session.rollback()
@@ -220,6 +259,65 @@ def _validate_options(
 
 def _utc_now() -> datetime:
     return datetime.now(UTC)
+
+
+def _try_refresh_obsolete_place_id(
+    *,
+    client: GooglePlacesClient,
+    place_id: str,
+) -> GooglePlaceSnapshot | None:
+    try:
+        refreshed_place_id = client.refresh_place_id(place_id=place_id)
+        return client.fetch_place(place_id=refreshed_place_id)
+    except GooglePlacesClientError:
+        return None
+
+
+def _exclude_skipped_place_ids(
+    *,
+    plan,
+    skipped_place_ids: set[str],
+):
+    if not skipped_place_ids:
+        return plan
+
+    candidate_events = tuple(
+        candidate
+        for candidate in plan.candidate_events
+        if candidate.google_place_id not in skipped_place_ids
+    )
+    candidates_by_place_id = {
+        place_id: candidates
+        for place_id, candidates in plan.candidates_by_place_id.items()
+        if place_id not in skipped_place_ids
+    }
+    fresh_cached_place_ids = tuple(
+        place_id
+        for place_id in plan.fresh_cached_place_ids
+        if place_id not in skipped_place_ids
+    )
+    place_ids_requiring_refresh = tuple(
+        place_id
+        for place_id in plan.place_ids_requiring_refresh
+        if place_id not in skipped_place_ids
+    )
+    cached_places_by_place_id = {
+        place_id: place
+        for place_id, place in plan.cached_places_by_place_id.items()
+        if place_id not in skipped_place_ids
+    }
+    return type(plan)(
+        scanned_event_count=plan.scanned_event_count,
+        candidate_event_count=len(candidate_events),
+        unique_place_id_count=(
+            len(fresh_cached_place_ids) + len(place_ids_requiring_refresh)
+        ),
+        candidate_events=candidate_events,
+        candidates_by_place_id=candidates_by_place_id,
+        cached_places_by_place_id=cached_places_by_place_id,
+        fresh_cached_place_ids=fresh_cached_place_ids,
+        place_ids_requiring_refresh=place_ids_requiring_refresh,
+    )
 
 
 __all__ = [

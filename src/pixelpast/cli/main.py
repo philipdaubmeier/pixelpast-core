@@ -643,6 +643,7 @@ def _execute_operation(
         try:
             result = runner(runtime)
             _print_result_errors(result)
+            _print_result_infos(result)
             _print_result_warnings(result)
             _print_result_metadata(result)
         except ValueError as error:
@@ -752,6 +753,18 @@ def _print_result_warnings(result: object | None) -> None:
                 fg=typer.colors.YELLOW,
                 err=True,
             )
+
+
+def _print_result_infos(result: object | None) -> None:
+    """Write informational operation messages to the CLI."""
+
+    if result is None:
+        return
+
+    info_messages = getattr(result, "info_messages", ())
+    for info_message in info_messages:
+        if info_message:
+            typer.echo(f"info: {info_message}")
 
 
 if __name__ == "__main__":
