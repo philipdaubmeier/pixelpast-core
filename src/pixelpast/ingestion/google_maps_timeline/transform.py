@@ -109,7 +109,9 @@ def parse_loaded_google_maps_timeline_export_document(
             )
             continue
         if "visit" in raw_segment:
-            visits.append(_parse_visit_segment(raw_segment, segment_index=segment_index))
+            visits.append(
+                _parse_visit_segment(raw_segment, segment_index=segment_index)
+            )
         if "timelinePath" in raw_segment:
             timeline_paths.append(
                 _parse_timeline_path_segment(raw_segment, segment_index=segment_index)
@@ -253,7 +255,11 @@ def _parse_visit_segment(
 ) -> ParsedGoogleMapsTimelineVisitSegment:
     visit = _require_object(raw_segment.get("visit"), field_name="visit")
     top_candidate = _optional_object(visit.get("topCandidate"))
-    place_location = _optional_object(top_candidate.get("placeLocation")) if top_candidate else None
+    place_location = (
+        _optional_object(top_candidate.get("placeLocation"))
+        if top_candidate
+        else None
+    )
     coordinates = (
         parse_google_maps_coordinate_pair(place_location["latLng"])
         if place_location is not None and "latLng" in place_location
@@ -272,8 +278,16 @@ def _parse_visit_segment(
         ),
         hierarchy_level=_optional_int(visit.get("hierarchyLevel")),
         visit_probability=_optional_float(visit.get("probability")),
-        google_place_id=_optional_string(top_candidate.get("placeId")) if top_candidate else None,
-        semantic_type=_optional_string(top_candidate.get("semanticType")) if top_candidate else None,
+        google_place_id=(
+            _optional_string(top_candidate.get("placeId"))
+            if top_candidate
+            else None
+        ),
+        semantic_type=(
+            _optional_string(top_candidate.get("semanticType"))
+            if top_candidate
+            else None
+        ),
         candidate_probability=(
             _optional_float(top_candidate.get("probability")) if top_candidate else None
         ),
@@ -370,7 +384,9 @@ def _build_visit_event_candidates(
         tuple[datetime, datetime], list[ParsedGoogleMapsTimelineVisitSegment]
     ] = {}
     for visit in document.visit_segments:
-        visits_by_window.setdefault((visit.start_time, visit.end_time), []).append(visit)
+        visits_by_window.setdefault((visit.start_time, visit.end_time), []).append(
+            visit
+        )
 
     candidates: list[GoogleMapsTimelineEventCandidate] = []
     for start_time, end_time in sorted(visits_by_window):
@@ -483,7 +499,10 @@ def _build_reconciled_activity_path_points(
         ):
             continue
         for point in path_segment.points:
-            if point.timestamp < activity.start_time or point.timestamp > activity.end_time:
+            if (
+                point.timestamp < activity.start_time
+                or point.timestamp > activity.end_time
+            ):
                 continue
             sortable_points.append(
                 (
@@ -499,7 +518,10 @@ def _build_reconciled_activity_path_points(
         sortable_points.append(
             (
                 activity.end_time,
-                max((path.segment_index for path in timeline_paths), default=activity.segment_index)
+                max(
+                    (path.segment_index for path in timeline_paths),
+                    default=activity.segment_index,
+                )
                 + 1,
                 0,
                 activity.end_latitude,
@@ -538,7 +560,9 @@ def _time_windows_overlap(
 def _visit_resolution_sort_key(
     visit: ParsedGoogleMapsTimelineVisitSegment,
 ) -> tuple[int, float, int]:
-    hierarchy_level = visit.hierarchy_level if visit.hierarchy_level is not None else 10**9
+    hierarchy_level = (
+        visit.hierarchy_level if visit.hierarchy_level is not None else 10**9
+    )
     candidate_probability = (
         -visit.candidate_probability if visit.candidate_probability is not None else 1.0
     )

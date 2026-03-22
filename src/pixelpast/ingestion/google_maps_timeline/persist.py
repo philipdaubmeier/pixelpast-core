@@ -68,7 +68,9 @@ class GoogleMapsTimelineDocumentPersister:
         """Preview missing events for one previously persisted export document."""
 
         source_external_id = _require_source_external_id(candidate)
-        source = self._source_repository.get_by_external_id(external_id=source_external_id)
+        source = self._source_repository.get_by_external_id(
+            external_id=source_external_id
+        )
         if source is None:
             return 0
         return self._event_repository.count_missing_from_source(

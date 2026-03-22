@@ -31,6 +31,13 @@ from pixelpast.ingestion.google_maps_timeline.lifecycle import (
 from pixelpast.ingestion.google_maps_timeline.persist import (
     GoogleMapsTimelineDocumentPersister,
 )
+from pixelpast.ingestion.google_maps_timeline.progress import (
+    GoogleMapsTimelineIngestionProgressSnapshot,
+    GoogleMapsTimelineIngestionProgressTracker,
+)
+from pixelpast.ingestion.google_maps_timeline.service import (
+    GoogleMapsTimelineIngestionService,
+)
 from pixelpast.ingestion.google_maps_timeline.staged import (
     GoogleMapsTimelineIngestionPersistenceScope,
     GoogleMapsTimelineStagedIngestionStrategy,
@@ -57,7 +64,10 @@ __all__ = [
     "GoogleMapsTimelineEventCandidate",
     "GoogleMapsTimelineIngestionResult",
     "GoogleMapsTimelineIngestionPersistenceScope",
+    "GoogleMapsTimelineIngestionProgressSnapshot",
+    "GoogleMapsTimelineIngestionProgressTracker",
     "GoogleMapsTimelineIngestionRunCoordinator",
+    "GoogleMapsTimelineIngestionService",
     "GoogleMapsTimelineSourceCandidate",
     "GoogleMapsTimelineStagedIngestionStrategy",
     "GoogleMapsTimelineTransformError",

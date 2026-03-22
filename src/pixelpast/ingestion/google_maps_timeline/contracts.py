@@ -166,6 +166,8 @@ class GoogleMapsTimelineIngestionResult:
     persisted_event_count: int
     error_count: int
     status: str
+    warning_messages: tuple[str, ...] = ()
+    transform_errors: tuple[GoogleMapsTimelineTransformError, ...] = ()
 
 
 __all__ = [

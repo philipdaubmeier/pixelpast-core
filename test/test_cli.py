@@ -575,6 +575,208 @@ def test_cli_ingest_spotify_warns_when_export_has_no_usernames(monkeypatch) -> N
         shutil.rmtree(workspace_root, ignore_errors=True)
 
 
+def test_cli_ingest_google_maps_timeline_persists_events_from_fixture(
+    monkeypatch,
+) -> None:
+    database_path = _build_test_database_path("cli-google-maps-ingest")
+    workspace_root = Path("var") / f"cli-google-maps-{uuid4().hex}"
+    fixture_path = Path("test") / "assets" / "googlemaps_timeline_test_fixture.json"
+    export_path = workspace_root / "timeline.json"
+    workspace_root.mkdir(parents=True, exist_ok=False)
+    export_path.write_text(fixture_path.read_text(encoding="utf-8"), encoding="utf-8")
+    monkeypatch.setenv(
+        "PIXELPAST_DATABASE_URL", f"sqlite:///{database_path.as_posix()}"
+    )
+    monkeypatch.setenv(
+        "PIXELPAST_GOOGLE_MAPS_TIMELINE_ROOT", str(export_path.resolve())
+    )
+    get_settings.cache_clear()
+
+    try:
+        result = runner.invoke(app, ["ingest", "google_maps_timeline"])
+        assert result.exit_code == 0
+        assert database_path.exists()
+        assert "[google_maps_timeline] completed" in result.stdout
+        assert "inserted: 2" in result.stdout
+        assert "failed: 0" in result.stdout
+
+        engine = create_engine(f"sqlite:///{database_path.as_posix()}")
+        try:
+            with Session(engine) as session:
+                sources = list(session.execute(select(Source)).scalars())
+                events = list(
+                    session.execute(
+                        select(Event).order_by(Event.timestamp_start, Event.id)
+                    ).scalars()
+                )
+                assets = list(session.execute(select(Asset)).scalars())
+                job_runs = list(
+                    session.execute(select(JobRun).order_by(JobRun.id)).scalars()
+                )
+        finally:
+            engine.dispose()
+
+        assert len(sources) == 1
+        assert sources[0].type == "google_maps_timeline"
+        assert sources[0].external_id == (
+            f"google_maps_timeline:{export_path.resolve().as_posix()}"
+        )
+        assert [event.type for event in events] == [
+            "timeline_visit",
+            "timeline_activity",
+        ]
+        assert assets == []
+        assert len(job_runs) == 1
+        assert job_runs[0].job == "google_maps_timeline"
+        assert job_runs[0].status == "completed"
+        assert job_runs[0].progress_json is not None
+        assert job_runs[0].progress_json["inserted"] == 2
+        assert job_runs[0].progress_json["failed"] == 0
+    finally:
+        get_settings.cache_clear()
+        if database_path.exists():
+            database_path.unlink()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_cli_ingest_google_maps_timeline_reports_missing_from_source_for_removed_events(
+    monkeypatch,
+) -> None:
+    database_path = _build_test_database_path("cli-google-maps-missing-from-source")
+    workspace_root = Path("var") / f"cli-google-maps-missing-{uuid4().hex}"
+    export_path = workspace_root / "timeline.json"
+    workspace_root.mkdir(parents=True, exist_ok=False)
+    monkeypatch.setenv(
+        "PIXELPAST_DATABASE_URL", f"sqlite:///{database_path.as_posix()}"
+    )
+    monkeypatch.setenv(
+        "PIXELPAST_GOOGLE_MAPS_TIMELINE_ROOT", str(export_path.resolve())
+    )
+    get_settings.cache_clear()
+
+    try:
+        export_path.write_text(
+            "\n".join(
+                [
+                    "{",
+                    '  "semanticSegments": [',
+                    "    {",
+                    '      "startTime": "2026-01-02T08:00:00+01:00",',
+                    '      "endTime": "2026-01-02T09:00:00+01:00",',
+                    '      "visit": {',
+                    '        "hierarchyLevel": 0,',
+                    '        "probability": 0.6,',
+                    '        "topCandidate": {',
+                    '          "placeId": "place-low-level",',
+                    '          "semanticType": "HOME",',
+                    '          "probability": 0.2,',
+                    '          "placeLocation": {',
+                    '            "latLng": "52.5100, 13.4100"',
+                    "          }",
+                    "        }",
+                    "      }",
+                    "    },",
+                    "    {",
+                    '      "startTime": "2026-01-02T08:00:00+01:00",',
+                    '      "endTime": "2026-01-02T08:35:00+01:00",',
+                    '      "activity": {',
+                    '        "probability": 0.95,',
+                    '        "distanceMeters": 1200,',
+                    '        "topCandidate": {',
+                    '          "type": "IN_PASSENGER_VEHICLE",',
+                    '          "probability": 0.8',
+                    "        },",
+                    '        "start": {',
+                    '          "latLng": "52.5200, 13.4200"',
+                    "        },",
+                    '        "end": {',
+                    '          "latLng": "52.5300, 13.4300"',
+                    "        }",
+                    "      }",
+                    "    }",
+                    "  ],",
+                    '  "rawSignals": [],',
+                    '  "userLocationProfile": {}',
+                    "}",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        first_result = runner.invoke(app, ["ingest", "google_maps_timeline"])
+        assert first_result.exit_code == 0
+
+        export_path.write_text(
+            "\n".join(
+                [
+                    "{",
+                    '  "semanticSegments": [',
+                    "    {",
+                    '      "startTime": "2026-01-02T08:00:00+01:00",',
+                    '      "endTime": "2026-01-02T09:00:00+01:00",',
+                    '      "visit": {',
+                    '        "hierarchyLevel": 0,',
+                    '        "probability": 0.6,',
+                    '        "topCandidate": {',
+                    '          "placeId": "place-low-level",',
+                    '          "semanticType": "HOME",',
+                    '          "probability": 0.2,',
+                    '          "placeLocation": {',
+                    '            "latLng": "52.5100, 13.4100"',
+                    "          }",
+                    "        }",
+                    "      }",
+                    "    }",
+                    "  ],",
+                    '  "rawSignals": [],',
+                    '  "userLocationProfile": {}',
+                    "}",
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        result = runner.invoke(app, ["ingest", "google_maps_timeline"])
+
+        assert result.exit_code == 0
+        assert "[google_maps_timeline] completed" in result.stdout
+        assert "missing_from_source: 1" in result.stdout
+        assert "unchanged: 1" in result.stdout
+    finally:
+        get_settings.cache_clear()
+        if database_path.exists():
+            database_path.unlink()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_cli_ingest_google_maps_timeline_rejects_legacy_exports(monkeypatch) -> None:
+    database_path = _build_test_database_path("cli-google-maps-legacy")
+    workspace_root = Path("var") / f"cli-google-maps-legacy-{uuid4().hex}"
+    export_path = workspace_root / "timeline.json"
+    workspace_root.mkdir(parents=True, exist_ok=False)
+    export_path.write_text('{"timelineObjects": []}', encoding="utf-8")
+    monkeypatch.setenv(
+        "PIXELPAST_DATABASE_URL", f"sqlite:///{database_path.as_posix()}"
+    )
+    monkeypatch.setenv(
+        "PIXELPAST_GOOGLE_MAPS_TIMELINE_ROOT", str(export_path.resolve())
+    )
+    get_settings.cache_clear()
+
+    try:
+        result = runner.invoke(app, ["ingest", "google_maps_timeline"])
+        assert result.exit_code == 2
+        assert (
+            "error: Google Maps Timeline export uses unsupported legacy "
+            in result.stderr
+        )
+        assert "'timelineObjects' format" in result.stderr
+    finally:
+        get_settings.cache_clear()
+        if database_path.exists():
+            database_path.unlink()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
 def test_cli_ingest_calendar_reports_event_counts_in_terminal_summary(
     monkeypatch,
 ) -> None:
@@ -1251,6 +1453,26 @@ def test_cli_returns_invalid_argument_exit_code_when_spotify_root_is_missing(
         result = runner.invoke(app, ["ingest", "spotify"])
         assert result.exit_code == 2
         assert "error: Spotify ingestion requires" in result.stderr
+    finally:
+        get_settings.cache_clear()
+        if database_path.exists():
+            database_path.unlink()
+
+
+def test_cli_returns_invalid_argument_exit_code_when_google_maps_root_is_missing(
+    monkeypatch,
+) -> None:
+    database_path = _build_test_database_path("cli-google-maps-missing-root")
+    monkeypatch.setenv(
+        "PIXELPAST_DATABASE_URL", f"sqlite:///{database_path.as_posix()}"
+    )
+    monkeypatch.delenv("PIXELPAST_GOOGLE_MAPS_TIMELINE_ROOT", raising=False)
+    get_settings.cache_clear()
+
+    try:
+        result = runner.invoke(app, ["ingest", "google_maps_timeline"])
+        assert result.exit_code == 2
+        assert "error: Google Maps Timeline ingestion requires" in result.stderr
     finally:
         get_settings.cache_clear()
         if database_path.exists():

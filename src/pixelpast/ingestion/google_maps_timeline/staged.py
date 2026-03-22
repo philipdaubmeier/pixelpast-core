@@ -84,6 +84,7 @@ class GoogleMapsTimelineStagedIngestionStrategy:
 
     def __init__(self, *, connector: GoogleMapsTimelineConnector) -> None:
         self._connector = connector
+        self.warning_messages: tuple[str, ...] = ()
 
     def discover_units(
         self,
@@ -91,6 +92,7 @@ class GoogleMapsTimelineStagedIngestionStrategy:
         root: Path,
         on_unit_discovered,
     ) -> Sequence[GoogleMapsTimelineDocumentDescriptor]:
+        self.warning_messages = ()
         return self._connector.discover_documents(
             root,
             on_document_discovered=on_unit_discovered,
@@ -101,7 +103,10 @@ class GoogleMapsTimelineStagedIngestionStrategy:
         *,
         units: Sequence[GoogleMapsTimelineDocumentDescriptor],
         on_batch_progress,
-    ) -> dict[GoogleMapsTimelineDocumentDescriptor, LoadedGoogleMapsTimelineExportDocument]:
+    ) -> dict[
+        GoogleMapsTimelineDocumentDescriptor,
+        LoadedGoogleMapsTimelineExportDocument,
+    ]:
         loaded_documents = self._connector.fetch_documents(
             documents=units,
             on_document_progress=on_batch_progress,
@@ -123,6 +128,9 @@ class GoogleMapsTimelineStagedIngestionStrategy:
     ) -> GoogleMapsTimelineDocumentCandidate:
         del root
         parsed_document = self._connector.parse_loaded_document(fetched_payloads[unit])
+        self.warning_messages = tuple(
+            sorted({*self.warning_messages, *parsed_document.warning_messages})
+        )
         return self._connector.build_document_candidate(parsed_document)
 
     def build_transform_error(
@@ -152,6 +160,8 @@ class GoogleMapsTimelineStagedIngestionStrategy:
             persisted_event_count=counters.persisted_event_count,
             error_count=len(transform_errors),
             status=status,
+            warning_messages=self.warning_messages,
+            transform_errors=tuple(transform_errors),
         )
 
 

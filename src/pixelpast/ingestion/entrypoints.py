@@ -7,6 +7,10 @@ from pixelpast.ingestion.calendar.service import (
     CalendarIngestionResult,
     CalendarIngestionService,
 )
+from pixelpast.ingestion.google_maps_timeline.service import (
+    GoogleMapsTimelineIngestionResult,
+    GoogleMapsTimelineIngestionService,
+)
 from pixelpast.ingestion.photos.service import (
     PhotoIngestionResult,
     PhotoIngestionService,
@@ -25,7 +29,13 @@ from pixelpast.shared.runtime import RuntimeContext
 logger = logging.getLogger(__name__)
 
 _SUPPORTED_SOURCES = frozenset(
-    {"calendar", "photos", "spotify", "workdays_vacation"}
+    {
+        "calendar",
+        "google_maps_timeline",
+        "photos",
+        "spotify",
+        "workdays_vacation",
+    }
 )
 
 
@@ -43,6 +53,7 @@ def run_ingest_source(
 ) -> (
     PhotoIngestionResult
     | CalendarIngestionResult
+    | GoogleMapsTimelineIngestionResult
     | SpotifyIngestionResult
     | WorkdaysVacationIngestionResult
 ):
@@ -117,6 +128,26 @@ def run_ingest_source(
                 "persisted_source_count": result.persisted_source_count,
                 "persisted_event_count": result.persisted_event_count,
                 "skipped_json_file_count": result.skipped_json_file_count,
+                "error_count": result.error_count,
+                "status": result.status,
+                "run_id": result.run_id,
+            },
+        )
+        return result
+
+    if source == "google_maps_timeline":
+        result = GoogleMapsTimelineIngestionService().ingest(
+            runtime=runtime,
+            progress_callback=progress_callback,
+        )
+        logger.info(
+            "ingest completed",
+            extra={
+                "source": source,
+                "database_url": runtime.settings.database_url,
+                "processed_document_count": result.processed_document_count,
+                "persisted_source_count": result.persisted_source_count,
+                "persisted_event_count": result.persisted_event_count,
                 "error_count": result.error_count,
                 "status": result.status,
                 "run_id": result.run_id,
