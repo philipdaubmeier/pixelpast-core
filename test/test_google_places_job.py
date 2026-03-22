@@ -181,11 +181,8 @@ def test_google_places_job_fails_when_configuration_is_missing() -> None:
 
         assert "PIXELPAST_GOOGLE_PLACES_API_KEY" in str(error.value)
         with runtime.session_factory() as session:
-            job_run = session.execute(select(JobRun).order_by(JobRun.id.desc())).scalar_one()
-        assert job_run.status == "failed"
-        assert job_run.phase == "collecting place ids"
-        assert job_run.progress_json is not None
-        assert job_run.progress_json["failed"] == 1
+            job_runs = list(session.execute(select(JobRun).order_by(JobRun.id.desc())).scalars())
+        assert job_runs == []
     finally:
         runtime.engine.dispose()
         if database_path.exists():

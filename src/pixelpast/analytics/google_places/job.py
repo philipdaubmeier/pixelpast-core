@@ -79,6 +79,7 @@ class GooglePlacesJob:
         """Resolve provider place snapshots and event-place links."""
 
         _validate_date_range(start_date=start_date, end_date=end_date)
+        client = self._client_factory(runtime.settings)
 
         run_id = self._lifecycle.create_run(
             runtime=runtime,
@@ -111,8 +112,6 @@ class GooglePlacesJob:
                 cached_reuse_count=len(plan.fresh_cached_place_ids),
             )
             progress.finish_phase()
-
-            client = self._client_factory(runtime.settings)
 
             progress.start_fetching(total_place_count=len(plan.place_ids_requiring_refresh))
             fetched_places_by_place_id = {}
