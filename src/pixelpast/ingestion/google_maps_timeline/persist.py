@@ -102,6 +102,8 @@ def _compose_document_outcome(*, event_result) -> str:
         f"{event_result.updated_event_count};"
         "unchanged="
         f"{event_result.unchanged_event_count};"
+        "missing_from_source="
+        f"{event_result.missing_from_source_count};"
         "skipped=0;"
         "persisted_event_count="
         f"{event_result.persisted_event_count}"

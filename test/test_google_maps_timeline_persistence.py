@@ -88,7 +88,7 @@ def test_google_maps_timeline_staged_ingestion_persists_source_and_events_idempo
         assert assets == []
 
         assert second_progress.persisted_outcomes == [
-            "inserted=0;updated=0;unchanged=2;skipped=0;persisted_event_count=2"
+            "inserted=0;updated=0;unchanged=2;missing_from_source=0;skipped=0;persisted_event_count=2"
         ]
         assert second_progress.missing_from_source_count == 0
         assert len(job_runs) == 2
@@ -150,10 +150,102 @@ def test_google_maps_timeline_staged_ingestion_updates_existing_events_by_extern
         assert [event.title for event in events] == ["Work", "In Passenger Vehicle"]
         assert events[1].raw_payload["distanceMeters"] == 1800.0
         assert progress.persisted_outcomes == [
-            "inserted=0;updated=2;unchanged=0;skipped=0;persisted_event_count=2"
+            "inserted=0;updated=2;unchanged=0;missing_from_source=0;skipped=0;persisted_event_count=2"
         ]
         assert latest_job_run is not None
         assert latest_job_run.job == "google_maps_timeline"
+    finally:
+        runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_google_maps_timeline_staged_ingestion_deletes_missing_visit_events() -> None:
+    runtime = _create_runtime()
+    workspace_root = _create_workspace_root()
+    try:
+        export_path = workspace_root / "timeline-export.json"
+        export_path.write_text(
+            _build_google_maps_timeline_export(
+                include_visit=True,
+                include_activity=True,
+            ),
+            encoding="utf-8",
+        )
+
+        _run_google_maps_timeline_ingestion(runtime=runtime, root=export_path)
+
+        export_path.write_text(
+            _build_google_maps_timeline_export(
+                include_visit=False,
+                include_activity=True,
+            ),
+            encoding="utf-8",
+        )
+        result, progress = _run_google_maps_timeline_ingestion(
+            runtime=runtime,
+            root=export_path,
+        )
+
+        with runtime.session_factory() as session:
+            events = list(
+                session.execute(
+                    select(Event).order_by(Event.timestamp_start, Event.id)
+                ).scalars()
+            )
+
+        assert result.status == "completed"
+        assert result.persisted_event_count == 1
+        assert [event.type for event in events] == ["timeline_activity"]
+        assert progress.missing_from_source_count == 1
+        assert progress.persisted_outcomes == [
+            "inserted=0;updated=0;unchanged=1;missing_from_source=1;skipped=0;persisted_event_count=1"
+        ]
+    finally:
+        runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_google_maps_timeline_staged_ingestion_deletes_missing_activity_events() -> None:
+    runtime = _create_runtime()
+    workspace_root = _create_workspace_root()
+    try:
+        export_path = workspace_root / "timeline-export.json"
+        export_path.write_text(
+            _build_google_maps_timeline_export(
+                include_visit=True,
+                include_activity=True,
+            ),
+            encoding="utf-8",
+        )
+
+        _run_google_maps_timeline_ingestion(runtime=runtime, root=export_path)
+
+        export_path.write_text(
+            _build_google_maps_timeline_export(
+                include_visit=True,
+                include_activity=False,
+            ),
+            encoding="utf-8",
+        )
+        result, progress = _run_google_maps_timeline_ingestion(
+            runtime=runtime,
+            root=export_path,
+        )
+
+        with runtime.session_factory() as session:
+            events = list(
+                session.execute(
+                    select(Event).order_by(Event.timestamp_start, Event.id)
+                ).scalars()
+            )
+
+        assert result.status == "completed"
+        assert result.persisted_event_count == 1
+        assert [event.type for event in events] == ["timeline_visit"]
+        assert progress.missing_from_source_count == 1
+        assert progress.persisted_outcomes == [
+            "inserted=0;updated=0;unchanged=1;missing_from_source=1;skipped=0;persisted_event_count=1"
+        ]
     finally:
         runtime.engine.dispose()
         shutil.rmtree(workspace_root, ignore_errors=True)
@@ -245,10 +337,13 @@ def _build_google_maps_timeline_export(
     visit_semantic_type: str = "HOME",
     activity_type: str = "WALKING",
     activity_distance_meters: int = 1200,
+    include_visit: bool = True,
+    include_activity: bool = True,
 ) -> str:
-    return f"""
-{{
-  "semanticSegments": [
+    semantic_segments: list[str] = []
+    if include_visit:
+        semantic_segments.append(
+            f"""
     {{
       "startTime": "2026-01-02T08:00:00+01:00",
       "endTime": "2026-01-02T09:00:00+01:00",
@@ -264,7 +359,11 @@ def _build_google_maps_timeline_export(
           }}
         }}
       }}
-    }},
+    }}""".strip()
+        )
+    if include_activity:
+        semantic_segments.append(
+            f"""
     {{
       "startTime": "2026-01-02T08:00:00+01:00",
       "endTime": "2026-01-02T08:35:00+01:00",
@@ -282,21 +381,30 @@ def _build_google_maps_timeline_export(
           "latLng": "52.5300, 13.4300"
         }}
       }}
-    }},
-    {{
+    }}""".strip()
+        )
+        semantic_segments.append(
+            """
+    {
       "startTime": "2026-01-02T07:50:00+01:00",
       "endTime": "2026-01-02T09:05:00+01:00",
       "timelinePath": [
-        {{
+        {
           "time": "2026-01-02T08:10:00+01:00",
           "point": "52.5210, 13.4210"
-        }},
-        {{
+        },
+        {
           "time": "2026-01-02T08:30:00+01:00",
           "point": "52.5300, 13.4300"
-        }}
+        }
       ]
-    }}
+    }""".strip()
+        )
+
+    return f"""
+{{
+  "semanticSegments": [
+    {",\n    ".join(semantic_segments)}
   ],
   "rawSignals": [],
   "userLocationProfile": {{}}
