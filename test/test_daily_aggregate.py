@@ -17,6 +17,8 @@ from pixelpast.analytics.daily_aggregate import (
 from pixelpast.analytics.daily_views import (
     DEFAULT_ACTIVITY_SCORE_COLOR_THRESHOLDS,
     SPOTIFY_SOURCE_TYPE,
+    TIMELINE_ACTIVITY_SOURCE_TYPE,
+    TIMELINE_VISIT_SOURCE_TYPE,
     WORKDAYS_VACATION_SOURCE_TYPE,
     build_daily_view,
 )
@@ -29,9 +31,11 @@ from pixelpast.persistence.models import (
     DailyAggregate,
     DailyView,
     Event,
+    EventPlace,
     EventPerson,
     EventTag,
     JobRun,
+    Place,
     Person,
     Source,
     Tag,
@@ -39,6 +43,7 @@ from pixelpast.persistence.models import (
 from pixelpast.persistence.repositories.daily_aggregates import (
     CanonicalAssetAggregateInput,
     CanonicalEventAggregateInput,
+    CanonicalEventPlaceAggregateInput,
     CanonicalPersonAggregateInput,
     CanonicalTagAggregateInput,
     DailyAggregateRepository,
@@ -53,6 +58,7 @@ def test_build_daily_aggregate_snapshots_is_deterministic_without_database() -> 
     base_inputs = DailyAggregateCanonicalInputs(
         event_inputs=[
             CanonicalEventAggregateInput(
+                event_id=1,
                 day=date(2024, 1, 2),
                 source_type="calendar",
                 event_type="calendar",
@@ -63,6 +69,7 @@ def test_build_daily_aggregate_snapshots_is_deterministic_without_database() -> 
                 longitude=13.405,
             )
         ],
+        event_place_inputs=[],
         asset_inputs=[
             CanonicalAssetAggregateInput(
                 day=date(2024, 1, 2),
@@ -118,6 +125,7 @@ def test_build_daily_aggregate_snapshots_is_deterministic_without_database() -> 
     )
     reordered_inputs = DailyAggregateCanonicalInputs(
         event_inputs=list(reversed(base_inputs.event_inputs)),
+        event_place_inputs=list(reversed(base_inputs.event_place_inputs)),
         asset_inputs=list(reversed(base_inputs.asset_inputs)),
         tag_inputs=list(reversed(base_inputs.tag_inputs)),
         person_inputs=list(reversed(base_inputs.person_inputs)),
@@ -226,6 +234,7 @@ def test_build_daily_aggregate_snapshots_builds_workdays_vacation_direct_color_r
         DailyAggregateCanonicalInputs(
             event_inputs=[
                 CanonicalEventAggregateInput(
+                    event_id=1,
                     day=date(2025, 1, 6),
                     source_type=WORKDAYS_VACATION_SOURCE_TYPE,
                     event_type=WORKDAYS_VACATION_SOURCE_TYPE,
@@ -236,6 +245,7 @@ def test_build_daily_aggregate_snapshots_builds_workdays_vacation_direct_color_r
                     longitude=None,
                 ),
                 CanonicalEventAggregateInput(
+                    event_id=2,
                     day=date(2025, 1, 6),
                     source_type=WORKDAYS_VACATION_SOURCE_TYPE,
                     event_type=WORKDAYS_VACATION_SOURCE_TYPE,
@@ -246,6 +256,7 @@ def test_build_daily_aggregate_snapshots_builds_workdays_vacation_direct_color_r
                     longitude=None,
                 ),
             ],
+            event_place_inputs=[],
             asset_inputs=[],
             tag_inputs=[],
             person_inputs=[],
@@ -340,6 +351,7 @@ def test_build_daily_aggregate_snapshots_partition_spotify_by_source_type() -> N
         DailyAggregateCanonicalInputs(
             event_inputs=[
                 CanonicalEventAggregateInput(
+                    event_id=1,
                     day=date(2024, 1, 2),
                     source_type=SPOTIFY_SOURCE_TYPE,
                     event_type="music_play",
@@ -350,6 +362,7 @@ def test_build_daily_aggregate_snapshots_partition_spotify_by_source_type() -> N
                     longitude=None,
                 )
             ],
+            event_place_inputs=[],
             asset_inputs=[],
             tag_inputs=[],
             person_inputs=[],
@@ -390,6 +403,186 @@ def test_build_daily_aggregate_snapshots_partition_spotify_by_source_type() -> N
         snapshot.daily_view.source_type != "music_play"
         for snapshot in snapshots
         if snapshot.daily_view.source_type is not None
+    )
+
+
+def test_build_daily_aggregate_snapshots_add_generic_timeline_views() -> None:
+    snapshots = build_daily_aggregate_snapshots(
+        DailyAggregateCanonicalInputs(
+            event_inputs=[
+                CanonicalEventAggregateInput(
+                    event_id=11,
+                    day=date(2026, 3, 20),
+                    source_type="google_maps_timeline",
+                    event_type=TIMELINE_VISIT_SOURCE_TYPE,
+                    title="Visit",
+                    timestamp_start=datetime(2026, 3, 20, 8, 0, tzinfo=UTC),
+                    raw_payload={"googlePlaceId": "places/cafe"},
+                    latitude=52.52,
+                    longitude=13.405,
+                ),
+                CanonicalEventAggregateInput(
+                    event_id=12,
+                    day=date(2026, 3, 20),
+                    source_type="google_maps_timeline",
+                    event_type=TIMELINE_VISIT_SOURCE_TYPE,
+                    title="Visit",
+                    timestamp_start=datetime(2026, 3, 20, 9, 0, tzinfo=UTC),
+                    raw_payload={"googlePlaceId": "places/cafe"},
+                    latitude=52.52,
+                    longitude=13.405,
+                ),
+                CanonicalEventAggregateInput(
+                    event_id=13,
+                    day=date(2026, 3, 20),
+                    source_type="google_maps_timeline",
+                    event_type=TIMELINE_ACTIVITY_SOURCE_TYPE,
+                    title="Walking",
+                    timestamp_start=datetime(2026, 3, 20, 10, 0, tzinfo=UTC),
+                    raw_payload={
+                        "distanceMeters": 1600.0,
+                        "pathPoints": [
+                            {
+                                "time": "2026-03-20T10:00:00+00:00",
+                                "latitude": 52.52,
+                                "longitude": 13.405,
+                            },
+                            {
+                                "time": "2026-03-20T10:15:00+00:00",
+                                "latitude": 52.521,
+                                "longitude": 13.406,
+                            },
+                        ],
+                    },
+                    latitude=52.52,
+                    longitude=13.405,
+                ),
+                CanonicalEventAggregateInput(
+                    event_id=14,
+                    day=date(2026, 3, 20),
+                    source_type="google_maps_timeline",
+                    event_type=TIMELINE_ACTIVITY_SOURCE_TYPE,
+                    title="Bicycle",
+                    timestamp_start=datetime(2026, 3, 20, 12, 0, tzinfo=UTC),
+                    raw_payload={
+                        "distanceMeters": 2300.0,
+                        "pathPoints": [
+                            {
+                                "time": "2026-03-20T12:00:00+00:00",
+                                "latitude": 52.53,
+                                "longitude": 13.41,
+                            },
+                            {
+                                "time": "2026-03-20T12:15:00+00:00",
+                                "latitude": 52.531,
+                                "longitude": 13.411,
+                            },
+                        ],
+                    },
+                    latitude=52.53,
+                    longitude=13.41,
+                ),
+                CanonicalEventAggregateInput(
+                    event_id=15,
+                    day=date(2026, 3, 20),
+                    source_type="google_maps_timeline",
+                    event_type=TIMELINE_ACTIVITY_SOURCE_TYPE,
+                    title="Car",
+                    timestamp_start=datetime(2026, 3, 20, 18, 0, tzinfo=UTC),
+                    raw_payload={
+                        "distanceMeters": 800.0,
+                        "pathPoints": [
+                            {
+                                "time": "2026-03-20T18:00:00+00:00",
+                                "latitude": 52.54,
+                                "longitude": 13.42,
+                            }
+                        ],
+                    },
+                    latitude=52.54,
+                    longitude=13.42,
+                ),
+            ],
+            event_place_inputs=[
+                CanonicalEventPlaceAggregateInput(
+                    event_id=11,
+                    day=date(2026, 3, 20),
+                    event_type=TIMELINE_VISIT_SOURCE_TYPE,
+                    display_name="Cafe Central",
+                    latitude=52.52,
+                    longitude=13.405,
+                ),
+                CanonicalEventPlaceAggregateInput(
+                    event_id=12,
+                    day=date(2026, 3, 20),
+                    event_type=TIMELINE_VISIT_SOURCE_TYPE,
+                    display_name="Cafe Central",
+                    latitude=52.52,
+                    longitude=13.405,
+                ),
+            ],
+            asset_inputs=[],
+            tag_inputs=[],
+            person_inputs=[],
+        )
+    )
+
+    serialized_snapshots = [_serialize_snapshot(snapshot) for snapshot in snapshots]
+    timeline_visit_snapshot = next(
+        snapshot
+        for snapshot in serialized_snapshots
+        if snapshot["source_type"] == TIMELINE_VISIT_SOURCE_TYPE
+    )
+    timeline_activity_snapshot = next(
+        snapshot
+        for snapshot in serialized_snapshots
+        if snapshot["source_type"] == TIMELINE_ACTIVITY_SOURCE_TYPE
+    )
+
+    assert timeline_visit_snapshot == {
+        "date": "2026-03-20",
+        "scope": "source_type",
+        "source_type": TIMELINE_VISIT_SOURCE_TYPE,
+        "total_events": 2,
+        "media_count": 0,
+        "activity_score": 2,
+        "tag_summary": [],
+        "person_summary": [],
+        "location_summary": [
+            {
+                "label": "Cafe Central",
+                "latitude": 52.52,
+                "longitude": 13.405,
+                "count": 2,
+            }
+        ],
+        "score_version": "v2",
+        "color_value": None,
+        "title": None,
+    }
+    assert timeline_activity_snapshot == {
+        "date": "2026-03-20",
+        "scope": "source_type",
+        "source_type": TIMELINE_ACTIVITY_SOURCE_TYPE,
+        "total_events": 3,
+        "media_count": 0,
+        "activity_score": 5,
+        "tag_summary": [],
+        "person_summary": [],
+        "location_summary": [
+            {"latitude": 52.52, "longitude": 13.405},
+            {"latitude": 52.521, "longitude": 13.406},
+            {"latitude": 52.53, "longitude": 13.41},
+            {"latitude": 52.531, "longitude": 13.411},
+            {"latitude": 52.54, "longitude": 13.42},
+        ],
+        "score_version": "v2",
+        "color_value": None,
+        "title": "2 km Bicycle, 2 km Walking, 1 km Car",
+    }
+    assert all(
+        snapshot["source_type"] != "google_maps_timeline"
+        for snapshot in serialized_snapshots
     )
 
 
@@ -928,6 +1121,223 @@ def test_daily_aggregate_job_persists_spotify_source_scoped_view() -> None:
         assert all(
             daily_view.source_type != "music_play" for daily_view in stored_views
         )
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_daily_aggregate_job_persists_generic_timeline_views_without_provider_branding(
+) -> None:
+    workspace_root = _create_workspace_dir(prefix="daily-aggregate-timeline")
+    runtime = None
+    try:
+        runtime = _create_runtime(workspace_root=workspace_root)
+
+        with runtime.session_factory() as session:
+            timeline_source = Source(
+                name="Timeline Export",
+                type="google_maps_timeline",
+                config={},
+                external_id="timeline-export",
+            )
+            places_source = Source(
+                name="Google Places API",
+                type="google_places_api",
+                config={},
+                external_id="google_places_api",
+            )
+            session.add_all([timeline_source, places_source])
+            session.flush()
+
+            visit = Event(
+                source_id=timeline_source.id,
+                type=TIMELINE_VISIT_SOURCE_TYPE,
+                timestamp_start=datetime(2026, 3, 20, 8, 0, tzinfo=UTC),
+                timestamp_end=datetime(2026, 3, 20, 9, 0, tzinfo=UTC),
+                title="Visit",
+                summary=None,
+                latitude=52.52,
+                longitude=13.405,
+                raw_payload={"googlePlaceId": "places/cafe"},
+                derived_payload={},
+            )
+            first_activity = Event(
+                source_id=timeline_source.id,
+                type=TIMELINE_ACTIVITY_SOURCE_TYPE,
+                timestamp_start=datetime(2026, 3, 20, 9, 30, tzinfo=UTC),
+                timestamp_end=datetime(2026, 3, 20, 10, 0, tzinfo=UTC),
+                title="Walking",
+                summary=None,
+                latitude=52.52,
+                longitude=13.405,
+                raw_payload={
+                    "distanceMeters": 1200.0,
+                    "pathPoints": [
+                        {
+                            "time": "2026-03-20T09:30:00+00:00",
+                            "latitude": 52.52,
+                            "longitude": 13.405,
+                        },
+                        {
+                            "time": "2026-03-20T09:40:00+00:00",
+                            "latitude": 52.521,
+                            "longitude": 13.406,
+                        },
+                    ],
+                },
+                derived_payload={},
+            )
+            second_activity = Event(
+                source_id=timeline_source.id,
+                type=TIMELINE_ACTIVITY_SOURCE_TYPE,
+                timestamp_start=datetime(2026, 3, 20, 11, 0, tzinfo=UTC),
+                timestamp_end=datetime(2026, 3, 20, 11, 20, tzinfo=UTC),
+                title="Bicycle",
+                summary=None,
+                latitude=52.53,
+                longitude=13.41,
+                raw_payload={
+                    "distanceMeters": 2600.0,
+                    "pathPoints": [
+                        {
+                            "time": "2026-03-20T11:00:00+00:00",
+                            "latitude": 52.53,
+                            "longitude": 13.41,
+                        }
+                    ],
+                },
+                derived_payload={},
+            )
+            session.add_all([visit, first_activity, second_activity])
+            session.flush()
+
+            cafe = Place(
+                source_id=places_source.id,
+                external_id="places/cafe",
+                display_name="Cafe Central",
+                formatted_address="Berlin",
+                latitude=52.52,
+                longitude=13.405,
+                lastupdate_at=datetime(2026, 3, 20, 12, 0, tzinfo=UTC),
+            )
+            session.add(cafe)
+            session.flush()
+            session.add(EventPlace(event_id=visit.id, place_id=cafe.id, confidence=0.9))
+            session.commit()
+
+        result = DailyAggregateJob().run(runtime=runtime)
+
+        assert result.aggregate_count == 3
+        with runtime.session_factory() as session:
+            stored_views = list(
+                session.execute(
+                    select(DailyView).order_by(
+                        DailyView.aggregate_scope,
+                        DailyView.source_type,
+                        DailyView.id,
+                    )
+                ).scalars()
+            )
+            stored_aggregates = [
+                _serialize_aggregate(aggregate)
+                for aggregate in session.execute(
+                    select(DailyAggregate)
+                    .join(DailyView, DailyView.id == DailyAggregate.daily_view_id)
+                    .order_by(
+                        DailyAggregate.date,
+                        DailyView.aggregate_scope,
+                        DailyView.source_type,
+                    )
+                ).scalars()
+            ]
+
+        assert [
+            (daily_view.aggregate_scope, daily_view.source_type, daily_view.label)
+            for daily_view in stored_views
+        ] == [
+            ("overall", None, "Activity"),
+            ("source_type", TIMELINE_ACTIVITY_SOURCE_TYPE, "Timeline Activity"),
+            ("source_type", TIMELINE_VISIT_SOURCE_TYPE, "Timeline Visits"),
+        ]
+        assert all(
+            aggregate["source_type"] != "google_maps_timeline"
+            for aggregate in stored_aggregates
+        )
+        assert stored_aggregates == [
+            {
+                "date": "2026-03-20",
+                "scope": "overall",
+                "source_type": "__all__",
+                "total_events": 3,
+                "media_count": 0,
+                "activity_score": 3,
+                "tag_summary": [],
+                "person_summary": [],
+                "location_summary": [
+                    {
+                        "label": "Bicycle",
+                        "latitude": 52.53,
+                        "longitude": 13.41,
+                        "count": 1,
+                    },
+                    {
+                        "label": "Visit",
+                        "latitude": 52.52,
+                        "longitude": 13.405,
+                        "count": 1,
+                    },
+                    {
+                        "label": "Walking",
+                        "latitude": 52.52,
+                        "longitude": 13.405,
+                        "count": 1,
+                    },
+                ],
+                "score_version": "v2",
+                "color_value": None,
+                "title": None,
+            },
+            {
+                "date": "2026-03-20",
+                "scope": "source_type",
+                "source_type": TIMELINE_ACTIVITY_SOURCE_TYPE,
+                "total_events": 2,
+                "media_count": 0,
+                "activity_score": 4,
+                "tag_summary": [],
+                "person_summary": [],
+                "location_summary": [
+                    {"latitude": 52.52, "longitude": 13.405},
+                    {"latitude": 52.521, "longitude": 13.406},
+                    {"latitude": 52.53, "longitude": 13.41},
+                ],
+                "score_version": "v2",
+                "color_value": None,
+                "title": "3 km Bicycle, 1 km Walking",
+            },
+            {
+                "date": "2026-03-20",
+                "scope": "source_type",
+                "source_type": TIMELINE_VISIT_SOURCE_TYPE,
+                "total_events": 1,
+                "media_count": 0,
+                "activity_score": 1,
+                "tag_summary": [],
+                "person_summary": [],
+                "location_summary": [
+                    {
+                        "label": "Cafe Central",
+                        "latitude": 52.52,
+                        "longitude": 13.405,
+                        "count": 1,
+                    }
+                ],
+                "score_version": "v2",
+                "color_value": None,
+                "title": None,
+            },
+        ]
     finally:
         if runtime is not None:
             runtime.engine.dispose()

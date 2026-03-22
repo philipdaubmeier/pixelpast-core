@@ -103,6 +103,12 @@ class DailyAggregateJob:
                 end_date=end_date,
             )
             progress.mark_loading_bucket_completed()
+            event_place_inputs = self._loader.load_event_place_inputs(
+                repository=canonical_repository,
+                start_date=start_date,
+                end_date=end_date,
+            )
+            progress.mark_loading_bucket_completed()
             tag_inputs = self._loader.load_tag_inputs(
                 repository=canonical_repository,
                 start_date=start_date,
@@ -119,12 +125,14 @@ class DailyAggregateJob:
 
             inputs = DailyAggregateCanonicalInputs(
                 event_inputs=event_inputs,
+                event_place_inputs=event_place_inputs,
                 asset_inputs=asset_inputs,
                 tag_inputs=tag_inputs,
                 person_inputs=person_inputs,
             )
             total_input_count = (
                 len(inputs.event_inputs)
+                + len(inputs.event_place_inputs)
                 + len(inputs.asset_inputs)
                 + len(inputs.tag_inputs)
                 + len(inputs.person_inputs)

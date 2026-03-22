@@ -24,7 +24,7 @@ class DailyAggregateProgressState:
     """Track derive counters mapped onto the shared progress contract.
 
     Semantics:
-    - loading: `total=4`, one unit per canonical input bucket
+    - loading: `total=5`, one unit per canonical input bucket
     - building: `total` equals the number of canonical contributions consumed
     - persisting: `total` equals the number of aggregate rows written
     - counters: `inserted` counts aggregate rows materialized by this run;
@@ -87,9 +87,9 @@ class DailyAggregateProgressTracker:
     def start_loading(self) -> None:
         """Enter canonical loading with one deterministic unit per input bucket."""
 
-        self._log_phase_started(phase=self.loading_phase, total=4)
+        self._log_phase_started(phase=self.loading_phase, total=5)
         self._log_heartbeat_if_written(
-            self._engine.start_phase(phase=self.loading_phase, total=4)
+            self._engine.start_phase(phase=self.loading_phase, total=5)
         )
 
     def mark_loading_bucket_completed(self) -> None:

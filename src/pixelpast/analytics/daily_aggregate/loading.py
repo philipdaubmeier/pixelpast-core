@@ -8,6 +8,7 @@ from datetime import date
 from pixelpast.persistence.repositories.daily_aggregates import (
     CanonicalAssetAggregateInput,
     CanonicalEventAggregateInput,
+    CanonicalEventPlaceAggregateInput,
     CanonicalPersonAggregateInput,
     CanonicalTagAggregateInput,
     CanonicalTimelineRepository,
@@ -19,6 +20,7 @@ class DailyAggregateCanonicalInputs:
     """Canonical day contributions needed to build daily aggregate rows."""
 
     event_inputs: list[CanonicalEventAggregateInput]
+    event_place_inputs: list[CanonicalEventPlaceAggregateInput]
     asset_inputs: list[CanonicalAssetAggregateInput]
     tag_inputs: list[CanonicalTagAggregateInput]
     person_inputs: list[CanonicalPersonAggregateInput]
@@ -51,6 +53,20 @@ class DailyAggregateCanonicalLoader:
         """Return canonical asset contributions for the requested rebuild window."""
 
         return repository.list_asset_inputs(
+            start_date=start_date,
+            end_date=end_date,
+        )
+
+    def load_event_place_inputs(
+        self,
+        *,
+        repository: CanonicalTimelineRepository,
+        start_date: date | None = None,
+        end_date: date | None = None,
+    ) -> list[CanonicalEventPlaceAggregateInput]:
+        """Return event-place links for the requested rebuild window."""
+
+        return repository.list_event_place_inputs(
             start_date=start_date,
             end_date=end_date,
         )
@@ -106,6 +122,11 @@ class DailyAggregateCanonicalLoader:
 
         return DailyAggregateCanonicalInputs(
             event_inputs=self.load_event_inputs(
+                repository=repository,
+                start_date=start_date,
+                end_date=end_date,
+            ),
+            event_place_inputs=self.load_event_place_inputs(
                 repository=repository,
                 start_date=start_date,
                 end_date=end_date,

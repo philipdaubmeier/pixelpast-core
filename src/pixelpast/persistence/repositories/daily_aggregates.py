@@ -20,8 +20,10 @@ from pixelpast.persistence.models import (
     DailyAggregate,
     DailyView,
     Event,
+    EventPlace,
     EventPerson,
     EventTag,
+    Place,
     Person,
     Source,
     Tag,
@@ -48,12 +50,25 @@ class DailyAggregateSnapshot:
 class CanonicalEventAggregateInput:
     """Canonical event contribution to a UTC day/source-type aggregate."""
 
+    event_id: int
     day: date
     source_type: str
     event_type: str
     title: str
     timestamp_start: datetime
     raw_payload: dict[str, Any] | None
+    latitude: float | None
+    longitude: float | None
+
+
+@dataclass(slots=True, frozen=True)
+class CanonicalEventPlaceAggregateInput:
+    """Derived place contribution linked to one canonical event."""
+
+    event_id: int
+    day: date
+    event_type: str
+    display_name: str | None
     latitude: float | None
     longitude: float | None
 
@@ -109,6 +124,7 @@ class CanonicalTimelineRepository:
 
         statement = _apply_datetime_range(
             select(
+                Event.id,
                 Event.timestamp_start,
                 Source.type,
                 Event.type,
@@ -126,6 +142,7 @@ class CanonicalTimelineRepository:
         rows = self._session.execute(statement)
         return [
             CanonicalEventAggregateInput(
+                event_id=event_id,
                 day=timestamp.date(),
                 source_type=source_type,
                 event_type=event_type,
@@ -136,11 +153,56 @@ class CanonicalTimelineRepository:
                 longitude=longitude,
             )
             for (
+                event_id,
                 timestamp,
                 source_type,
                 event_type,
                 title,
                 raw_payload,
+                latitude,
+                longitude,
+            ) in rows
+        ]
+
+    def list_event_place_inputs(
+        self,
+        *,
+        start_date: date | None = None,
+        end_date: date | None = None,
+    ) -> list[CanonicalEventPlaceAggregateInput]:
+        """Return derived place links joined back onto canonical events."""
+
+        statement = _apply_datetime_range(
+            select(
+                Event.id,
+                Event.timestamp_start,
+                Event.type,
+                Place.display_name,
+                Place.latitude,
+                Place.longitude,
+            )
+            .join(EventPlace, EventPlace.event_id == Event.id)
+            .join(Place, Place.id == EventPlace.place_id)
+            .order_by(Event.timestamp_start, Event.id, Place.display_name, Place.id),
+            column=Event.timestamp_start,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        rows = self._session.execute(statement)
+        return [
+            CanonicalEventPlaceAggregateInput(
+                event_id=event_id,
+                day=timestamp.date(),
+                event_type=event_type,
+                display_name=display_name,
+                latitude=latitude,
+                longitude=longitude,
+            )
+            for (
+                event_id,
+                timestamp,
+                event_type,
+                display_name,
                 latitude,
                 longitude,
             ) in rows

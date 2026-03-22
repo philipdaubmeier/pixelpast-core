@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass
 from datetime import date
+import math
 from pathlib import Path
 import re
 from typing import Any
@@ -13,6 +14,8 @@ from pixelpast.analytics.daily_aggregate.loading import (
     DailyAggregateCanonicalInputs,
 )
 from pixelpast.analytics.daily_views import (
+    TIMELINE_ACTIVITY_SOURCE_TYPE,
+    TIMELINE_VISIT_SOURCE_TYPE,
     WORKDAYS_VACATION_SOURCE_TYPE,
     build_daily_view,
 )
@@ -24,10 +27,15 @@ from pixelpast.persistence.models import (
 from pixelpast.persistence.repositories.daily_aggregates import (
     CanonicalAssetAggregateInput,
     CanonicalEventAggregateInput,
+    CanonicalEventPlaceAggregateInput,
     DailyAggregateSnapshot,
 )
 
 _HEX_COLOR_PATTERN = re.compile(r"^#[0-9a-fA-F]{6}$")
+_TIMELINE_EVENT_TYPES = {
+    TIMELINE_VISIT_SOURCE_TYPE,
+    TIMELINE_ACTIVITY_SOURCE_TYPE,
+}
 
 
 @dataclass(slots=True, frozen=True)
@@ -48,6 +56,10 @@ class _AggregateState:
     tags: Counter[tuple[str, str]] | None = None
     persons: Counter[tuple[int, str, str | None]] | None = None
     locations: Counter[tuple[str, float, float]] | None = None
+    visit_locations: Counter[tuple[str, float, float]] | None = None
+    activity_locations: set[tuple[float, float]] | None = None
+    activity_distance_meters: float = 0.0
+    movement_distance_meters_by_label: Counter[str] | None = None
     direct_color_selection: _DirectColorSelection | None = None
 
     def __post_init__(self) -> None:
@@ -57,6 +69,12 @@ class _AggregateState:
             self.persons = Counter()
         if self.locations is None:
             self.locations = Counter()
+        if self.visit_locations is None:
+            self.visit_locations = Counter()
+        if self.activity_locations is None:
+            self.activity_locations = set()
+        if self.movement_distance_meters_by_label is None:
+            self.movement_distance_meters_by_label = Counter()
 
 
 def build_daily_aggregate_snapshots(
@@ -67,10 +85,7 @@ def build_daily_aggregate_snapshots(
     states: dict[tuple[date, str], _AggregateState] = {}
 
     for event_input in inputs.event_inputs:
-        for aggregate_key in _iter_aggregate_keys(
-            day=event_input.day,
-            source_type=event_input.source_type,
-        ):
+        for aggregate_key in _iter_event_aggregate_keys(event_input):
             state = states.setdefault(aggregate_key, _AggregateState())
             state.total_events += 1
             _merge_direct_color_selection(
@@ -78,9 +93,19 @@ def build_daily_aggregate_snapshots(
                 aggregate_key=aggregate_key,
                 event_input=event_input,
             )
-            location_key = _build_event_location_key(event_input)
-            if location_key is not None:
-                state.locations[location_key] += 1
+            _merge_event_location(state=state, aggregate_key=aggregate_key, event_input=event_input)
+            _merge_activity_metrics(
+                state=state,
+                aggregate_key=aggregate_key,
+                event_input=event_input,
+            )
+
+    for event_place_input in inputs.event_place_inputs:
+        for aggregate_key in _iter_event_place_aggregate_keys(event_place_input):
+            state = states.setdefault(aggregate_key, _AggregateState())
+            visit_location_key = _build_visit_location_key(event_place_input)
+            if visit_location_key is not None:
+                state.visit_locations[visit_location_key] += 1
 
     for asset_input in inputs.asset_inputs:
         for aggregate_key in _iter_aggregate_keys(
@@ -130,23 +155,27 @@ def build_daily_aggregate_snapshots(
                 ),
                 total_events=state.total_events,
                 media_count=state.media_count,
-                activity_score=_calculate_activity_score(
+                activity_score=_resolve_activity_score(
+                    source_type=source_type,
                     total_events=state.total_events,
                     media_count=state.media_count,
+                    activity_distance_meters=state.activity_distance_meters,
                 ),
                 color_value=(
                     state.direct_color_selection.color_value
                     if state.direct_color_selection is not None
                     else None
                 ),
-                title=(
-                    state.direct_color_selection.title
-                    if state.direct_color_selection is not None
-                    else None
+                title=_resolve_title(
+                    source_type=source_type,
+                    state=state,
                 ),
                 tag_summary_json=_build_tag_summary(state.tags),
                 person_summary_json=_build_person_summary(state.persons),
-                location_summary_json=_build_location_summary(state.locations),
+                location_summary_json=_resolve_location_summary(
+                    source_type=source_type,
+                    state=state,
+                ),
             )
         )
 
@@ -157,6 +186,23 @@ def _calculate_activity_score(*, total_events: int, media_count: int) -> int:
     """Return the documented activity score for a single aggregate row."""
 
     return total_events + media_count
+
+
+def _resolve_activity_score(
+    *,
+    source_type: str,
+    total_events: int,
+    media_count: int,
+    activity_distance_meters: float,
+) -> int:
+    """Return the score contract for the aggregate identity being built."""
+
+    if source_type == TIMELINE_ACTIVITY_SOURCE_TYPE:
+        return _meters_to_display_kilometers(activity_distance_meters)
+    return _calculate_activity_score(
+        total_events=total_events,
+        media_count=media_count,
+    )
 
 
 def _iter_aggregate_keys(
@@ -170,6 +216,34 @@ def _iter_aggregate_keys(
         (day, source_type),
         (day, DAILY_AGGREGATE_OVERALL_SOURCE_TYPE),
     )
+
+
+def _iter_event_aggregate_keys(
+    event_input: CanonicalEventAggregateInput,
+) -> tuple[tuple[date, str], ...]:
+    """Return all aggregate identities one canonical event contributes to."""
+
+    if event_input.event_type in _TIMELINE_EVENT_TYPES:
+        aggregate_keys = [
+            (event_input.day, DAILY_AGGREGATE_OVERALL_SOURCE_TYPE),
+        ]
+        aggregate_keys.append((event_input.day, event_input.event_type))
+        return tuple(aggregate_keys)
+
+    return _iter_aggregate_keys(
+        day=event_input.day,
+        source_type=event_input.source_type,
+    )
+
+
+def _iter_event_place_aggregate_keys(
+    event_place_input: CanonicalEventPlaceAggregateInput,
+) -> tuple[tuple[date, str], ...]:
+    """Return aggregate identities that consume derived event-place links."""
+
+    if event_place_input.event_type != TIMELINE_VISIT_SOURCE_TYPE:
+        return ()
+    return ((event_place_input.day, TIMELINE_VISIT_SOURCE_TYPE),)
 
 
 def _sort_aggregate_key(
@@ -239,6 +313,20 @@ def _build_location_summary(
     ]
 
 
+def _build_activity_location_summary(
+    points: set[tuple[float, float]],
+) -> list[dict[str, Any]]:
+    """Return raw coordinate points without labels or timestamps."""
+
+    return [
+        {
+            "latitude": latitude,
+            "longitude": longitude,
+        }
+        for latitude, longitude in sorted(points)
+    ]
+
+
 def _build_event_location_key(
     event_input: CanonicalEventAggregateInput,
 ) -> tuple[str, float, float] | None:
@@ -250,6 +338,63 @@ def _build_event_location_key(
     title = event_input.title.strip()
     label = title if title else event_input.event_type
     return (label, event_input.latitude, event_input.longitude)
+
+
+def _build_visit_location_key(
+    event_place_input: CanonicalEventPlaceAggregateInput,
+) -> tuple[str, float, float] | None:
+    """Return a place-backed visit location key for aggregation."""
+
+    if event_place_input.latitude is None or event_place_input.longitude is None:
+        return None
+    label = (
+        event_place_input.display_name.strip()
+        if isinstance(event_place_input.display_name, str)
+        and event_place_input.display_name.strip()
+        else "Place"
+    )
+    return (label, event_place_input.latitude, event_place_input.longitude)
+
+
+def _merge_event_location(
+    *,
+    state: _AggregateState,
+    aggregate_key: tuple[date, str],
+    event_input: CanonicalEventAggregateInput,
+) -> None:
+    """Merge generic point-based event locations, excluding timeline-specific views."""
+
+    _aggregate_date, source_type = aggregate_key
+    if source_type in {TIMELINE_VISIT_SOURCE_TYPE, TIMELINE_ACTIVITY_SOURCE_TYPE}:
+        return
+
+    location_key = _build_event_location_key(event_input)
+    if location_key is not None:
+        state.locations[location_key] += 1
+
+
+def _merge_activity_metrics(
+    *,
+    state: _AggregateState,
+    aggregate_key: tuple[date, str],
+    event_input: CanonicalEventAggregateInput,
+) -> None:
+    """Merge movement distance, title, and waypoint data for timeline activity rows."""
+
+    _aggregate_date, source_type = aggregate_key
+    if source_type != TIMELINE_ACTIVITY_SOURCE_TYPE:
+        return
+    if event_input.event_type != TIMELINE_ACTIVITY_SOURCE_TYPE:
+        return
+
+    distance_meters = _extract_distance_meters(event_input.raw_payload)
+    if distance_meters is not None:
+        normalized_label = _normalize_activity_label(event_input.title)
+        state.activity_distance_meters += distance_meters
+        state.movement_distance_meters_by_label[normalized_label] += distance_meters
+
+    for latitude, longitude in _extract_path_points(event_input.raw_payload):
+        state.activity_locations.add((latitude, longitude))
 
 
 def _merge_direct_color_selection(
@@ -333,6 +478,103 @@ def _direct_color_sort_key(
         selection.title.casefold(),
         selection.color_value.casefold(),
     )
+
+
+def _resolve_title(
+    *,
+    source_type: str,
+    state: _AggregateState,
+) -> str | None:
+    """Return the backend-owned title for one aggregate row."""
+
+    if source_type == TIMELINE_ACTIVITY_SOURCE_TYPE:
+        return _build_activity_title(state.movement_distance_meters_by_label)
+    if state.direct_color_selection is not None:
+        return state.direct_color_selection.title
+    return None
+
+
+def _resolve_location_summary(
+    *,
+    source_type: str,
+    state: _AggregateState,
+) -> list[dict[str, Any]]:
+    """Return the location summary payload for one aggregate identity."""
+
+    if source_type == TIMELINE_VISIT_SOURCE_TYPE:
+        return _build_location_summary(state.visit_locations)
+    if source_type == TIMELINE_ACTIVITY_SOURCE_TYPE:
+        return _build_activity_location_summary(state.activity_locations)
+    return _build_location_summary(state.locations)
+
+
+def _build_activity_title(distance_by_label: Counter[str]) -> str | None:
+    """Return the top-three movement-mode title summary for one day."""
+
+    if not distance_by_label:
+        return None
+
+    top_entries = sorted(
+        distance_by_label.items(),
+        key=lambda item: (-item[1], item[0].casefold()),
+    )[:3]
+    return ", ".join(
+        f"{_meters_to_display_kilometers(distance_meters)} km {label}"
+        for label, distance_meters in top_entries
+    )
+
+
+def _normalize_activity_label(value: str) -> str:
+    """Return a stable activity label for grouping movement modes."""
+
+    normalized = value.strip()
+    return normalized if normalized else TIMELINE_ACTIVITY_SOURCE_TYPE
+
+
+def _extract_distance_meters(raw_payload: object) -> float | None:
+    """Return the canonical timeline activity distance in meters."""
+
+    if not isinstance(raw_payload, dict):
+        return None
+    value = raw_payload.get("distanceMeters")
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    return None
+
+
+def _extract_path_points(raw_payload: object) -> tuple[tuple[float, float], ...]:
+    """Return canonical activity path points as latitude/longitude tuples."""
+
+    if not isinstance(raw_payload, dict):
+        return ()
+    path_points = raw_payload.get("pathPoints")
+    if not isinstance(path_points, list):
+        return ()
+
+    normalized_points: list[tuple[float, float]] = []
+    for path_point in path_points:
+        if not isinstance(path_point, dict):
+            continue
+        latitude = path_point.get("latitude")
+        longitude = path_point.get("longitude")
+        if isinstance(latitude, bool) or isinstance(longitude, bool):
+            continue
+        if not isinstance(latitude, (int, float)) or not isinstance(
+            longitude, (int, float)
+        ):
+            continue
+        normalized_points.append((float(latitude), float(longitude)))
+    return tuple(normalized_points)
+
+
+def _meters_to_display_kilometers(distance_meters: float) -> int:
+    """Render meters as deterministic whole-kilometer display units."""
+
+    if distance_meters <= 0:
+        return 0
+    return max(1, math.floor((distance_meters / 1000.0) + 0.5))
 
 
 def _build_asset_location_key(

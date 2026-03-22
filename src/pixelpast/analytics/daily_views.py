@@ -16,6 +16,8 @@ DEFAULT_ACTIVITY_SCORE_COLOR_THRESHOLDS: tuple[dict[str, object], ...] = (
     {"activity_score": 70, "color_value": "high"},
 )
 SPOTIFY_SOURCE_TYPE = "spotify"
+TIMELINE_ACTIVITY_SOURCE_TYPE = "timeline_activity"
+TIMELINE_VISIT_SOURCE_TYPE = "timeline_visit"
 WORKDAYS_VACATION_SOURCE_TYPE = "workdays_vacation"
 
 
@@ -82,6 +84,12 @@ def build_daily_view(
     if source_type == SPOTIFY_SOURCE_TYPE:
         label = "Spotify"
         description = "Highlights days with Spotify listening activity."
+    if source_type == TIMELINE_VISIT_SOURCE_TYPE:
+        label = "Timeline Visits"
+        description = "Highlights days with timeline visit activity."
+    if source_type == TIMELINE_ACTIVITY_SOURCE_TYPE:
+        label = "Timeline Activity"
+        description = "Highlights days with timeline movement activity."
     if source_type == WORKDAYS_VACATION_SOURCE_TYPE:
         description = (
             "Highlights days imported from the workdays vacation workbook "
