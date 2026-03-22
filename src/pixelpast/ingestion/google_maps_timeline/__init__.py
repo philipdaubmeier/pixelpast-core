@@ -1,5 +1,8 @@
 """Google Maps Timeline ingestion contracts and parsing helpers."""
 
+from pixelpast.ingestion.google_maps_timeline.connector import (
+    GoogleMapsTimelineConnector,
+)
 from pixelpast.ingestion.google_maps_timeline.contracts import (
     GoogleMapsTimelineDocumentCandidate,
     GoogleMapsTimelineDocumentDescriptor,
@@ -14,6 +17,14 @@ from pixelpast.ingestion.google_maps_timeline.contracts import (
     ParsedGoogleMapsTimelinePathSegment,
     ParsedGoogleMapsTimelineVisitSegment,
 )
+from pixelpast.ingestion.google_maps_timeline.discovery import (
+    GoogleMapsTimelineDocumentDiscoverer,
+    resolve_google_maps_timeline_ingestion_root,
+)
+from pixelpast.ingestion.google_maps_timeline.fetch import (
+    GoogleMapsTimelineDocumentFetcher,
+    GoogleMapsTimelineDocumentLoadProgress,
+)
 from pixelpast.ingestion.google_maps_timeline.transform import (
     build_google_maps_timeline_source_candidate,
     build_google_maps_timeline_source_external_id,
@@ -24,8 +35,12 @@ from pixelpast.ingestion.google_maps_timeline.transform import (
 )
 
 __all__ = [
+    "GoogleMapsTimelineConnector",
     "GoogleMapsTimelineDocumentCandidate",
     "GoogleMapsTimelineDocumentDescriptor",
+    "GoogleMapsTimelineDocumentDiscoverer",
+    "GoogleMapsTimelineDocumentFetcher",
+    "GoogleMapsTimelineDocumentLoadProgress",
     "GoogleMapsTimelineEventCandidate",
     "GoogleMapsTimelineIngestionResult",
     "GoogleMapsTimelineSourceCandidate",
@@ -42,4 +57,5 @@ __all__ = [
     "parse_google_maps_timeline_export_document",
     "parse_google_maps_timeline_timestamp",
     "parse_loaded_google_maps_timeline_export_document",
+    "resolve_google_maps_timeline_ingestion_root",
 ]
