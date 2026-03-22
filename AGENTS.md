@@ -111,6 +111,7 @@ This layer contains computed views and summaries, not raw ingestion logic.
 Examples:
 
 - Daily aggregates
+- Place cache and event-place links
 - Activity scores
 - Heatmap data
 - Cross-source correlations

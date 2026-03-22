@@ -121,6 +121,27 @@ Represents a named group of people. Can be hierarchically nested with path if ne
 - group_id
 - person_id
 
+### Place
+
+Derived place record resolved from an external place provider.
+
+- id
+- source_id
+- external_id
+- display_name
+- formatted_address
+- latitude
+- longitude
+- lastupdate_at
+
+### EventPlace
+
+Associates events with derived place records.
+
+- event_id
+- place_id
+- confidence
+
 ### DailyAggregate
 
 Derived day-level read model for grid rendering and day summaries.
