@@ -6,6 +6,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from pixelpast.ingestion.google_maps_timeline.contracts import (
+    GoogleMapsTimelineDocumentCandidate,
     GoogleMapsTimelineDocumentDescriptor,
     GoogleMapsTimelineTransformError,
     LoadedGoogleMapsTimelineExportDocument,
@@ -19,6 +20,7 @@ from pixelpast.ingestion.google_maps_timeline.fetch import (
     GoogleMapsTimelineDocumentLoadProgress,
 )
 from pixelpast.ingestion.google_maps_timeline.transform import (
+    build_google_maps_timeline_document_candidate,
     parse_google_maps_timeline_export_document,
     parse_loaded_google_maps_timeline_export_document,
 )
@@ -104,6 +106,14 @@ class GoogleMapsTimelineConnector:
         """Translate one analysis failure into the stable error contract."""
 
         return GoogleMapsTimelineTransformError(document=document, message=str(error))
+
+    def build_document_candidate(
+        self,
+        document: ParsedGoogleMapsTimelineExport,
+    ) -> GoogleMapsTimelineDocumentCandidate:
+        """Build canonical source and event candidates for one parsed document."""
+
+        return build_google_maps_timeline_document_candidate(document)
 
 
 __all__ = ["GoogleMapsTimelineConnector"]

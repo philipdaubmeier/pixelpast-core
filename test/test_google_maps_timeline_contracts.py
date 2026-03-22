@@ -6,6 +6,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from pixelpast.ingestion.google_maps_timeline import (
+    build_google_maps_timeline_document_candidate,
+    build_google_maps_timeline_event_candidates,
     GoogleMapsTimelineDocumentCandidate,
     GoogleMapsTimelineDocumentDescriptor,
     GoogleMapsTimelineEventCandidate,
@@ -97,6 +99,7 @@ def test_google_maps_timeline_fixture_characterizes_on_device_export_shape() -> 
     assert len(parsed.visit_segments) == 1
     assert len(parsed.timeline_path_segments) == 1
     assert len(parsed.activity_segments) == 1
+    assert parsed.warning_messages == ()
 
     visit = parsed.visit_segments[0]
     assert visit.segment_index == 0
@@ -169,6 +172,69 @@ def test_google_maps_timeline_source_candidate_is_file_scoped() -> None:
             "export_format": "google_maps_timeline_on_device",
         },
     )
+
+
+def test_google_maps_timeline_document_candidate_builds_visit_and_activity_events() -> None:
+    fixture_path = Path("test/assets/googlemaps_timeline_test_fixture.json")
+    parsed = parse_google_maps_timeline_export_document(
+        descriptor=GoogleMapsTimelineDocumentDescriptor(path=fixture_path),
+        text=fixture_path.read_text(encoding="utf-8"),
+    )
+
+    document_candidate = build_google_maps_timeline_document_candidate(parsed)
+
+    assert document_candidate.document == GoogleMapsTimelineDocumentDescriptor(
+        path=fixture_path
+    )
+    assert document_candidate.source.external_id == (
+        f"google_maps_timeline:{fixture_path.resolve().as_posix()}"
+    )
+    assert len(document_candidate.events) == 2
+
+    visit_event = next(
+        event for event in document_candidate.events if event.type == "timeline_visit"
+    )
+    activity_event = next(
+        event for event in document_candidate.events if event.type == "timeline_activity"
+    )
+
+    assert visit_event.title == "Visit"
+    assert visit_event.latitude == 52.5252309
+    assert visit_event.longitude == 13.368363
+    assert visit_event.raw_payload == {
+        "segment_kind": "visit",
+        "googlePlaceId": "djfFmwNTmXxKqVmG7",
+        "semanticType": "UNKNOWN",
+        "visitProbability": 0.36148369312286377,
+        "candidateProbability": 0.3317331075668335,
+        "hierarchyLevel": 0,
+        "isTimelessVisit": None,
+    }
+
+    assert activity_event.title == "Walking"
+    assert activity_event.latitude == 52.5252309
+    assert activity_event.longitude == 13.368363
+    assert activity_event.raw_payload == {
+        "segment_kind": "activity",
+        "googleActivityType": "WALKING",
+        "activityProbability": 0.8913857936859131,
+        "topCandidateProbability": 0.46404823660850525,
+        "distanceMeters": 107.74786376953125,
+        "startLocation": {"latitude": 52.5252309, "longitude": 13.368363},
+        "endLocation": {"latitude": 52.5252309, "longitude": 13.368363},
+        "pathPoints": [
+            {
+                "time": "2026-01-01T17:37:46+00:00",
+                "latitude": 52.5252309,
+                "longitude": 13.368363,
+            },
+            {
+                "time": "2026-01-01T17:40:06+00:00",
+                "latitude": 52.5252309,
+                "longitude": 13.368363,
+            },
+        ],
+    }
 
 
 def test_google_maps_timeline_timestamp_parsing_normalizes_offsets_to_utc() -> None:
@@ -254,3 +320,245 @@ def test_google_maps_timeline_parser_rejects_non_object_documents() -> None:
         )
     else:
         raise AssertionError("Expected non-object export to fail.")
+
+
+def test_google_maps_timeline_transform_normalizes_duplicate_visits_and_reconciles_paths(
+) -> None:
+    descriptor = GoogleMapsTimelineDocumentDescriptor(path=Path("synthetic.json"))
+    parsed = parse_google_maps_timeline_export_document(
+        descriptor=descriptor,
+        text="""
+        {
+          "semanticSegments": [
+            {
+              "startTime": "2026-01-02T08:00:00+01:00",
+              "endTime": "2026-01-02T09:00:00+01:00",
+              "visit": {
+                "hierarchyLevel": 2,
+                "probability": 0.4,
+                "topCandidate": {
+                  "placeId": "place-high-level",
+                  "semanticType": "HOME",
+                  "probability": 0.7,
+                  "placeLocation": {
+                    "latLng": "52.5000°, 13.4000°"
+                  }
+                }
+              }
+            },
+            {
+              "startTime": "2026-01-02T08:00:00+01:00",
+              "endTime": "2026-01-02T09:00:00+01:00",
+              "visit": {
+                "hierarchyLevel": 0,
+                "probability": 0.6,
+                "topCandidate": {
+                  "placeId": "place-low-level",
+                  "semanticType": "HOME",
+                  "probability": 0.2,
+                  "placeLocation": {
+                    "latLng": "52.5100°, 13.4100°"
+                  }
+                }
+              }
+            },
+            {
+              "startTime": "2026-01-02T08:00:00+01:00",
+              "endTime": "2026-01-02T08:35:00+01:00",
+              "activity": {
+                "probability": 0.95,
+                "distanceMeters": 1200,
+                "topCandidate": {
+                  "type": "IN_PASSENGER_VEHICLE",
+                  "probability": 0.8
+                },
+                "start": {
+                  "latLng": "52.5200°, 13.4200°"
+                },
+                "end": {
+                  "latLng": "52.5300°, 13.4300°"
+                }
+              }
+            },
+            {
+              "startTime": "2026-01-02T08:30:00+01:00",
+              "endTime": "2026-01-02T09:00:00+01:00",
+              "activity": {
+                "probability": 0.75,
+                "distanceMeters": 900,
+                "topCandidate": {
+                  "type": "WALKING",
+                  "probability": 0.6
+                },
+                "start": {
+                  "latLng": "52.5300°, 13.4300°"
+                },
+                "end": {
+                  "latLng": "52.5400°, 13.4400°"
+                }
+              }
+            },
+            {
+              "startTime": "2026-01-02T07:50:00+01:00",
+              "endTime": "2026-01-02T09:05:00+01:00",
+              "timelinePath": [
+                {
+                  "time": "2026-01-02T07:58:00+01:00",
+                  "point": "52.5190°, 13.4190°"
+                },
+                {
+                  "time": "2026-01-02T08:10:00+01:00",
+                  "point": "52.5210°, 13.4210°"
+                },
+                {
+                  "time": "2026-01-02T08:30:00+01:00",
+                  "point": "52.5300°, 13.4300°"
+                },
+                {
+                  "time": "2026-01-02T08:30:00+01:00",
+                  "point": "52.5300°, 13.4300°"
+                },
+                {
+                  "time": "2026-01-02T08:40:00+01:00",
+                  "point": "52.5350°, 13.4350°"
+                },
+                {
+                  "time": "2026-01-02T09:01:00+01:00",
+                  "point": "52.5450°, 13.4450°"
+                }
+              ]
+            },
+            {
+              "startTime": "2026-01-02T10:00:00+01:00",
+              "endTime": "2026-01-02T10:10:00+01:00",
+              "activity": {
+                "probability": 0.55,
+                "distanceMeters": 100,
+                "topCandidate": {
+                  "type": "RUNNING",
+                  "probability": 0.5
+                },
+                "start": {
+                  "latLng": "52.5500°, 13.4500°"
+                },
+                "end": {
+                  "latLng": "52.5600°, 13.4600°"
+                }
+              }
+            }
+          ],
+          "rawSignals": [],
+          "userLocationProfile": {}
+        }
+        """,
+    )
+
+    candidates = build_google_maps_timeline_event_candidates(parsed)
+
+    assert len(candidates) == 4
+
+    visit_event = next(event for event in candidates if event.type == "timeline_visit")
+    assert visit_event.title == "Home"
+    assert visit_event.latitude == 52.51
+    assert visit_event.longitude == 13.41
+    assert visit_event.raw_payload["googlePlaceId"] == "place-low-level"
+    assert visit_event.raw_payload["hierarchyLevel"] == 0
+
+    vehicle_event = next(
+        event
+        for event in candidates
+        if event.type == "timeline_activity" and event.title == "In Passenger Vehicle"
+    )
+    assert vehicle_event.raw_payload["pathPoints"] == [
+        {
+            "time": "2026-01-02T07:00:00+00:00",
+            "latitude": 52.52,
+            "longitude": 13.42,
+        },
+        {
+            "time": "2026-01-02T07:10:00+00:00",
+            "latitude": 52.521,
+            "longitude": 13.421,
+        },
+        {
+            "time": "2026-01-02T07:30:00+00:00",
+            "latitude": 52.53,
+            "longitude": 13.43,
+        },
+        {
+            "time": "2026-01-02T07:35:00+00:00",
+            "latitude": 52.53,
+            "longitude": 13.43,
+        },
+    ]
+
+    walking_event = next(
+        event
+        for event in candidates
+        if event.type == "timeline_activity" and event.title == "Walking"
+    )
+    assert walking_event.raw_payload["pathPoints"] == [
+        {
+            "time": "2026-01-02T07:30:00+00:00",
+            "latitude": 52.53,
+            "longitude": 13.43,
+        },
+        {
+            "time": "2026-01-02T07:40:00+00:00",
+            "latitude": 52.535,
+            "longitude": 13.435,
+        },
+        {
+            "time": "2026-01-02T08:00:00+00:00",
+            "latitude": 52.54,
+            "longitude": 13.44,
+        },
+    ]
+
+    running_event = next(
+        event
+        for event in candidates
+        if event.type == "timeline_activity" and event.title == "Running"
+    )
+    assert running_event.raw_payload["pathPoints"] == [
+        {
+            "time": "2026-01-02T09:00:00+00:00",
+            "latitude": 52.55,
+            "longitude": 13.45,
+        },
+        {
+            "time": "2026-01-02T09:10:00+00:00",
+            "latitude": 52.56,
+            "longitude": 13.46,
+        },
+    ]
+
+
+def test_google_maps_timeline_parser_skips_unsupported_segment_kinds_with_warning(
+) -> None:
+    descriptor = GoogleMapsTimelineDocumentDescriptor(path=Path("unsupported.json"))
+
+    parsed = parse_google_maps_timeline_export_document(
+        descriptor=descriptor,
+        text="""
+        {
+          "semanticSegments": [
+            {
+              "startTime": "2026-01-02T08:00:00+01:00",
+              "endTime": "2026-01-02T08:10:00+01:00",
+              "timelineMemory": {
+                "id": "mem-1"
+              }
+            }
+          ]
+        }
+        """,
+    )
+
+    assert parsed.visit_segments == ()
+    assert parsed.timeline_path_segments == ()
+    assert parsed.activity_segments == ()
+    assert parsed.warning_messages == (
+        "Skipping unsupported Google Maps Timeline semantic segment kind(s) "
+        f"timelineMemory at index 0: {descriptor.origin_label}",
+    )

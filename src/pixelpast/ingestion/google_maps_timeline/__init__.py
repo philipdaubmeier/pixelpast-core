@@ -26,6 +26,8 @@ from pixelpast.ingestion.google_maps_timeline.fetch import (
     GoogleMapsTimelineDocumentLoadProgress,
 )
 from pixelpast.ingestion.google_maps_timeline.transform import (
+    build_google_maps_timeline_document_candidate,
+    build_google_maps_timeline_event_candidates,
     build_google_maps_timeline_source_candidate,
     build_google_maps_timeline_source_external_id,
     parse_google_maps_coordinate_pair,
@@ -51,6 +53,8 @@ __all__ = [
     "ParsedGoogleMapsTimelinePathPoint",
     "ParsedGoogleMapsTimelinePathSegment",
     "ParsedGoogleMapsTimelineVisitSegment",
+    "build_google_maps_timeline_document_candidate",
+    "build_google_maps_timeline_event_candidates",
     "build_google_maps_timeline_source_candidate",
     "build_google_maps_timeline_source_external_id",
     "parse_google_maps_coordinate_pair",

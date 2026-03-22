@@ -109,6 +109,7 @@ class ParsedGoogleMapsTimelineExport:
     visit_segments: tuple[ParsedGoogleMapsTimelineVisitSegment, ...]
     timeline_path_segments: tuple[ParsedGoogleMapsTimelinePathSegment, ...]
     activity_segments: tuple[ParsedGoogleMapsTimelineActivitySegment, ...]
+    warning_messages: tuple[str, ...]
 
 
 @dataclass(slots=True, frozen=True)
@@ -132,6 +133,8 @@ class GoogleMapsTimelineEventCandidate:
     timestamp_end: datetime | None
     title: str | None
     summary: str | None
+    latitude: float | None
+    longitude: float | None
     raw_payload: dict[str, Any] | None
     derived_payload: dict[str, Any] | None
 
