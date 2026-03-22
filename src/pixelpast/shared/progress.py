@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from time import monotonic
 
+from sqlalchemy.exc import OperationalError
+
 from pixelpast.persistence.repositories import JobRunRepository
 from pixelpast.shared.runtime import RuntimeContext
+
+logger = logging.getLogger(__name__)
 
 
 def build_initial_job_progress_payload() -> dict[str, int | None]:
@@ -221,15 +226,31 @@ class JobProgressEngine:
         if not force and not self._heartbeat_due():
             return False
 
-        self._persist_job_run(
-            persist=lambda repository, heartbeat_at: repository.update_progress(
-                run_id=self.state.run_id,
-                phase=self.state.phase,
-                progress_json=self._payload_factory(),
-                last_heartbeat_at=heartbeat_at,
-                status=self.state.status,
+        try:
+            self._persist_job_run(
+                persist=lambda repository, heartbeat_at: repository.update_progress(
+                    run_id=self.state.run_id,
+                    phase=self.state.phase,
+                    progress_json=self._payload_factory(),
+                    last_heartbeat_at=heartbeat_at,
+                    status=self.state.status,
+                )
             )
-        )
+        except OperationalError as error:
+            if not _is_sqlite_locking_error(error):
+                raise
+            logger.warning(
+                "job progress heartbeat skipped because the SQLite database is busy",
+                extra={
+                    "job_type": self.state.job_type,
+                    "job": self.state.job,
+                    "run_id": self.state.run_id,
+                    "phase": self.state.phase,
+                    "status": self.state.status,
+                },
+                exc_info=True,
+            )
+            return False
         return True
 
     def _persist_terminal_state(self, *, status: str) -> datetime:
@@ -275,6 +296,21 @@ def _utc_now() -> datetime:
     """Return the current aware UTC time."""
 
     return datetime.now(UTC)
+
+
+def _is_sqlite_locking_error(error: OperationalError) -> bool:
+    """Return whether an operational error reflects a transient SQLite lock."""
+
+    candidate_messages = [str(error).lower()]
+    original_error = getattr(error, "orig", None)
+    if original_error is not None:
+        candidate_messages.append(str(original_error).lower())
+
+    return any(
+        marker in message
+        for message in candidate_messages
+        for marker in ("database is locked", "database table is locked")
+    )
 
 
 __all__ = [
