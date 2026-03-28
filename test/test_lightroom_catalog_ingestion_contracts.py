@@ -11,6 +11,7 @@ from pixelpast.ingestion.lightroom_catalog import (
     LightroomAssetCandidate,
     LightroomCatalogCandidate,
     LightroomCatalogDescriptor,
+    LightroomCatalogTransformer,
     LightroomChosenImageRow,
     LightroomCollectionMembership,
     LightroomFaceRegion,
@@ -44,6 +45,7 @@ def test_lightroom_catalog_public_contract_imports_remain_stable() -> None:
     assert LightroomCatalogCandidate is lightroom_contracts.LightroomCatalogCandidate
     assert LightroomTransformError is lightroom_contracts.LightroomTransformError
     assert LightroomIngestionResult is lightroom_contracts.LightroomIngestionResult
+    assert LightroomCatalogTransformer.__name__ == "LightroomCatalogTransformer"
     assert (
         decompress_lightroom_xmp_blob
         is lightroom_xmp.decompress_lightroom_xmp_blob
@@ -100,6 +102,11 @@ def test_lightroom_fixture_characterizes_chosen_images_and_join_boundaries() -> 
             xmp_blob=rows[0].xmp_blob,
             caption=None,
             creator_name="Leonardo da Vinci",
+            camera=None,
+            lens=None,
+            aperture_apex=None,
+            shutter_speed_apex=None,
+            iso_speed_rating=None,
             gps_latitude=48.86189241666667,
             gps_longitude=2.3358866333333332,
         ),
@@ -117,6 +124,11 @@ def test_lightroom_fixture_characterizes_chosen_images_and_join_boundaries() -> 
             xmp_blob=rows[1].xmp_blob,
             caption=None,
             creator_name="Leonardo da Vinci",
+            camera=None,
+            lens=None,
+            aperture_apex=None,
+            shutter_speed_apex=None,
+            iso_speed_rating=None,
             gps_latitude=48.86039605,
             gps_longitude=2.334584866666667,
         ),
@@ -134,6 +146,11 @@ def test_lightroom_fixture_characterizes_chosen_images_and_join_boundaries() -> 
             xmp_blob=rows[2].xmp_blob,
             caption=None,
             creator_name="Leonardo da Vinci",
+            camera=None,
+            lens=None,
+            aperture_apex=None,
+            shutter_speed_apex=None,
+            iso_speed_rating=None,
             gps_latitude=48.860383066666664,
             gps_longitude=2.3385617666666665,
         ),
@@ -271,8 +288,14 @@ def test_lightroom_contracts_pin_existing_asset_storage_boundary_without_schema_
         latitude=48.86189241666667,
         longitude=2.3358866333333332,
         creator_name="Leonardo da Vinci",
-        tag_paths=("events", "events/vacation/M\u00fcnchen"),
-        persons=(LightroomPersonCandidate(name="Mona Lisa", path="Mona Lisa"),),
+        tag_paths=("events", "events|vacation", "events|vacation|M\u00fcnchen"),
+        asset_tag_paths=("events", "events|vacation", "events|vacation|M\u00fcnchen"),
+        persons=(
+            LightroomPersonCandidate(
+                name="Mona Lisa",
+                path="who|Persons|Mona Lisa",
+            ),
+        ),
         metadata_json={
             "file_name": "monalisa-1.jpg",
             "file_path": (
@@ -283,21 +306,21 @@ def test_lightroom_contracts_pin_existing_asset_storage_boundary_without_schema_
             "caption": None,
             "camera": None,
             "lens": None,
-            "aperture": None,
+            "aperture_f_number": None,
             "shutter_speed_seconds": None,
             "iso": None,
             "rating": 3,
             "color_label": "Rot",
-            "collection_memberships": (),
-            "face_regions": (
-                LightroomFaceRegion(
-                    name="Mona Lisa",
-                    left=0.29167,
-                    top=0.25980499999999995,
-                    right=0.58579,
-                    bottom=0.537995,
-                ),
-            ),
+            "collections": [],
+            "face_regions": [
+                {
+                    "name": "Mona Lisa",
+                    "left": 0.29167,
+                    "top": 0.25980499999999995,
+                    "right": 0.58579,
+                    "bottom": 0.537995,
+                }
+            ],
         },
     )
     catalog_candidate = LightroomCatalogCandidate(
@@ -339,6 +362,11 @@ def _fetch_chosen_image_rows() -> tuple[LightroomChosenImageRow, ...]:
                 metadata.xmp AS xmp_blob,
                 iptc.caption AS caption,
                 creator.value AS creator_name,
+                camera.value AS camera,
+                lens.value AS lens,
+                exif.aperture AS aperture_apex,
+                exif.shutterSpeed AS shutter_speed_apex,
+                exif.isoSpeedRating AS iso_speed_rating,
                 exif.gpsLatitude AS gps_latitude,
                 exif.gpsLongitude AS gps_longitude
             FROM chosen_images chosen
@@ -350,6 +378,10 @@ def _fetch_chosen_image_rows() -> tuple[LightroomChosenImageRow, ...]:
             JOIN Adobe_AdditionalMetadata metadata ON metadata.image = ai.id_local
             LEFT JOIN AgLibraryIPTC iptc ON iptc.image = ai.id_local
             LEFT JOIN AgHarvestedExifMetadata exif ON exif.image = ai.id_local
+            LEFT JOIN AgInternedExifCameraModel camera
+                ON camera.id_local = exif.cameraModelRef
+            LEFT JOIN AgInternedExifLens lens
+                ON lens.id_local = exif.lensRef
             LEFT JOIN AgHarvestedIptcMetadata harvested ON harvested.image = ai.id_local
             LEFT JOIN AgInternedIptcCreator creator
                 ON creator.id_local = harvested.creatorRef
@@ -380,6 +412,11 @@ def _fetch_chosen_image_rows() -> tuple[LightroomChosenImageRow, ...]:
             xmp_blob=row["xmp_blob"],
             caption=row["caption"],
             creator_name=row["creator_name"],
+            camera=row["camera"],
+            lens=row["lens"],
+            aperture_apex=row["aperture_apex"],
+            shutter_speed_apex=row["shutter_speed_apex"],
+            iso_speed_rating=row["iso_speed_rating"],
             gps_latitude=row["gps_latitude"],
             gps_longitude=row["gps_longitude"],
         )

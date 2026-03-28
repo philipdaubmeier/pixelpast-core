@@ -22,6 +22,9 @@ from pixelpast.ingestion.lightroom_catalog.fetch import (
     LightroomCatalogLoadProgress,
     open_lightroom_catalog_read_only,
 )
+from pixelpast.ingestion.lightroom_catalog.transform import (
+    LightroomCatalogTransformer,
+)
 from pixelpast.ingestion.lightroom_catalog.xmp import (
     decompress_lightroom_xmp_blob,
     parse_lightroom_xmp_payload,
@@ -33,6 +36,7 @@ __all__ = [
     "LightroomCatalogDiscoverer",
     "LightroomCatalogFetcher",
     "LightroomCatalogLoadProgress",
+    "LightroomCatalogTransformer",
     "LoadedLightroomCatalog",
     "LightroomAssetCandidate",
     "LightroomCatalogCandidate",

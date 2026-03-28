@@ -49,19 +49,36 @@ def parse_lightroom_xmp_payload(*, image_id: int, blob: bytes) -> LightroomXmpPa
     return LightroomXmpPayload(
         image_id=image_id,
         xml_text=xml_bytes.decode("utf-8"),
-        document_id=description.attrib.get(f"{{{_NS['xmpMM']}}}DocumentID"),
-        preserved_file_name=description.attrib.get(
-            f"{{{_NS['xmpMM']}}}PreservedFileName"
+        document_id=_normalize_optional_text(
+            description.attrib.get(f"{{{_NS['xmpMM']}}}DocumentID")
         ),
-        title=root.findtext(".//dc:title/rdf:Alt/rdf:li", namespaces=_NS),
+        preserved_file_name=_normalize_optional_text(
+            description.attrib.get(f"{{{_NS['xmpMM']}}}PreservedFileName")
+        ),
+        title=_normalize_optional_text(
+            root.findtext(".//dc:title/rdf:Alt/rdf:li", namespaces=_NS)
+        ),
         hierarchical_keywords=tuple(
-            keyword.text or ""
-            for keyword in root.findall(
+            keyword
+            for keyword in (
+                _normalize_optional_text(node.text)
+                for node in root.findall(
                 ".//lr:hierarchicalSubject/rdf:Bag/rdf:li",
                 _NS,
             )
+            )
+            if keyword is not None
         ),
     )
+
+
+def _normalize_optional_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = value.strip()
+    if normalized == "":
+        return None
+    return normalized
 
 
 __all__ = [

@@ -54,6 +54,11 @@ class LightroomChosenImageRow:
     xmp_blob: bytes
     caption: str | None
     creator_name: str | None
+    camera: str | None
+    lens: str | None
+    aperture_apex: float | None
+    shutter_speed_apex: float | None
+    iso_speed_rating: float | None
     gps_latitude: float | None
     gps_longitude: float | None
 
@@ -146,6 +151,7 @@ class LightroomAssetCandidate:
     longitude: float | None
     creator_name: str | None
     tag_paths: tuple[str, ...]
+    asset_tag_paths: tuple[str, ...]
     persons: tuple[LightroomPersonCandidate, ...]
     metadata_json: dict[str, Any] | None
 

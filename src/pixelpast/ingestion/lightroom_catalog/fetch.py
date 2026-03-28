@@ -113,6 +113,11 @@ def _fetch_chosen_image_rows(
             metadata.xmp AS xmp_blob,
             iptc.caption AS caption,
             creator.value AS creator_name,
+            camera.value AS camera,
+            lens.value AS lens,
+            exif.aperture AS aperture_apex,
+            exif.shutterSpeed AS shutter_speed_apex,
+            exif.isoSpeedRating AS iso_speed_rating,
             exif.gpsLatitude AS gps_latitude,
             exif.gpsLongitude AS gps_longitude
         FROM chosen_images chosen
@@ -124,6 +129,10 @@ def _fetch_chosen_image_rows(
         JOIN Adobe_AdditionalMetadata metadata ON metadata.image = ai.id_local
         LEFT JOIN AgLibraryIPTC iptc ON iptc.image = ai.id_local
         LEFT JOIN AgHarvestedExifMetadata exif ON exif.image = ai.id_local
+        LEFT JOIN AgInternedExifCameraModel camera
+            ON camera.id_local = exif.cameraModelRef
+        LEFT JOIN AgInternedExifLens lens
+            ON lens.id_local = exif.lensRef
         LEFT JOIN AgHarvestedIptcMetadata harvested ON harvested.image = ai.id_local
         LEFT JOIN AgInternedIptcCreator creator
             ON creator.id_local = harvested.creatorRef
@@ -153,6 +162,11 @@ def _fetch_chosen_image_rows(
             xmp_blob=row["xmp_blob"],
             caption=row["caption"],
             creator_name=row["creator_name"],
+            camera=row["camera"],
+            lens=row["lens"],
+            aperture_apex=row["aperture_apex"],
+            shutter_speed_apex=row["shutter_speed_apex"],
+            iso_speed_rating=row["iso_speed_rating"],
             gps_latitude=row["gps_latitude"],
             gps_longitude=row["gps_longitude"],
         )
