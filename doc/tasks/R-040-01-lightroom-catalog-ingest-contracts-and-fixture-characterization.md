@@ -58,10 +58,13 @@ The tests should pin the first expected behaviors from that real catalog:
   - XMP `DocumentID`
   - XMP `PreservedFileName`
   - XMP `dc:title`
-  - IPTC caption
   - hierarchical keywords
   - face data
-  - collection membership
+
+The current checked-in fixture does not contain non-null IPTC captions or
+concrete static collection memberships in `AgLibraryCollectionImage`.
+Characterization tests should pin that reality explicitly so later tasks do not
+assume sample data that is not actually present.
 
 The tests should characterize the fixture through real SQL reads rather than
 through hand-built fake row dictionaries only.

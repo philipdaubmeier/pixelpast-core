@@ -37,3 +37,5 @@ def _cleanup_var_directory() -> None:
             path.unlink()
         except FileNotFoundError:
             continue
+        except PermissionError:
+            continue
