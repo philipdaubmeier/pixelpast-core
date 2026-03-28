@@ -13,6 +13,7 @@ class LightroomCatalogDescriptor:
     """One discovered Lightroom Classic catalog file."""
 
     path: Path
+    configured_path: Path | None = None
 
     @property
     def origin_path(self) -> Path:
@@ -25,6 +26,18 @@ class LightroomCatalogDescriptor:
         """Return the deterministic human-readable catalog identifier."""
 
         return self.origin_path.as_posix()
+
+    @property
+    def original_configured_path(self) -> Path:
+        """Return the original configured catalog path before normalization."""
+
+        return self.configured_path if self.configured_path is not None else self.path
+
+    @property
+    def file_extension(self) -> str:
+        """Return the normalized catalog file extension."""
+
+        return self.origin_path.suffix.lower()
 
 
 @dataclass(slots=True, frozen=True)
@@ -43,6 +56,42 @@ class LightroomChosenImageRow:
     creator_name: str | None
     gps_latitude: float | None
     gps_longitude: float | None
+
+
+@dataclass(slots=True, frozen=True)
+class LightroomFaceRow:
+    """One Lightroom face-region row loaded separately from base asset rows."""
+
+    image_id: int
+    face_id: int
+    name: str | None
+    left: float
+    top: float
+    right: float
+    bottom: float
+    region_type: float | None
+    orientation: float | None
+
+
+@dataclass(slots=True, frozen=True)
+class LightroomCollectionRow:
+    """One Lightroom collection membership row loaded separately from base rows."""
+
+    image_id: int
+    collection_id: int
+    collection_name: str
+    collection_path: str
+    parent_collection_id: int | None
+
+
+@dataclass(slots=True, frozen=True)
+class LoadedLightroomCatalog:
+    """One read-only loaded Lightroom catalog payload prior to transform."""
+
+    descriptor: LightroomCatalogDescriptor
+    chosen_images: tuple[LightroomChosenImageRow, ...]
+    face_rows: tuple[LightroomFaceRow, ...]
+    collection_rows: tuple[LightroomCollectionRow, ...]
 
 
 @dataclass(slots=True, frozen=True)
@@ -133,11 +182,14 @@ class LightroomIngestionResult:
 
 
 __all__ = [
+    "LoadedLightroomCatalog",
     "LightroomAssetCandidate",
     "LightroomCatalogCandidate",
     "LightroomCatalogDescriptor",
     "LightroomChosenImageRow",
     "LightroomCollectionMembership",
+    "LightroomCollectionRow",
+    "LightroomFaceRow",
     "LightroomFaceRegion",
     "LightroomIngestionResult",
     "LightroomPersonCandidate",
