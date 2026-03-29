@@ -5,8 +5,17 @@ from __future__ import annotations
 from pixelpast.ingestion.workdays_vacation.contracts import (
     WorkdaysVacationWorkbookCandidate,
 )
+from pixelpast.ingestion.persister_helpers import (
+    compose_event_persistence_outcome,
+    count_missing_events_for_source,
+    replace_events_for_source,
+    upsert_required_source,
+)
 from pixelpast.persistence.repositories import EventRepository, SourceRepository
-from pixelpast.shared.persistence_outcome_summary import PersistenceOutcomeSummary
+
+_MISSING_EXTERNAL_ID_MESSAGE = (
+    "Workdays vacation workbook candidate is missing a required source external id."
+)
 
 
 class WorkdaysVacationWorkbookPersister:
@@ -26,40 +35,21 @@ class WorkdaysVacationWorkbookPersister:
     def persist(self, *, candidate: WorkdaysVacationWorkbookCandidate) -> str:
         """Persist one workbook source candidate and its canonical event set."""
 
-        source_result = self._source_repository.upsert_by_external_id(
-            external_id=_require_source_external_id(candidate),
-            name=(
-                candidate.source.name
-                or candidate.source.external_id
-                or "Workdays Vacation"
-            ),
-            source_type=candidate.source.type,
-            config=candidate.source.config_json or {},
+        event_payloads = _build_event_payloads(candidate=candidate)
+        source_id = upsert_required_source(
+            source_repository=self._source_repository,
+            source=candidate.source,
+            default_name="Workdays Vacation",
+            missing_external_id_message=_MISSING_EXTERNAL_ID_MESSAGE,
         )
-        event_result = self._event_repository.replace_for_source(
-            source_id=source_result.source.id,
-            events=[
-                {
-                    "external_event_id": event.external_event_id,
-                    "type": event.type,
-                    "timestamp_start": event.timestamp_start,
-                    "timestamp_end": event.timestamp_end,
-                    "title": event.title,
-                    "summary": event.summary,
-                    "latitude": None,
-                    "longitude": None,
-                    "raw_payload": {
-                        **(event.raw_payload or {}),
-                        "external_event_id": event.external_event_id,
-                    },
-                    "derived_payload": event.derived_payload or {},
-                }
-                for event in candidate.events
-            ],
+        event_result = replace_events_for_source(
+            event_repository=self._event_repository,
+            source_id=source_id,
+            event_payloads=event_payloads,
         )
         self.persisted_source_count += 1
         self.persisted_event_count += event_result.persisted_event_count
-        return _compose_workbook_outcome(
+        return compose_event_persistence_outcome(
             event_result=event_result,
             skipped_event_count=candidate.skipped_event_count,
         )
@@ -71,56 +61,37 @@ class WorkdaysVacationWorkbookPersister:
     ) -> int:
         """Preview source-scoped missing events for one workbook."""
 
-        source_external_id = _require_source_external_id(candidate)
-        source = self._source_repository.get_by_external_id(
-            external_id=source_external_id
-        )
-        if source is None:
-            return 0
-        return self._event_repository.count_missing_from_source(
-            source_id=source.id,
-            events=[
-                {
-                    "external_event_id": event.external_event_id,
-                    "type": event.type,
-                    "timestamp_start": event.timestamp_start,
-                    "timestamp_end": event.timestamp_end,
-                    "title": event.title,
-                    "summary": event.summary,
-                    "latitude": None,
-                    "longitude": None,
-                    "raw_payload": {
-                        **(event.raw_payload or {}),
-                        "external_event_id": event.external_event_id,
-                    },
-                    "derived_payload": event.derived_payload or {},
-                }
-                for event in candidate.events
-            ],
+        return count_missing_events_for_source(
+            source_repository=self._source_repository,
+            event_repository=self._event_repository,
+            source=candidate.source,
+            event_payloads=_build_event_payloads(candidate=candidate),
+            missing_external_id_message=_MISSING_EXTERNAL_ID_MESSAGE,
         )
 
 
-def _compose_workbook_outcome(
+def _build_event_payloads(
     *,
-    event_result,
-    skipped_event_count: int,
-) -> str:
-    return PersistenceOutcomeSummary(
-        inserted=event_result.inserted_event_count,
-        updated=event_result.updated_event_count,
-        unchanged=event_result.unchanged_event_count,
-        skipped=skipped_event_count,
-        persisted_event_count=event_result.persisted_event_count,
-    ).to_wire()
-
-
-def _require_source_external_id(candidate: WorkdaysVacationWorkbookCandidate) -> str:
-    if candidate.source.external_id is None:
-        raise ValueError(
-            "Workdays vacation workbook candidate is missing a required source "
-            "external id."
-        )
-    return candidate.source.external_id
+    candidate: WorkdaysVacationWorkbookCandidate,
+) -> list[dict[str, object]]:
+    return [
+        {
+            "external_event_id": event.external_event_id,
+            "type": event.type,
+            "timestamp_start": event.timestamp_start,
+            "timestamp_end": event.timestamp_end,
+            "title": event.title,
+            "summary": event.summary,
+            "latitude": None,
+            "longitude": None,
+            "raw_payload": {
+                **(event.raw_payload or {}),
+                "external_event_id": event.external_event_id,
+            },
+            "derived_payload": event.derived_payload or {},
+        }
+        for event in candidate.events
+    ]
 
 
 __all__ = ["WorkdaysVacationWorkbookPersister"]
