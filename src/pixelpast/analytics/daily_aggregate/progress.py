@@ -7,11 +7,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 
-from pixelpast.shared.progress import (
-    JobProgressCallback,
-    JobProgressEngine,
-    JobProgressSnapshot,
-)
+from pixelpast.shared.job_progress_tracker import SharedJobProgressTrackerBase
+from pixelpast.shared.progress import JobProgressCallback, JobProgressSnapshot
 from pixelpast.shared.runtime import RuntimeContext
 
 logger = logging.getLogger(__name__)
@@ -53,7 +50,9 @@ class DailyAggregateProgressState:
         }
 
 
-class DailyAggregateProgressTracker:
+class DailyAggregateProgressTracker(
+    SharedJobProgressTrackerBase[DailyAggregateProgressState]
+):
     """Daily-aggregate-specific adapter over the shared job progress engine."""
 
     loading_phase = "loading canonical inputs"
@@ -70,14 +69,14 @@ class DailyAggregateProgressTracker:
         now_factory: Callable[[], datetime] | None = None,
         monotonic_factory: Callable[[], float] | None = None,
     ) -> None:
-        self._state = DailyAggregateProgressState()
-        self._engine = JobProgressEngine(
+        super().__init__(
+            state=DailyAggregateProgressState(),
             job_type="derive",
             job=DAILY_AGGREGATE_JOB_NAME,
             run_id=run_id,
             runtime=runtime,
-            payload_factory=self._progress_payload,
-            snapshot_factory=self._build_snapshot,
+            logger=logger,
+            heartbeat_log_message="daily aggregate derive heartbeat written",
             callback=callback,
             heartbeat_interval_seconds=heartbeat_interval_seconds,
             now_factory=now_factory,
@@ -87,9 +86,10 @@ class DailyAggregateProgressTracker:
     def start_loading(self) -> None:
         """Enter canonical loading with one deterministic unit per input bucket."""
 
-        self._log_phase_started(phase=self.loading_phase, total=5)
-        self._log_heartbeat_if_written(
-            self._engine.start_phase(phase=self.loading_phase, total=5)
+        self._start_phase(
+            phase=self.loading_phase,
+            total=5,
+            log_message="daily aggregate derive phase started",
         )
 
     def mark_loading_bucket_completed(self) -> None:
@@ -101,12 +101,10 @@ class DailyAggregateProgressTracker:
     def start_building(self, *, total_input_count: int) -> None:
         """Enter aggregate construction using canonical contribution count as total."""
 
-        self._log_phase_started(phase=self.building_phase, total=total_input_count)
-        self._log_heartbeat_if_written(
-            self._engine.start_phase(
-                phase=self.building_phase,
-                total=total_input_count,
-            )
+        self._start_phase(
+            phase=self.building_phase,
+            total=total_input_count,
+            log_message="daily aggregate derive phase started",
         )
 
     def mark_build_completed(self, *, total_input_count: int) -> None:
@@ -121,12 +119,10 @@ class DailyAggregateProgressTracker:
     def start_persisting(self, *, aggregate_count: int) -> None:
         """Enter aggregate persistence with one unit per output row."""
 
-        self._log_phase_started(phase=self.persistence_phase, total=aggregate_count)
-        self._log_heartbeat_if_written(
-            self._engine.start_phase(
-                phase=self.persistence_phase,
-                total=aggregate_count,
-            )
+        self._start_phase(
+            phase=self.persistence_phase,
+            total=aggregate_count,
+            log_message="daily aggregate derive phase started",
         )
 
     def mark_persisted(self, *, aggregate_count: int) -> None:
@@ -142,104 +138,20 @@ class DailyAggregateProgressTracker:
     def finish_phase(self) -> None:
         """Persist completion of the current derive phase."""
 
-        self._log_heartbeat_if_written(self._engine.finish_phase())
+        self._finish_phase()
 
     def finish_run(self, *, status: str) -> JobProgressSnapshot:
         """Persist terminal derive success."""
 
-        snapshot = self._engine.finish_run(status=status)
-        logger.info(
-            "daily aggregate derive completed",
-            extra={
-                "run_id": self._engine.state.run_id,
-                "status": status,
-                **self._progress_payload(),
-            },
+        return self._finish_run(
+            status=status,
+            log_message="daily aggregate derive completed",
         )
-        return snapshot
 
     def fail_run(self) -> JobProgressSnapshot:
         """Persist terminal derive failure."""
 
-        snapshot = self._engine.fail_run()
-        logger.error(
-            "daily aggregate derive failed",
-            extra={
-                "run_id": self._engine.state.run_id,
-                "phase": self._engine.state.phase,
-                **self._progress_payload(),
-            },
-        )
-        return snapshot
-
-    def _emit(
-        self,
-        *,
-        event: str,
-        force_persist: bool = False,
-    ) -> JobProgressSnapshot:
-        snapshot = self._engine.emit(
-            event=event,
-            force_persist=force_persist,
-        )
-        self._log_heartbeat_if_written(snapshot)
-        return snapshot
-
-    def _progress_payload(self) -> dict[str, int | None]:
-        return self._state.to_progress_payload(
-            total=self._engine.state.total,
-            completed=self._engine.state.completed,
-        )
-
-    def _build_snapshot(
-        self,
-        event: str,
-        heartbeat_written: bool,
-    ) -> JobProgressSnapshot:
-        return JobProgressSnapshot(
-            event=event,
-            job_type=self._engine.state.job_type,
-            job=self._engine.state.job,
-            run_id=self._engine.state.run_id,
-            phase=self._engine.state.phase,
-            status=self._engine.state.status,
-            total=self._engine.state.total,
-            completed=self._engine.state.completed,
-            inserted=self._state.inserted,
-            updated=0,
-            unchanged=0,
-            skipped=0,
-            failed=0,
-            missing_from_source=0,
-            heartbeat_written=heartbeat_written,
-        )
-
-    def _log_phase_started(self, *, phase: str, total: int | None) -> None:
-        logger.info(
-            "daily aggregate derive phase started",
-            extra={
-                "run_id": self._engine.state.run_id,
-                "phase": phase,
-                "total": total,
-            },
-        )
-
-    def _log_heartbeat_if_written(self, snapshot: JobProgressSnapshot) -> None:
-        if not snapshot.heartbeat_written:
-            return
-
-        heartbeat_at = self._engine.last_heartbeat_at
-        logger.info(
-            "daily aggregate derive heartbeat written",
-            extra={
-                "run_id": self._engine.state.run_id,
-                "phase": self._engine.state.phase,
-                "last_heartbeat_at": (
-                    heartbeat_at.isoformat() if heartbeat_at is not None else None
-                ),
-                "status": self._engine.state.status,
-            },
-        )
+        return self._fail_run(log_message="daily aggregate derive failed")
 
 
 __all__ = [

@@ -13,11 +13,8 @@ from pixelpast.ingestion.workdays_vacation.contracts import (
 from pixelpast.ingestion.workdays_vacation.fetch import (
     WorkdaysVacationWorkbookLoadProgress,
 )
-from pixelpast.shared.progress import (
-    JobProgressCallback,
-    JobProgressEngine,
-    JobProgressSnapshot,
-)
+from pixelpast.shared.job_progress_tracker import SharedJobProgressTrackerBase
+from pixelpast.shared.progress import JobProgressCallback, JobProgressSnapshot
 from pixelpast.shared.runtime import RuntimeContext
 
 logger = logging.getLogger(__name__)
@@ -103,7 +100,9 @@ class WorkdaysVacationIngestionProgressState:
         }
 
 
-class WorkdaysVacationIngestionProgressTracker:
+class WorkdaysVacationIngestionProgressTracker(
+    SharedJobProgressTrackerBase[WorkdaysVacationIngestionProgressState]
+):
     """Workdays-vacation adapter over the generic ingestion progress engine."""
 
     def __init__(
@@ -116,31 +115,25 @@ class WorkdaysVacationIngestionProgressTracker:
         now_factory: Callable[[], datetime] | None = None,
         monotonic_factory: Callable[[], float] | None = None,
     ) -> None:
-        self._state = WorkdaysVacationIngestionProgressState()
-        self._engine = JobProgressEngine(
+        super().__init__(
+            state=WorkdaysVacationIngestionProgressState(),
             job_type="ingest",
             job="workdays_vacation",
             run_id=run_id,
             runtime=runtime,
-            payload_factory=self._progress_payload,
-            snapshot_factory=self._build_snapshot,
+            logger=logger,
+            heartbeat_log_message="workdays vacation ingest heartbeat written",
             callback=callback,
             heartbeat_interval_seconds=heartbeat_interval_seconds,
             now_factory=now_factory,
             monotonic_factory=monotonic_factory,
         )
 
-    @property
-    def counters(self) -> WorkdaysVacationIngestionProgressState:
-        return self._state
-
     def start_phase(self, *, phase: str, total: int | None) -> None:
-        logger.info(
-            "workdays vacation ingest phase started",
-            extra={"run_id": self._engine.state.run_id, "phase": phase, "total": total},
-        )
-        self._log_heartbeat_if_written(
-            self._engine.start_phase(phase=phase, total=total)
+        self._start_phase(
+            phase=phase,
+            total=total,
+            log_message="workdays vacation ingest phase started",
         )
 
     def mark_discovered(self, *, path: str, discovered_file_count: int) -> None:
@@ -161,16 +154,9 @@ class WorkdaysVacationIngestionProgressTracker:
         self._emit(event="progress")
 
     def finish_phase(self) -> None:
-        logger.info(
-            "workdays vacation ingest phase completed",
-            extra={
-                "run_id": self._engine.state.run_id,
-                "phase": self._engine.state.phase,
-                "total": self._engine.state.total,
-                "completed": self._engine.state.completed,
-            },
+        self._finish_phase(
+            log_message="workdays vacation ingest phase completed",
         )
-        self._log_heartbeat_if_written(self._engine.finish_phase())
 
     def mark_missing_from_source(self, *, missing_from_source_count: int) -> None:
         self._state.apply_missing_from_source_count(
@@ -226,83 +212,13 @@ class WorkdaysVacationIngestionProgressTracker:
         self._emit(event="progress")
 
     def finish_run(self, *, status: str) -> JobProgressSnapshot:
-        snapshot = self._engine.finish_run(status=status)
-        logger.info(
-            "workdays vacation ingest completed",
-            extra={
-                "run_id": self._engine.state.run_id,
-                "status": status,
-                **self._progress_payload(),
-            },
+        return self._finish_run(
+            status=status,
+            log_message="workdays vacation ingest completed",
         )
-        return snapshot
 
     def fail_run(self) -> JobProgressSnapshot:
-        snapshot = self._engine.fail_run()
-        logger.error(
-            "workdays vacation ingest failed",
-            extra={
-                "run_id": self._engine.state.run_id,
-                "phase": self._engine.state.phase,
-                **self._progress_payload(),
-            },
-        )
-        return snapshot
-
-    def _emit(
-        self,
-        *,
-        event: str,
-        force_persist: bool = False,
-    ) -> JobProgressSnapshot:
-        snapshot = self._engine.emit(event=event, force_persist=force_persist)
-        self._log_heartbeat_if_written(snapshot)
-        return snapshot
-
-    def _progress_payload(self) -> dict[str, int | str | None]:
-        return self._state.to_progress_payload(
-            total=self._engine.state.total,
-            completed=self._engine.state.completed,
-        )
-
-    def _build_snapshot(
-        self,
-        event: str,
-        heartbeat_written: bool,
-    ) -> JobProgressSnapshot:
-        return JobProgressSnapshot(
-            event=event,
-            job_type=self._engine.state.job_type,
-            job=self._engine.state.job,
-            run_id=self._engine.state.run_id,
-            phase=self._engine.state.phase,
-            status=self._engine.state.status,
-            total=self._engine.state.total,
-            completed=self._engine.state.completed,
-            inserted=self._state.inserted,
-            updated=self._state.updated,
-            unchanged=self._state.unchanged,
-            skipped=self._state.skipped,
-            failed=self._state.failed,
-            missing_from_source=self._state.missing_from_source,
-            heartbeat_written=heartbeat_written,
-        )
-
-    def _log_heartbeat_if_written(self, snapshot: JobProgressSnapshot) -> None:
-        if not snapshot.heartbeat_written:
-            return
-        heartbeat_at = self._engine.last_heartbeat_at
-        logger.info(
-            "workdays vacation ingest heartbeat written",
-            extra={
-                "run_id": self._engine.state.run_id,
-                "phase": self._engine.state.phase,
-                "last_heartbeat_at": (
-                    heartbeat_at.isoformat() if heartbeat_at is not None else None
-                ),
-                "status": self._engine.state.status,
-            },
-        )
+        return self._fail_run(log_message="workdays vacation ingest failed")
 
 
 def _parse_workbook_outcome(
