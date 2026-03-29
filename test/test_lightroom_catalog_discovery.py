@@ -20,6 +20,7 @@ from pixelpast.ingestion.lightroom_catalog import (
     LightroomFaceRow,
     open_lightroom_catalog_read_only,
 )
+from pixelpast.ingestion.lightroom_catalog import fetch as lightroom_fetch
 
 _FIXTURE_PATH = Path("test/assets/lightroom-classic-catalog-test-fixture.lrcat").resolve()
 
@@ -247,6 +248,32 @@ def test_lightroom_catalog_fetcher_loads_chosen_images_faces_and_collection_rows
             catalog_total=1,
         ),
     ]
+
+
+def test_lightroom_catalog_fetcher_applies_asset_range_before_related_row_queries() -> (
+    None
+):
+    descriptor = LightroomCatalogDescriptor(path=_FIXTURE_PATH)
+
+    loaded_catalog = LightroomCatalogFetcher().fetch_catalogs(
+        catalogs=(descriptor,),
+        start_index=2,
+        end_index=3,
+    )[0]
+
+    assert [row.image_id for row in loaded_catalog.chosen_images] == [68, 69]
+    assert [row.image_id for row in loaded_catalog.face_rows] == [68, 68, 69, 69, 69]
+    assert loaded_catalog.collection_rows == ()
+
+
+def test_lightroom_sql_batch_helper_caps_batch_size_below_sqlite_variable_limit() -> (
+    None
+):
+    batches = list(lightroom_fetch._iter_sql_batches(range(1, 2006)))
+
+    assert [len(batch) for batch in batches] == [900, 900, 205]
+    assert batches[0][0] == 1
+    assert batches[-1][-1] == 2005
 
 
 def test_lightroom_catalog_open_read_only_rejects_schema_writes() -> None:

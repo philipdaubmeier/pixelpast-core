@@ -125,6 +125,8 @@ class LightroomCatalogStagedIngestionStrategy:
     ) -> dict[LightroomCatalogDescriptor, LoadedLightroomCatalog]:
         loaded_catalogs = self._connector.fetch_catalogs(
             catalogs=units,
+            start_index=self._start_index,
+            end_index=self._end_index,
             on_catalog_progress=on_batch_progress,
         )
         return {
@@ -140,11 +142,7 @@ class LightroomCatalogStagedIngestionStrategy:
         fetched_payloads: dict[LightroomCatalogDescriptor, LoadedLightroomCatalog],
     ) -> LightroomCatalogCandidate:
         del root
-        return self._connector.build_catalog_candidate(
-            catalog=fetched_payloads[unit],
-            start_index=self._start_index,
-            end_index=self._end_index,
-        )
+        return self._connector.build_catalog_candidate(catalog=fetched_payloads[unit])
 
     def build_transform_error(
         self,

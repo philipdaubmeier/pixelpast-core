@@ -64,6 +64,8 @@ class LightroomCatalogConnector:
         self,
         *,
         catalogs: Sequence[LightroomCatalogDescriptor],
+        start_index: int | None = None,
+        end_index: int | None = None,
         on_catalog_progress: (
             Callable[[LightroomCatalogLoadProgress], None] | None
         ) = None,
@@ -72,6 +74,8 @@ class LightroomCatalogConnector:
 
         return self._catalog_fetcher.fetch_catalogs(
             catalogs=catalogs,
+            start_index=start_index,
+            end_index=end_index,
             on_catalog_progress=on_catalog_progress,
         )
 

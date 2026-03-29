@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -33,6 +33,8 @@ class LightroomCatalogFetcher:
         self,
         *,
         catalogs: Sequence[LightroomCatalogDescriptor],
+        start_index: int | None = None,
+        end_index: int | None = None,
         on_catalog_progress: (
             Callable[[LightroomCatalogLoadProgress], None] | None
         ) = None,
@@ -51,7 +53,13 @@ class LightroomCatalogFetcher:
                         catalog_total=catalog_total,
                     )
                 )
-            loaded_catalogs.append(self._fetch_catalog(catalog=catalog))
+            loaded_catalogs.append(
+                self._fetch_catalog(
+                    catalog=catalog,
+                    start_index=start_index,
+                    end_index=end_index,
+                )
+            )
             if on_catalog_progress is not None:
                 on_catalog_progress(
                     LightroomCatalogLoadProgress(
@@ -67,9 +75,15 @@ class LightroomCatalogFetcher:
         self,
         *,
         catalog: LightroomCatalogDescriptor,
+        start_index: int | None = None,
+        end_index: int | None = None,
     ) -> LoadedLightroomCatalog:
         with open_lightroom_catalog_read_only(catalog.origin_path) as connection:
-            chosen_images = _fetch_chosen_image_rows(connection)
+            chosen_images = _fetch_chosen_image_rows(
+                connection,
+                start_index=start_index,
+                end_index=end_index,
+            )
             image_ids = tuple(row.image_id for row in chosen_images)
             face_rows = _fetch_face_rows(connection, image_ids=image_ids)
             collection_rows = _fetch_collection_rows(connection, image_ids=image_ids)
@@ -91,9 +105,16 @@ def open_lightroom_catalog_read_only(path: Path) -> sqlite3.Connection:
 
 def _fetch_chosen_image_rows(
     connection: sqlite3.Connection,
+    *,
+    start_index: int | None = None,
+    end_index: int | None = None,
 ) -> tuple[LightroomChosenImageRow, ...]:
+    limit_clause, limit_parameters = _build_limit_clause(
+        start_index=start_index,
+        end_index=end_index,
+    )
     rows = connection.execute(
-        """
+        f"""
         WITH chosen_images AS (
             SELECT rootFile, MIN(id_local) AS image_id
             FROM Adobe_images
@@ -137,7 +158,9 @@ def _fetch_chosen_image_rows(
         LEFT JOIN AgInternedIptcCreator creator
             ON creator.id_local = harvested.creatorRef
         ORDER BY ai.id_local
-        """
+        {limit_clause}
+        """,
+        limit_parameters,
     ).fetchall()
 
     return tuple(
@@ -182,28 +205,32 @@ def _fetch_face_rows(
     if not image_ids:
         return ()
 
-    rows = connection.execute(
-        f"""
-        SELECT
-            face.image AS image_id,
-            face.id_local AS face_id,
-            keyword.name AS name,
-            face.tl_x AS left,
-            face.tl_y AS top,
-            face.tr_x AS right,
-            face.bl_y AS bottom,
-            face.regionType AS region_type,
-            face.orientation AS orientation
-        FROM AgLibraryFace face
-        LEFT JOIN AgLibraryKeywordFace keyword_face
-            ON keyword_face.face = face.id_local
-        LEFT JOIN AgLibraryKeyword keyword
-            ON keyword.id_local = keyword_face.tag
-        WHERE face.image IN ({_sql_placeholders(len(image_ids))})
-        ORDER BY face.image, face.id_local, keyword.name
-        """,
-        image_ids,
-    ).fetchall()
+    rows: list[sqlite3.Row] = []
+    for batch_image_ids in _iter_sql_batches(image_ids):
+        rows.extend(
+            connection.execute(
+                f"""
+                SELECT
+                    face.image AS image_id,
+                    face.id_local AS face_id,
+                    keyword.name AS name,
+                    face.tl_x AS left,
+                    face.tl_y AS top,
+                    face.tr_x AS right,
+                    face.bl_y AS bottom,
+                    face.regionType AS region_type,
+                    face.orientation AS orientation
+                FROM AgLibraryFace face
+                LEFT JOIN AgLibraryKeywordFace keyword_face
+                    ON keyword_face.face = face.id_local
+                LEFT JOIN AgLibraryKeyword keyword
+                    ON keyword.id_local = keyword_face.tag
+                WHERE face.image IN ({_sql_placeholders(len(batch_image_ids))})
+                ORDER BY face.image, face.id_local, keyword.name
+                """,
+                batch_image_ids,
+            ).fetchall()
+        )
 
     return tuple(
         LightroomFaceRow(
@@ -229,21 +256,25 @@ def _fetch_collection_rows(
     if not image_ids:
         return ()
 
-    membership_rows = connection.execute(
-        f"""
-        SELECT
-            membership.image AS image_id,
-            collection.id_local AS collection_id,
-            collection.name AS collection_name,
-            collection.parent AS parent_collection_id
-        FROM AgLibraryCollectionImage membership
-        JOIN AgLibraryCollection collection
-            ON collection.id_local = membership.collection
-        WHERE membership.image IN ({_sql_placeholders(len(image_ids))})
-        ORDER BY membership.image, collection.id_local
-        """,
-        image_ids,
-    ).fetchall()
+    membership_rows: list[sqlite3.Row] = []
+    for batch_image_ids in _iter_sql_batches(image_ids):
+        membership_rows.extend(
+            connection.execute(
+                f"""
+                SELECT
+                    membership.image AS image_id,
+                    collection.id_local AS collection_id,
+                    collection.name AS collection_name,
+                    collection.parent AS parent_collection_id
+                FROM AgLibraryCollectionImage membership
+                JOIN AgLibraryCollection collection
+                    ON collection.id_local = membership.collection
+                WHERE membership.image IN ({_sql_placeholders(len(batch_image_ids))})
+                ORDER BY membership.image, collection.id_local
+                """,
+                batch_image_ids,
+            ).fetchall()
+        )
     if not membership_rows:
         return ()
 
@@ -338,6 +369,39 @@ def _coerce_optional_int(value: object) -> int | None:
 
 def _sql_placeholders(count: int) -> str:
     return ", ".join("?" for _ in range(count))
+
+
+def _build_limit_clause(
+    *,
+    start_index: int | None,
+    end_index: int | None,
+) -> tuple[str, tuple[int, ...]]:
+    if start_index is None and end_index is None:
+        return "", ()
+
+    normalized_start = 1 if start_index is None else start_index
+    normalized_end = end_index
+    offset = normalized_start - 1
+    if normalized_end is None:
+        return "LIMIT -1 OFFSET ?", (offset,)
+
+    limit = normalized_end - normalized_start + 1
+    return "LIMIT ? OFFSET ?", (limit, offset)
+
+
+def _iter_sql_batches(
+    values: Iterable[int],
+    *,
+    batch_size: int = 900,
+) -> Iterable[tuple[int, ...]]:
+    batch: list[int] = []
+    for value in values:
+        batch.append(value)
+        if len(batch) == batch_size:
+            yield tuple(batch)
+            batch = []
+    if batch:
+        yield tuple(batch)
 
 
 __all__ = [
