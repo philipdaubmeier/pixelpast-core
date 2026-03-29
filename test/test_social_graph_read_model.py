@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from pixelpast.api.providers.social_graph import build_social_graph_response
-from pixelpast.persistence.models import Asset, AssetPerson, Person
+from pixelpast.persistence.models import Asset, AssetPerson, Person, Source
 from pixelpast.persistence.repositories import SocialGraphReadRepository
 from pixelpast.shared.runtime import create_runtime_context, initialize_database
 from pixelpast.shared.settings import Settings
@@ -15,10 +15,12 @@ def test_social_graph_projection_keeps_isolated_qualifying_person_without_links(
     runtime = _create_runtime()
     try:
         with runtime.session_factory() as session:
+            photo_source = _create_photo_source(session)
             anna = Person(name="Anna", aliases=None, metadata_json=None)
             session.add(anna)
             session.flush()
             asset = Asset(
+                source_id=photo_source.id,
                 external_id="asset-1",
                 media_type="photo",
                 timestamp=datetime(2024, 1, 2, 9, 0, tzinfo=UTC),
@@ -55,12 +57,14 @@ def test_social_graph_projection_counts_repeated_pair_co_occurrence_across_asset
     runtime = _create_runtime()
     try:
         with runtime.session_factory() as session:
+            photo_source = _create_photo_source(session)
             anna = Person(name="Anna", aliases=None, metadata_json=None)
             ben = Person(name="Ben", aliases=None, metadata_json=None)
             session.add_all([anna, ben])
             session.flush()
 
             first_asset = Asset(
+                source_id=photo_source.id,
                 external_id="asset-1",
                 media_type="photo",
                 timestamp=datetime(2024, 1, 2, 9, 0, tzinfo=UTC),
@@ -71,6 +75,7 @@ def test_social_graph_projection_counts_repeated_pair_co_occurrence_across_asset
                 metadata_json={},
             )
             second_asset = Asset(
+                source_id=photo_source.id,
                 external_id="asset-2",
                 media_type="photo",
                 timestamp=datetime(2024, 1, 2, 10, 0, tzinfo=UTC),
@@ -112,6 +117,7 @@ def test_social_graph_projection_orders_pairs_stably_and_treats_links_as_unorder
     runtime = _create_runtime()
     try:
         with runtime.session_factory() as session:
+            photo_source = _create_photo_source(session)
             zoe = Person(name="Zoe", aliases=None, metadata_json=None)
             anna = Person(name="Anna", aliases=None, metadata_json=None)
             ben = Person(name="Ben", aliases=None, metadata_json=None)
@@ -119,6 +125,7 @@ def test_social_graph_projection_orders_pairs_stably_and_treats_links_as_unorder
             session.flush()
 
             first_asset = Asset(
+                source_id=photo_source.id,
                 external_id="asset-1",
                 media_type="photo",
                 timestamp=datetime(2024, 1, 2, 9, 0, tzinfo=UTC),
@@ -129,6 +136,7 @@ def test_social_graph_projection_orders_pairs_stably_and_treats_links_as_unorder
                 metadata_json={},
             )
             second_asset = Asset(
+                source_id=photo_source.id,
                 external_id="asset-2",
                 media_type="photo",
                 timestamp=datetime(2024, 1, 3, 9, 0, tzinfo=UTC),
@@ -175,6 +183,7 @@ def test_social_graph_affinity_penalizes_hub_overlap_against_exclusive_pair() ->
     runtime = _create_runtime()
     try:
         with runtime.session_factory() as session:
+            photo_source = _create_photo_source(session)
             hub = Person(name="Hub", aliases=None, metadata_json=None)
             worker_left = Person(name="Worker Left", aliases=None, metadata_json=None)
             worker_right = Person(name="Worker Right", aliases=None, metadata_json=None)
@@ -184,6 +193,7 @@ def test_social_graph_affinity_penalizes_hub_overlap_against_exclusive_pair() ->
 
             assets = [
                 Asset(
+                    source_id=photo_source.id,
                     external_id=f"asset-{index}",
                     media_type="photo",
                     timestamp=datetime(2024, 1, index + 1, 9, 0, tzinfo=UTC),
@@ -233,6 +243,7 @@ def test_social_graph_projection_excludes_assets_above_people_cutoff() -> None:
     runtime = _create_runtime()
     try:
         with runtime.session_factory() as session:
+            photo_source = _create_photo_source(session)
             people = [
                 Person(name=f"Person {index}", aliases=None, metadata_json=None)
                 for index in range(1, 12)
@@ -241,6 +252,7 @@ def test_social_graph_projection_excludes_assets_above_people_cutoff() -> None:
             session.flush()
 
             small_asset = Asset(
+                source_id=photo_source.id,
                 external_id="asset-small",
                 media_type="photo",
                 timestamp=datetime(2024, 1, 2, 9, 0, tzinfo=UTC),
@@ -251,6 +263,7 @@ def test_social_graph_projection_excludes_assets_above_people_cutoff() -> None:
                 metadata_json={},
             )
             large_asset = Asset(
+                source_id=photo_source.id,
                 external_id="asset-large",
                 media_type="photo",
                 timestamp=datetime(2024, 1, 3, 9, 0, tzinfo=UTC),
@@ -299,3 +312,10 @@ def _create_runtime():
     runtime = create_runtime_context(settings=settings)
     initialize_database(runtime)
     return runtime
+
+
+def _create_photo_source(session) -> Source:
+    source = Source(name="Photos", type="photos", config={})
+    session.add(source)
+    session.flush()
+    return source

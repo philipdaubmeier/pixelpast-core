@@ -20,10 +20,12 @@ class LightroomCatalogAssetPersister:
     def __init__(
         self,
         *,
+        source_id: int,
         asset_repository: AssetRepository,
         tag_repository: TagRepository,
         person_repository: PersonRepository,
     ) -> None:
+        self._source_id = source_id
         self._asset_repository = asset_repository
         self._tag_repository = tag_repository
         self._person_repository = person_repository
@@ -40,6 +42,7 @@ class LightroomCatalogAssetPersister:
             creator_person_id = creator_person.id
 
         upsert_result = self._asset_repository.upsert(
+            source_id=self._source_id,
             external_id=asset.external_id,
             media_type=asset.media_type,
             timestamp=asset.timestamp,

@@ -55,6 +55,7 @@ class PhotoIngestionRunCoordinator:
         self,
         *,
         asset_repository: AssetRepository,
+        source_id: int,
         resolved_root: Path,
         discovered_paths: list[Path],
     ) -> int:
@@ -65,11 +66,31 @@ class PhotoIngestionRunCoordinator:
         }
         persisted_external_ids = set(
             asset_repository.list_external_ids_under_prefix(
-                media_type="photo",
+                source_id=source_id,
                 external_id_prefix=resolved_root.as_posix(),
             )
         )
         return len(persisted_external_ids - discovered_external_ids)
+
+    def get_source_id(
+        self,
+        *,
+        runtime: RuntimeContext,
+        resolved_root: Path,
+    ) -> int:
+        """Return the canonical source identifier used for photo asset persistence."""
+
+        session = runtime.session_factory()
+        try:
+            source = SourceRepository(session).get_or_create(
+                name=PHOTO_SOURCE_NAME,
+                source_type=PHOTO_JOB_NAME,
+                config={"root_path": resolved_root.as_posix()},
+            )
+            session.commit()
+            return source.id
+        finally:
+            session.close()
 
 
 __all__ = [

@@ -49,6 +49,7 @@ def test_lightroom_catalog_persistence_scope_persists_assets_and_is_idempotent()
         first_scope = LightroomCatalogIngestionPersistenceScope(
             runtime=runtime,
             lifecycle=lifecycle,
+            resolved_root=catalog_path.resolve(),
         )
         first_missing = first_scope.count_missing_from_source(
             resolved_root=catalog_path.resolve(),
@@ -67,6 +68,7 @@ def test_lightroom_catalog_persistence_scope_persists_assets_and_is_idempotent()
         second_scope = LightroomCatalogIngestionPersistenceScope(
             runtime=runtime,
             lifecycle=lifecycle,
+            resolved_root=catalog_path.resolve(),
         )
         second_outcome = second_scope.persist(candidate=second_candidate)
         second_scope.commit()
@@ -95,6 +97,7 @@ def test_lightroom_catalog_persistence_scope_persists_assets_and_is_idempotent()
         third_scope = LightroomCatalogIngestionPersistenceScope(
             runtime=runtime,
             lifecycle=lifecycle,
+            resolved_root=catalog_path.resolve(),
         )
         third_outcome = third_scope.persist(candidate=renamed_candidate)
         third_scope.commit()

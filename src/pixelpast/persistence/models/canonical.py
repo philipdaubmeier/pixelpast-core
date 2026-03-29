@@ -152,10 +152,12 @@ class Asset(Base):
     __tablename__ = "asset"
     __table_args__ = (
         Index("ix_asset_timestamp", "timestamp"),
-        UniqueConstraint("external_id", name="uq_asset_external_id"),
+        Index("ix_asset_source_id", "source_id"),
+        UniqueConstraint("source_id", "external_id", name="uq_asset_source_external_id"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    source_id: Mapped[int] = mapped_column(ForeignKey("source.id"), nullable=False)
     external_id: Mapped[str] = mapped_column(String(512), nullable=False)
     media_type: Mapped[str] = mapped_column(String(100), nullable=False)
     timestamp: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)

@@ -735,7 +735,7 @@ def test_photo_ingestion_reports_metadata_phase_progress_after_completed_batches
         )
 
         assert result.status == "completed"
-        assert observed_completed == [0, 1, 1, 3, 3, 3, 3]
+        assert observed_completed == [0, 1, 1, 3, 3, 3, 3, 3]
     finally:
         if runtime is not None:
             runtime.engine.dispose()
@@ -792,11 +792,16 @@ def test_photo_ingestion_run_lifecycle_counts_missing_from_source_without_mutati
             workspace_root=workspace_root,
             photos_root=photos_root,
         )
+        source_id = PhotoIngestionRunCoordinator().get_source_id(
+            runtime=runtime,
+            resolved_root=photos_root.resolve(),
+        )
 
         with runtime.session_factory() as session:
             repository = AssetRepository(session)
             for path in (kept_path, missing_path):
                 repository.upsert(
+                    source_id=source_id,
                     external_id=path.resolve().as_posix(),
                     media_type="photo",
                     timestamp=datetime(2024, 1, 1, tzinfo=UTC),
@@ -812,6 +817,7 @@ def test_photo_ingestion_run_lifecycle_counts_missing_from_source_without_mutati
             repository = AssetRepository(session)
             missing_count = PhotoIngestionRunCoordinator().count_missing_from_source(
                 asset_repository=repository,
+                source_id=source_id,
                 resolved_root=photos_root.resolve(),
                 discovered_paths=[kept_path.resolve()],
             )
@@ -879,12 +885,17 @@ def test_asset_external_id_is_unique_at_database_level() -> None:
             workspace_root=workspace_root,
             photos_root=photos_root,
         )
+        source_id = PhotoIngestionRunCoordinator().get_source_id(
+            runtime=runtime,
+            resolved_root=photos_root.resolve(),
+        )
 
         with pytest.raises(IntegrityError):
             with runtime.session_factory() as session:
                 session.add_all(
                     [
                         Asset(
+                            source_id=source_id,
                             external_id="duplicate-id",
                             media_type="photo",
                             timestamp=datetime(2024, 1, 1, 0, 0, tzinfo=UTC),
@@ -893,6 +904,7 @@ def test_asset_external_id_is_unique_at_database_level() -> None:
                             metadata_json={},
                         ),
                         Asset(
+                            source_id=source_id,
                             external_id="duplicate-id",
                             media_type="photo",
                             timestamp=datetime(2024, 1, 1, 1, 0, tzinfo=UTC),

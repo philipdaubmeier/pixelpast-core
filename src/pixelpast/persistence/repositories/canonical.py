@@ -272,25 +272,33 @@ class AssetRepository:
     def __init__(self, session: Session) -> None:
         self._session = session
 
-    def get_by_external_id(self, *, external_id: str) -> Asset | None:
-        """Return an asset identified by its stable source-specific key."""
+    def get_by_source_and_external_id(
+        self,
+        *,
+        source_id: int,
+        external_id: str,
+    ) -> Asset | None:
+        """Return an asset identified by its source-scoped stable key."""
 
-        statement = select(Asset).where(Asset.external_id == external_id)
+        statement = select(Asset).where(
+            Asset.source_id == source_id,
+            Asset.external_id == external_id,
+        )
         return self._session.execute(statement).scalar_one_or_none()
 
     def list_external_ids_under_prefix(
         self,
         *,
-        media_type: str,
+        source_id: int,
         external_id_prefix: str,
     ) -> list[str]:
-        """Return external identifiers for one media type and source path prefix."""
+        """Return external identifiers for one source and source path prefix."""
 
         normalized_prefix = external_id_prefix.rstrip("/") + "/"
         statement = (
             select(Asset.external_id)
             .where(
-                Asset.media_type == media_type,
+                Asset.source_id == source_id,
                 Asset.external_id.like(f"{normalized_prefix}%"),
             )
             .order_by(Asset.external_id)
@@ -320,6 +328,7 @@ class AssetRepository:
     def upsert(
         self,
         *,
+        source_id: int,
         external_id: str,
         media_type: str,
         timestamp: datetime,
@@ -331,9 +340,13 @@ class AssetRepository:
     ) -> AssetUpsertResult:
         """Insert or update an asset by external identifier."""
 
-        asset = self.get_by_external_id(external_id=external_id)
+        asset = self.get_by_source_and_external_id(
+            source_id=source_id,
+            external_id=external_id,
+        )
         if asset is None:
             asset = Asset(
+                source_id=source_id,
                 external_id=external_id,
                 media_type=media_type,
                 timestamp=timestamp,
@@ -352,6 +365,7 @@ class AssetRepository:
         next_metadata = dict(metadata_json) if metadata_json is not None else None
         changed = any(
             [
+                asset.source_id != source_id,
                 asset.media_type != media_type,
                 asset.timestamp != timestamp,
                 asset.summary != summary,
@@ -362,6 +376,7 @@ class AssetRepository:
             ]
         )
         if changed:
+            asset.source_id = source_id
             asset.media_type = media_type
             asset.timestamp = timestamp
             asset.summary = summary

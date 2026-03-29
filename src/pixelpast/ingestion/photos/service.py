@@ -75,6 +75,7 @@ class PhotoIngestionService:
         persistence = PhotoIngestionPersistenceScope(
             runtime=runtime,
             lifecycle=self._lifecycle,
+            resolved_root=resolved_root,
         )
         return self._runner.run(
             resolved_root=resolved_root,

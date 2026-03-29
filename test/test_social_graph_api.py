@@ -10,7 +10,7 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 
 from pixelpast.api.app import create_app
-from pixelpast.persistence.models import Asset, AssetPerson, Person
+from pixelpast.persistence.models import Asset, AssetPerson, Person, Source
 from pixelpast.shared.runtime import create_runtime_context, initialize_database
 from pixelpast.shared.settings import Settings
 
@@ -149,6 +149,7 @@ def test_social_graph_endpoint_rejects_unsupported_persistent_filters() -> None:
 
 def _seed_social_graph_scenario(*, runtime) -> None:
     with runtime.session_factory() as session:
+        photo_source = _create_photo_source(session)
         anna = Person(name="Anna", aliases=None, metadata_json=None)
         ben = Person(name="Ben", aliases=None, metadata_json=None)
         zoe = Person(name="Zoe", aliases=None, metadata_json=None)
@@ -156,6 +157,7 @@ def _seed_social_graph_scenario(*, runtime) -> None:
         session.flush()
 
         asset_one = Asset(
+            source_id=photo_source.id,
             external_id="asset-1",
             media_type="photo",
             timestamp=datetime(2024, 1, 2, 9, 0, tzinfo=UTC),
@@ -166,6 +168,7 @@ def _seed_social_graph_scenario(*, runtime) -> None:
             metadata_json={},
         )
         asset_two = Asset(
+            source_id=photo_source.id,
             external_id="asset-2",
             media_type="photo",
             timestamp=datetime(2024, 1, 3, 9, 0, tzinfo=UTC),
@@ -176,6 +179,7 @@ def _seed_social_graph_scenario(*, runtime) -> None:
             metadata_json={},
         )
         asset_three = Asset(
+            source_id=photo_source.id,
             external_id="asset-3",
             media_type="photo",
             timestamp=datetime(2024, 1, 4, 9, 0, tzinfo=UTC),
@@ -203,6 +207,7 @@ def _seed_social_graph_scenario(*, runtime) -> None:
 
 def _seed_large_group_social_graph_scenario(*, runtime) -> None:
     with runtime.session_factory() as session:
+        photo_source = _create_photo_source(session)
         people = [
             Person(name=f"Person {index}", aliases=None, metadata_json=None)
             for index in range(1, 12)
@@ -211,6 +216,7 @@ def _seed_large_group_social_graph_scenario(*, runtime) -> None:
         session.flush()
 
         small_asset = Asset(
+            source_id=photo_source.id,
             external_id="asset-small",
             media_type="photo",
             timestamp=datetime(2024, 1, 2, 9, 0, tzinfo=UTC),
@@ -221,6 +227,7 @@ def _seed_large_group_social_graph_scenario(*, runtime) -> None:
             metadata_json={},
         )
         large_asset = Asset(
+            source_id=photo_source.id,
             external_id="asset-large",
             media_type="photo",
             timestamp=datetime(2024, 1, 3, 9, 0, tzinfo=UTC),
@@ -251,6 +258,13 @@ def _create_runtime(*, workspace_root: Path):
     runtime = create_runtime_context(settings=settings)
     initialize_database(runtime)
     return runtime
+
+
+def _create_photo_source(session) -> Source:
+    source = Source(name="Photos", type="photos", config={})
+    session.add(source)
+    session.flush()
+    return source
 
 
 def _create_workspace_dir(*, prefix: str) -> Path:

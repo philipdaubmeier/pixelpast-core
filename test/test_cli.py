@@ -1298,7 +1298,8 @@ def test_cli_derive_daily_aggregate_rebuilds_rows(monkeypatch) -> None:
             initialize_database(runtime)
             with runtime.session_factory() as session:
                 source = Source(name="Calendar", type="calendar", config={})
-                session.add(source)
+                photo_source = Source(name="Photos", type="photos", config={})
+                session.add_all([source, photo_source])
                 session.flush()
                 session.add_all(
                     [
@@ -1327,6 +1328,7 @@ def test_cli_derive_daily_aggregate_rebuilds_rows(monkeypatch) -> None:
                             derived_payload={},
                         ),
                         Asset(
+                            source_id=photo_source.id,
                             external_id="photo-1",
                             media_type="photo",
                             timestamp=datetime(2024, 1, 2, 9, 30, tzinfo=UTC),
@@ -1335,6 +1337,7 @@ def test_cli_derive_daily_aggregate_rebuilds_rows(monkeypatch) -> None:
                             metadata_json={},
                         ),
                         Asset(
+                            source_id=photo_source.id,
                             external_id="photo-2",
                             media_type="photo",
                             timestamp=datetime(2024, 1, 3, 12, 0, tzinfo=UTC),
@@ -1389,9 +1392,9 @@ def test_cli_derive_daily_aggregate_rebuilds_rows(monkeypatch) -> None:
         ] == [
             ("2024-01-02", "overall", "__all__", 2, 1, 3),
             ("2024-01-02", "source_type", "calendar", 2, 0, 2),
-            ("2024-01-02", "source_type", "photo", 0, 1, 1),
+            ("2024-01-02", "source_type", "photos", 0, 1, 1),
             ("2024-01-03", "overall", "__all__", 0, 1, 1),
-            ("2024-01-03", "source_type", "photo", 0, 1, 1),
+            ("2024-01-03", "source_type", "photos", 0, 1, 1),
         ]
         assert len(job_runs) == 1
         assert job_runs[0].type == "derive"
@@ -1420,7 +1423,8 @@ def test_cli_derive_daily_aggregate_range_reports_progress(monkeypatch) -> None:
             initialize_database(runtime)
             with runtime.session_factory() as session:
                 source = Source(name="Calendar", type="calendar", config={})
-                session.add(source)
+                photo_source = Source(name="Photos", type="photos", config={})
+                session.add_all([source, photo_source])
                 session.flush()
                 session.add_all(
                     [
@@ -1449,6 +1453,7 @@ def test_cli_derive_daily_aggregate_range_reports_progress(monkeypatch) -> None:
                             derived_payload={},
                         ),
                         Asset(
+                            source_id=photo_source.id,
                             external_id="asset-1",
                             media_type="photo",
                             timestamp=datetime(2024, 1, 2, 10, 0, tzinfo=UTC),
@@ -1457,6 +1462,7 @@ def test_cli_derive_daily_aggregate_range_reports_progress(monkeypatch) -> None:
                             metadata_json={},
                         ),
                         Asset(
+                            source_id=photo_source.id,
                             external_id="asset-2",
                             media_type="photo",
                             timestamp=datetime(2024, 1, 3, 11, 0, tzinfo=UTC),

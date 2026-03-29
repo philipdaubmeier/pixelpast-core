@@ -84,6 +84,7 @@ class LightroomCatalogIngestionService:
         persistence = LightroomCatalogIngestionPersistenceScope(
             runtime=runtime,
             lifecycle=self._lifecycle,
+            resolved_root=resolved_root,
         )
         runner = StagedIngestionRunner(
             strategy=LightroomCatalogStagedIngestionStrategy(

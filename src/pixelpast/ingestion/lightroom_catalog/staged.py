@@ -39,11 +39,17 @@ class LightroomCatalogIngestionPersistenceScope:
         *,
         runtime: RuntimeContext,
         lifecycle: LightroomCatalogIngestionRunCoordinator,
+        resolved_root: Path,
     ) -> None:
         session = runtime.session_factory()
         self._session = session
         self._lifecycle = lifecycle
+        source_id = self._lifecycle.get_source_id(
+            runtime=runtime,
+            resolved_root=resolved_root,
+        )
         self._persister = LightroomCatalogAssetPersister(
+            source_id=source_id,
             asset_repository=AssetRepository(session),
             tag_repository=TagRepository(session),
             person_repository=PersonRepository(session),

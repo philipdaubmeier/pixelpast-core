@@ -39,7 +39,7 @@ def build_default_daily_view_metadata() -> dict[str, object]:
         "score_version": "v2",
         "score_formula": "activity_score = total_events + media_count",
         "summary_version": "v1",
-        "source_partitioning": "events use source.type; assets use media_type",
+        "source_partitioning": "events and assets use source.type",
         "activity_score_color_thresholds": [
             dict(threshold) for threshold in DEFAULT_ACTIVITY_SCORE_COLOR_THRESHOLDS
         ],

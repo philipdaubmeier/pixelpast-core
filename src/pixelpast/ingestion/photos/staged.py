@@ -31,12 +31,19 @@ class PhotoIngestionPersistenceScope:
         *,
         runtime: RuntimeContext,
         lifecycle: PhotoIngestionRunCoordinator,
+        resolved_root: Path,
     ) -> None:
         session = runtime.session_factory()
         self._session = session
         self._lifecycle = lifecycle
+        source_id = self._lifecycle.get_source_id(
+            runtime=runtime,
+            resolved_root=resolved_root,
+        )
+        self._source_id = source_id
         self._asset_repository = AssetRepository(session)
         self._persister = PhotoAssetPersister(
+            source_id=source_id,
             asset_repository=self._asset_repository,
             tag_repository=TagRepository(session),
             person_repository=PersonRepository(session),
@@ -54,6 +61,7 @@ class PhotoIngestionPersistenceScope:
         del candidates
         return self._lifecycle.count_missing_from_source(
             asset_repository=self._asset_repository,
+            source_id=self._source_id,
             resolved_root=resolved_root,
             discovered_paths=list(discovered_units),
         )

@@ -219,13 +219,16 @@ class CanonicalTimelineRepository:
         statement = _apply_datetime_range(
             select(
                 Asset.timestamp,
+                Source.type,
                 Asset.media_type,
                 Asset.external_id,
                 Asset.summary,
                 Asset.metadata_json,
                 Asset.latitude,
                 Asset.longitude,
-            ).order_by(Asset.timestamp, Asset.media_type, Asset.id),
+            )
+            .join(Source, Source.id == Asset.source_id)
+            .order_by(Asset.timestamp, Source.type, Asset.id),
             column=Asset.timestamp,
             start_date=start_date,
             end_date=end_date,
@@ -234,7 +237,7 @@ class CanonicalTimelineRepository:
         return [
             CanonicalAssetAggregateInput(
                 day=timestamp.date(),
-                source_type=media_type,
+                source_type=source_type,
                 external_id=external_id,
                 media_type=media_type,
                 summary=summary,
@@ -244,6 +247,7 @@ class CanonicalTimelineRepository:
             )
             for (
                 timestamp,
+                source_type,
                 media_type,
                 external_id,
                 summary,
@@ -299,14 +303,15 @@ class CanonicalTimelineRepository:
         statement = _apply_datetime_range(
             select(
                 Asset.timestamp,
-                Asset.media_type,
+                Source.type,
                 Tag.path,
                 Tag.label,
             )
+            .join(Source, Source.id == Asset.source_id)
             .join(AssetTag, AssetTag.asset_id == Asset.id)
             .join(Tag, Tag.id == AssetTag.tag_id)
             .where(Tag.path.is_not(None))
-            .order_by(Asset.timestamp, Asset.media_type, Tag.path, Tag.id, Asset.id),
+            .order_by(Asset.timestamp, Source.type, Tag.path, Tag.id, Asset.id),
             column=Asset.timestamp,
             start_date=start_date,
             end_date=end_date,
@@ -375,16 +380,17 @@ class CanonicalTimelineRepository:
         statement = _apply_datetime_range(
             select(
                 Asset.timestamp,
-                Asset.media_type,
+                Source.type,
                 Person.id,
                 Person.name,
                 Person.metadata_json,
             )
+            .join(Source, Source.id == Asset.source_id)
             .join(AssetPerson, AssetPerson.asset_id == Asset.id)
             .join(Person, Person.id == AssetPerson.person_id)
             .order_by(
                 Asset.timestamp,
-                Asset.media_type,
+                Source.type,
                 Person.name,
                 Person.id,
                 Asset.id,

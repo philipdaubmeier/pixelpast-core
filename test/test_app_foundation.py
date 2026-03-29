@@ -99,11 +99,12 @@ def test_alembic_upgrade_head_runs() -> None:
                 "ix_event_type",
             }
             assert {index["name"] for index in inspector.get_indexes("asset")} == {
+                "ix_asset_source_id",
                 "ix_asset_timestamp",
             }
             asset_unique_constraints = inspector.get_unique_constraints("asset")
             assert {constraint["name"] for constraint in asset_unique_constraints} == {
-                "uq_asset_external_id",
+                "uq_asset_source_external_id",
             }
             source_unique_constraints = inspector.get_unique_constraints("source")
             assert {
@@ -115,6 +116,9 @@ def test_alembic_upgrade_head_runs() -> None:
             source_columns = {
                 column["name"] for column in inspector.get_columns("source")
             }
+            asset_columns = [
+                column["name"] for column in inspector.get_columns("asset")
+            ]
             place_columns = {
                 column["name"] for column in inspector.get_columns("place")
             }
@@ -146,6 +150,18 @@ def test_alembic_upgrade_head_runs() -> None:
                 "last_heartbeat_at",
                 "progress",
             } <= import_run_columns
+            assert asset_columns == [
+                "id",
+                "source_id",
+                "external_id",
+                "media_type",
+                "timestamp",
+                "summary",
+                "latitude",
+                "longitude",
+                "creator_person_id",
+                "metadata",
+            ]
             assert {"external_id", "name", "type", "config", "created_at"} <= source_columns
             assert place_columns == {
                 "id",
@@ -258,6 +274,7 @@ def test_utc_datetime_roundtrip_uses_aware_utc_values() -> None:
         )
         session.add(
             Asset(
+                source_id=source.id,
                 external_id="photo-1",
                 media_type="photo",
                 timestamp=asset_timestamp,

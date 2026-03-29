@@ -204,7 +204,7 @@ def test_exploration_grid_endpoint_accepts_server_side_filter_parameters() -> No
         with TestClient(app) as client:
             response = client.get(
                 "/api/exploration?start=2024-01-01&end=2024-01-03"
-                "&view_mode=photo"
+                "&view_mode=photos"
                 "&person_ids=1"
                 "&tag_paths=travel"
             )
@@ -366,7 +366,7 @@ def test_exploration_grid_returns_empty_day_when_selected_view_has_no_row() -> N
         app = create_app(settings=runtime.settings)
         with TestClient(app) as client:
             response = client.get(
-                "/api/exploration?start=2024-01-02&end=2024-01-03&view_mode=photo"
+                "/api/exploration?start=2024-01-02&end=2024-01-03&view_mode=photos"
             )
 
         assert response.status_code == 200
@@ -394,7 +394,7 @@ def test_exploration_grid_recomputes_day_count_from_canonical_items_when_person_
         with TestClient(app) as client:
             response = client.get(
                 "/api/exploration"
-                "?start=2020-01-01&end=2020-01-02&view_mode=photo&person_ids=1"
+                "?start=2020-01-01&end=2020-01-02&view_mode=photos&person_ids=1"
             )
 
         assert response.status_code == 200
@@ -580,6 +580,7 @@ def test_day_context_endpoint_remains_separate_from_grid_activity_loading() -> N
 
         with runtime.session_factory() as session:
             source = Source(name="Calendar", type="calendar", config={})
+            photo_source = _create_photo_source(session)
             anna = Person(name="Anna", aliases=None, metadata_json={"role": "Family"})
             travel_tag = Tag(label="Travel", path="travel/europe", metadata_json=None)
             session.add_all([source, anna, travel_tag])
@@ -599,6 +600,7 @@ def test_day_context_endpoint_remains_separate_from_grid_activity_loading() -> N
                 derived_payload={},
             )
             asset = Asset(
+                source_id=photo_source.id,
                 external_id="asset-1",
                 media_type="photo",
                 timestamp=datetime(2024, 1, 2, 10, 30, tzinfo=UTC),
@@ -751,7 +753,7 @@ def test_day_context_recomputes_filtered_person_context_from_canonical_items() -
         with TestClient(app) as client:
             response = client.get(
                 "/api/days/context"
-                "?start=2020-01-01&end=2020-01-02&view_mode=photo&person_ids=1"
+                "?start=2020-01-01&end=2020-01-02&view_mode=photos&person_ids=1"
             )
 
         assert response.status_code == 200
@@ -780,6 +782,7 @@ def test_day_context_recomputes_filtered_person_context_from_canonical_items() -
 def _seed_split_contract_scenario(*, runtime) -> None:
     with runtime.session_factory() as session:
         source = Source(name="Calendar", type="calendar", config={})
+        photo_source = _create_photo_source(session)
         anna = Person(name="Anna", aliases=None, metadata_json={"role": "Family"})
         milo = Person(name="Milo", aliases=None, metadata_json={"role": "Travel buddy"})
         project_tag = Tag(label="Project Apollo", path="projects/apollo", metadata_json=None)
@@ -807,6 +810,7 @@ def _seed_split_contract_scenario(*, runtime) -> None:
             derived_payload={},
         )
         day_two_asset = Asset(
+            source_id=photo_source.id,
             external_id="asset-1",
             media_type="photo",
             timestamp=datetime(2024, 1, 2, 12, 0, tzinfo=UTC),
@@ -867,6 +871,7 @@ def _seed_split_contract_scenario(*, runtime) -> None:
 def _seed_filter_scenario(*, runtime) -> None:
     with runtime.session_factory() as session:
         source = Source(name="Calendar", type="calendar", config={})
+        photo_source = _create_photo_source(session)
         anna = Person(name="Anna", aliases=None, metadata_json={"role": "Family"})
         ben = Person(name="Ben", aliases=None, metadata_json={"role": "Friend"})
         travel_tag = Tag(label="Europe", path="travel/europe", metadata_json=None)
@@ -877,7 +882,7 @@ def _seed_filter_scenario(*, runtime) -> None:
         photo_view = _create_daily_view(
             session=session,
             aggregate_scope=DAILY_AGGREGATE_SCOPE_SOURCE_TYPE,
-            source_type="photo",
+            source_type="photos",
         )
 
         first_event = Event(
@@ -905,6 +910,7 @@ def _seed_filter_scenario(*, runtime) -> None:
             derived_payload={},
         )
         first_photo_asset = Asset(
+            source_id=photo_source.id,
             external_id="photo-1",
             media_type="photo",
             timestamp=datetime(2024, 1, 2, 13, 0, tzinfo=UTC),
@@ -971,6 +977,7 @@ def _seed_filter_scenario(*, runtime) -> None:
 
 def _seed_canonical_filtered_count_scenario(*, runtime) -> None:
     with runtime.session_factory() as session:
+        photo_source = _create_photo_source(session)
         leo = Person(name="Leo", aliases=None, metadata_json={"role": "Family"})
         nora = Person(name="Nora", aliases=None, metadata_json={"role": "Friend"})
         session.add_all([leo, nora])
@@ -978,10 +985,11 @@ def _seed_canonical_filtered_count_scenario(*, runtime) -> None:
         photo_view = _create_daily_view(
             session=session,
             aggregate_scope=DAILY_AGGREGATE_SCOPE_SOURCE_TYPE,
-            source_type="photo",
+            source_type="photos",
         )
 
         day_one_leo_asset = Asset(
+            source_id=photo_source.id,
             external_id="leo-photo",
             media_type="photo",
             timestamp=datetime(2020, 1, 1, 9, 0, tzinfo=UTC),
@@ -990,6 +998,7 @@ def _seed_canonical_filtered_count_scenario(*, runtime) -> None:
             metadata_json={},
         )
         day_one_nora_asset = Asset(
+            source_id=photo_source.id,
             external_id="nora-photo",
             media_type="photo",
             timestamp=datetime(2020, 1, 1, 10, 0, tzinfo=UTC),
@@ -998,6 +1007,7 @@ def _seed_canonical_filtered_count_scenario(*, runtime) -> None:
             metadata_json={},
         )
         day_two_nora_asset = Asset(
+            source_id=photo_source.id,
             external_id="nora-photo-day-two",
             media_type="photo",
             timestamp=datetime(2020, 1, 2, 10, 0, tzinfo=UTC),
@@ -1108,6 +1118,13 @@ def _create_runtime(*, workspace_root: Path):
     runtime = create_runtime_context(settings=settings)
     initialize_database(runtime)
     return runtime
+
+
+def _create_photo_source(session) -> Source:
+    source = Source(name="Photos", type="photos", config={})
+    session.add(source)
+    session.flush()
+    return source
 
 
 def _create_daily_view(

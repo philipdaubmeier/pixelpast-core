@@ -752,19 +752,22 @@ class ExplorationReadRepository:
             select(
                 Asset.id,
                 Asset.timestamp,
+                Source.type,
                 Asset.media_type,
                 Asset.external_id,
                 Asset.summary,
                 Asset.metadata_json,
                 Asset.latitude,
                 Asset.longitude,
-            ).order_by(Asset.timestamp, Asset.id),
+            )
+            .join(Source, Source.id == Asset.source_id)
+            .order_by(Asset.timestamp, Asset.id),
             column=Asset.timestamp,
             start_date=start_date,
             end_date=end_date,
         )
         if view_id != "activity":
-            statement = statement.where(Asset.media_type == view_id)
+            statement = statement.where(Source.type == view_id)
         rows = self._session.execute(statement)
         return [
             _FilterableTimelineItemSnapshot(
@@ -772,7 +775,7 @@ class ExplorationReadRepository:
                 item_type="asset",
                 item_id=asset_id,
                 timestamp=timestamp,
-                source_type=media_type,
+                source_type=source_type,
                 display_label=_resolve_asset_display_label(
                     summary=summary,
                     metadata_json=metadata_json,
@@ -786,6 +789,7 @@ class ExplorationReadRepository:
             for (
                 asset_id,
                 timestamp,
+                source_type,
                 media_type,
                 external_id,
                 summary,

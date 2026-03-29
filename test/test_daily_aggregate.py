@@ -73,7 +73,7 @@ def test_build_daily_aggregate_snapshots_is_deterministic_without_database() -> 
         asset_inputs=[
             CanonicalAssetAggregateInput(
                 day=date(2024, 1, 2),
-                source_type="photo",
+                source_type="photos",
                 external_id="photos/trip/day-2.jpg",
                 media_type="photo",
                 summary=None,
@@ -83,7 +83,7 @@ def test_build_daily_aggregate_snapshots_is_deterministic_without_database() -> 
             ),
             CanonicalAssetAggregateInput(
                 day=date(2024, 1, 2),
-                source_type="photo",
+                source_type="photos",
                 external_id="photos/trip/day-2-b.jpg",
                 media_type="photo",
                 summary="Museum",
@@ -95,7 +95,7 @@ def test_build_daily_aggregate_snapshots_is_deterministic_without_database() -> 
         tag_inputs=[
             CanonicalTagAggregateInput(
                 day=date(2024, 1, 2),
-                source_type="photo",
+                source_type="photos",
                 path="travel",
                 label="Travel",
             ),
@@ -109,7 +109,7 @@ def test_build_daily_aggregate_snapshots_is_deterministic_without_database() -> 
         person_inputs=[
             CanonicalPersonAggregateInput(
                 day=date(2024, 1, 2),
-                source_type="photo",
+                source_type="photos",
                 person_id=2,
                 name="Ben",
                 role="Friend",
@@ -203,7 +203,7 @@ def test_build_daily_aggregate_snapshots_is_deterministic_without_database() -> 
         {
             "date": "2024-01-02",
             "scope": "source_type",
-            "source_type": "photo",
+            "source_type": "photos",
             "total_events": 0,
             "media_count": 2,
             "activity_score": 2,
@@ -299,7 +299,7 @@ def test_build_daily_view_returns_stable_metadata() -> None:
     overall_view = build_daily_view(aggregate_scope="overall", source_type="__all__")
     photo_view = build_daily_view(
         aggregate_scope="source_type",
-        source_type="photo",
+        source_type="photos",
     )
     spotify_view = build_daily_view(
         aggregate_scope="source_type",
@@ -320,9 +320,9 @@ def test_build_daily_view_returns_stable_metadata() -> None:
         overall_view.metadata_json["activity_score_color_thresholds"]
         == [dict(threshold) for threshold in DEFAULT_ACTIVITY_SCORE_COLOR_THRESHOLDS]
     )
-    assert photo_view.source_type == "photo"
-    assert photo_view.label == "Photo"
-    assert photo_view.description == "Highlights days with photo activity."
+    assert photo_view.source_type == "photos"
+    assert photo_view.label == "Photos"
+    assert photo_view.description == "Highlights days with photos activity."
     assert photo_view.metadata_json["score_version"] == "v2"
     assert (
         photo_view.metadata_json["activity_score_color_thresholds"]
@@ -639,7 +639,8 @@ def test_daily_aggregate_job_builds_connector_scoped_rows_with_semantic_summarie
 
         with runtime.session_factory() as session:
             calendar_source = Source(name="Calendar", type="calendar", config={})
-            session.add(calendar_source)
+            photo_source = Source(name="Photos", type="photos", config={})
+            session.add_all([calendar_source, photo_source])
 
             anna = Person(name="Anna", aliases=None, metadata_json={"role": "Family"})
             ben = Person(name="Ben", aliases=None, metadata_json={"role": "Friend"})
@@ -678,6 +679,7 @@ def test_daily_aggregate_job_builds_connector_scoped_rows_with_semantic_summarie
                 derived_payload={},
             )
             mixed_photo_one = Asset(
+                source_id=photo_source.id,
                 external_id="asset-1",
                 media_type="photo",
                 timestamp=datetime(2024, 1, 2, 12, 0, tzinfo=UTC),
@@ -687,6 +689,7 @@ def test_daily_aggregate_job_builds_connector_scoped_rows_with_semantic_summarie
                 metadata_json={"title": "Museum"},
             )
             mixed_photo_two = Asset(
+                source_id=photo_source.id,
                 external_id="asset-2",
                 media_type="photo",
                 timestamp=datetime(2024, 1, 2, 13, 0, tzinfo=UTC),
@@ -696,6 +699,7 @@ def test_daily_aggregate_job_builds_connector_scoped_rows_with_semantic_summarie
                 metadata_json={},
             )
             person_only_photo = Asset(
+                source_id=photo_source.id,
                 external_id="asset-day-four",
                 media_type="photo",
                 timestamp=datetime(2024, 1, 4, 9, 30, tzinfo=UTC),
@@ -799,7 +803,7 @@ def test_daily_aggregate_job_builds_connector_scoped_rows_with_semantic_summarie
             "score_version": "v2",
             "score_formula": "activity_score = total_events + media_count",
             "summary_version": "v1",
-            "source_partitioning": "events use source.type; assets use media_type",
+            "source_partitioning": "events and assets use source.type",
             "activity_score_color_thresholds": [
                 {"activity_score": 1, "color_value": "low"},
                 {"activity_score": 35, "color_value": "medium"},
@@ -825,7 +829,7 @@ def test_daily_aggregate_job_builds_connector_scoped_rows_with_semantic_summarie
             }
         ]
 
-        mixed_photo = aggregates[("2024-01-02", "source_type", "photo")]
+        mixed_photo = aggregates[("2024-01-02", "source_type", "photos")]
         assert mixed_photo.total_events == 0
         assert mixed_photo.media_count == 2
         assert mixed_photo.tag_summary_json == [
@@ -878,7 +882,7 @@ def test_daily_aggregate_job_builds_connector_scoped_rows_with_semantic_summarie
             }
         ]
 
-        asset_only_photo = aggregates[("2024-01-04", "source_type", "photo")]
+        asset_only_photo = aggregates[("2024-01-04", "source_type", "photos")]
         assert asset_only_photo.total_events == 0
         assert asset_only_photo.media_count == 1
         assert asset_only_photo.tag_summary_json == []
@@ -902,7 +906,7 @@ def test_daily_aggregate_job_builds_connector_scoped_rows_with_semantic_summarie
         ] == [
             ("overall", None, "Activity", "v2"),
             ("source_type", "calendar", "Calendar", "v2"),
-            ("source_type", "photo", "Photo", "v2"),
+            ("source_type", "photos", "Photos", "v2"),
         ]
         assert all(aggregate.color_value is None for aggregate in stored_aggregates)
         assert all(aggregate.title is None for aggregate in stored_aggregates)
@@ -1004,7 +1008,7 @@ def test_daily_aggregate_job_persists_workdays_vacation_direct_color_view() -> N
             "score_version": "v2",
             "score_formula": "activity_score = total_events + media_count",
             "summary_version": "v1",
-            "source_partitioning": "events use source.type; assets use media_type",
+            "source_partitioning": "events and assets use source.type",
             "activity_score_color_thresholds": [],
             "direct_color": True,
         }
@@ -1352,7 +1356,8 @@ def test_daily_aggregate_job_recomputes_range_idempotently_for_v2_rows() -> None
 
         with runtime.session_factory() as session:
             calendar_source = Source(name="Calendar", type="calendar", config={})
-            session.add(calendar_source)
+            photo_source = Source(name="Photos", type="photos", config={})
+            session.add_all([calendar_source, photo_source])
             session.flush()
 
             session.add_all(
@@ -1382,6 +1387,7 @@ def test_daily_aggregate_job_recomputes_range_idempotently_for_v2_rows() -> None
                         derived_payload={},
                     ),
                     Asset(
+                        source_id=photo_source.id,
                         external_id="asset-1",
                         media_type="photo",
                         timestamp=datetime(2024, 1, 2, 10, 0, tzinfo=UTC),
@@ -1391,6 +1397,7 @@ def test_daily_aggregate_job_recomputes_range_idempotently_for_v2_rows() -> None
                         metadata_json={},
                     ),
                     Asset(
+                        source_id=photo_source.id,
                         external_id="asset-2",
                         media_type="photo",
                         timestamp=datetime(2024, 1, 3, 11, 0, tzinfo=UTC),
@@ -1422,7 +1429,9 @@ def test_daily_aggregate_job_recomputes_range_idempotently_for_v2_rows() -> None
             }
 
         with runtime.session_factory() as session:
-            calendar_source = session.execute(select(Source)).scalar_one()
+            calendar_source = session.execute(
+                select(Source).where(Source.type == "calendar")
+            ).scalar_one()
             session.add(
                 Event(
                     source_id=calendar_source.id,
@@ -1557,7 +1566,7 @@ def test_daily_aggregate_job_recomputes_range_idempotently_for_v2_rows() -> None
             {
                 "date": "2024-01-02",
                 "scope": "source_type",
-                "source_type": "photo",
+                "source_type": "photos",
                 "total_events": 0,
                 "media_count": 1,
                 "activity_score": 1,
@@ -1585,7 +1594,7 @@ def test_daily_aggregate_job_recomputes_range_idempotently_for_v2_rows() -> None
             {
                 "date": "2024-01-03",
                 "scope": "source_type",
-                "source_type": "photo",
+                "source_type": "photos",
                 "total_events": 0,
                 "media_count": 1,
                 "activity_score": 1,
@@ -1611,7 +1620,8 @@ def test_daily_aggregate_job_persists_derive_run_lifecycle_and_progress() -> Non
 
         with runtime.session_factory() as session:
             source = Source(name="Calendar", type="calendar", config={})
-            session.add(source)
+            photo_source = Source(name="Photos", type="photos", config={})
+            session.add_all([source, photo_source])
             session.flush()
             session.add_all(
                 [
@@ -1628,6 +1638,7 @@ def test_daily_aggregate_job_persists_derive_run_lifecycle_and_progress() -> Non
                         derived_payload={},
                     ),
                     Asset(
+                        source_id=photo_source.id,
                         external_id="photo-1",
                         media_type="photo",
                         timestamp=datetime(2024, 1, 2, 9, 0, tzinfo=UTC),

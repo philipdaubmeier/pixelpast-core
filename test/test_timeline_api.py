@@ -135,6 +135,7 @@ def test_day_context_endpoint_returns_dense_mixed_context_range() -> None:
 
         with runtime.session_factory() as session:
             source = Source(name="Calendar", type="calendar", config={})
+            photo_source = Source(name="Photos", type="photos", config={})
             anna = Person(
                 name="Anna",
                 aliases=None,
@@ -168,6 +169,7 @@ def test_day_context_endpoint_returns_dense_mixed_context_range() -> None:
             session.add_all(
                 [
                     source,
+                    photo_source,
                     anna,
                     ben,
                     milo,
@@ -200,6 +202,7 @@ def test_day_context_endpoint_returns_dense_mixed_context_range() -> None:
                 derived_payload={},
             )
             mixed_asset = Asset(
+                source_id=photo_source.id,
                 external_id="asset-museum",
                 media_type="photo",
                 timestamp=datetime(2024, 1, 2, 10, 30, tzinfo=UTC),
@@ -208,6 +211,7 @@ def test_day_context_endpoint_returns_dense_mixed_context_range() -> None:
                 metadata_json={"label": "Museum"},
             )
             mixed_asset_unlabeled = Asset(
+                source_id=photo_source.id,
                 external_id="asset-unlabeled",
                 media_type="photo",
                 timestamp=datetime(2024, 1, 2, 11, 0, tzinfo=UTC),
@@ -228,6 +232,7 @@ def test_day_context_endpoint_returns_dense_mixed_context_range() -> None:
                 derived_payload={},
             )
             asset_only_day = Asset(
+                source_id=photo_source.id,
                 external_id="asset-day-four",
                 media_type="video",
                 timestamp=datetime(2024, 1, 4, 15, 45, tzinfo=UTC),
@@ -751,7 +756,8 @@ def _seed_timeline(
 ) -> None:
     with runtime.session_factory() as session:
         source = Source(name="Calendar", type="calendar", config={})
-        session.add(source)
+        photo_source = Source(name="Photos", type="photos", config={})
+        session.add_all([source, photo_source])
         session.flush()
 
         for index, timestamp in enumerate(events, start=1):
@@ -773,6 +779,7 @@ def _seed_timeline(
         for index, timestamp in enumerate(assets, start=1):
             session.add(
                 Asset(
+                    source_id=photo_source.id,
                     external_id=f"asset-{index}",
                     media_type="photo",
                     timestamp=timestamp,
