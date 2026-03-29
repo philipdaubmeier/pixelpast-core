@@ -5,6 +5,8 @@ import type {
   ManageDataSectionId,
   PersonCatalogDraftRow,
   PersonGroupCatalogDraftRow,
+  PersonGroupMembershipDraft,
+  PersonGroupMembershipDraftMember,
 } from "../types";
 import {
   CatalogEmptyState,
@@ -33,8 +35,19 @@ const MANAGE_SECTIONS: ManageDataSectionDescriptor[] = [
 
 type SectionLoadState = "loading" | "ready" | "error";
 type SectionSaveState = "idle" | "saving" | "error";
+type MembershipLoadState = "idle" | "loading" | "ready" | "error";
 
 type SectionRuntimeRows = PersonCatalogDraftRow[] | PersonGroupCatalogDraftRow[];
+
+type MembershipRuntimeState = {
+  status: MembershipLoadState;
+  error: string | null;
+  saveError: string | null;
+  snapshot: PersonGroupMembershipDraft | null;
+  draft: PersonGroupMembershipDraft | null;
+  personOptions: PersonCatalogDraftRow[];
+  searchQuery: string;
+};
 
 type SectionRuntimeState = {
   activeSectionId: ManageDataSectionId;
@@ -47,11 +60,13 @@ type SectionRuntimeState = {
   draft: SectionRuntimeRows | null;
   deletedPersonGroupIds: number[];
   activePersonGroupMembershipRowId: string | null;
+  membership: MembershipRuntimeState;
 };
 
 type PendingGuardAction =
   | { kind: "close" }
   | { kind: "switch"; nextSectionId: ManageDataSectionId }
+  | { kind: "membership_back" }
   | null;
 
 type PendingDeletePersonGroupAction = {
@@ -70,6 +85,15 @@ const initialSectionState: SectionRuntimeState = {
   draft: null,
   deletedPersonGroupIds: [],
   activePersonGroupMembershipRowId: null,
+  membership: {
+    status: "idle",
+    error: null,
+    saveError: null,
+    snapshot: null,
+    draft: null,
+    personOptions: [],
+    searchQuery: "",
+  },
 };
 
 function cloneSectionRows(rows: SectionRuntimeRows) {
@@ -89,6 +113,12 @@ function toPersistedIdentifier(rowId: string): number | undefined {
   return Number.isInteger(parsedId) && parsedId > 0 ? parsedId : undefined;
 }
 
+function getMembershipFingerprint(
+  membership: PersonGroupMembershipDraft | null,
+): string {
+  return JSON.stringify(membership ?? null);
+}
+
 async function loadSectionData(
   sectionId: ManageDataSectionId,
 ): Promise<SectionRuntimeRows> {
@@ -97,6 +127,170 @@ async function loadSectionData(
   }
 
   return manageDataClient.loadPersonGroupsCatalog();
+}
+
+function PersonGroupMembershipSection(props: {
+  membership: PersonGroupMembershipDraft;
+  searchQuery: string;
+  saveError: string | null;
+  personOptions: PersonCatalogDraftRow[];
+  dirty: boolean;
+  onSearchChange: (value: string) => void;
+  onAddMember: (personId: string) => void;
+  onRemoveMember: (personId: string) => void;
+  onClose: () => void;
+}) {
+  const availableSuggestions = useMemo(() => {
+    const normalizedQuery = props.searchQuery.trim().toLowerCase();
+    const memberIds = new Set(props.membership.members.map((member) => member.id));
+
+    return props.personOptions
+      .filter((person) => !memberIds.has(person.id))
+      .filter((person) => {
+        if (normalizedQuery === "") {
+          return true;
+        }
+
+        return [person.name, person.aliases.join(", "), person.path]
+          .join(" ")
+          .toLowerCase()
+          .includes(normalizedQuery);
+      })
+      .slice(0, 8);
+  }, [props.membership.members, props.personOptions, props.searchQuery]);
+
+  const firstSuggestion = availableSuggestions[0] ?? null;
+
+  return (
+    <section className="flex h-full min-h-0 flex-col gap-4">
+      <header className="panel-surface-strong flex flex-col gap-4 px-5 py-4 lg:px-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="panel-title">Manage Data</p>
+            <h1 className="mt-2 text-2xl font-semibold text-slate-950">
+              Person Group Membership
+            </h1>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+              Review and replace the persisted membership set for{" "}
+              <span className="font-semibold text-slate-900">
+                {props.membership.groupName || "Untitled group"}
+              </span>
+              . This subview keeps one group in focus with one explicit member
+              draft.
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <span
+              className={[
+                "rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em]",
+                props.dirty
+                  ? "bg-amber-100 text-amber-800"
+                  : "bg-emerald-100 text-emerald-800",
+              ].join(" ")}
+            >
+              {props.dirty ? "Draft changed" : "In sync"}
+            </span>
+            <button
+              type="button"
+              onClick={props.onClose}
+              className="rounded-full border border-[color:var(--pp-border)] bg-white/80 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-white"
+            >
+              Back to catalog
+            </button>
+          </div>
+        </div>
+        <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
+          <label className="flex items-center gap-2 rounded-[24px] border border-[color:var(--pp-border)] bg-white/80 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+              Add member
+            </span>
+            <input
+              type="search"
+              value={props.searchQuery}
+              onChange={(event) => props.onSearchChange(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && firstSuggestion !== null) {
+                  event.preventDefault();
+                  props.onAddMember(firstSuggestion.id);
+                }
+              }}
+              placeholder="Search persisted persons by name, alias, or path"
+              className="w-full border-none bg-transparent text-sm text-slate-800 outline-none placeholder:text-slate-400"
+            />
+          </label>
+          <div className="rounded-[24px] border border-[color:rgba(98,80,46,0.14)] bg-[color:rgba(255,255,255,0.45)] px-4 py-3 text-sm text-slate-600">
+            {props.membership.memberCount} persisted members at last reload
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {availableSuggestions.length === 0 ? (
+            <span className="rounded-full border border-dashed border-[color:rgba(98,80,46,0.16)] px-3 py-1.5 text-xs text-slate-500">
+              {props.searchQuery.trim() === ""
+                ? "Type to search persisted persons."
+                : "No matching persisted persons available."}
+            </span>
+          ) : (
+            availableSuggestions.map((person) => (
+              <button
+                key={person.id}
+                type="button"
+                onClick={() => props.onAddMember(person.id)}
+                className="rounded-full border border-[color:rgba(15,23,42,0.12)] bg-white px-3 py-1.5 text-left text-sm text-slate-800 transition hover:bg-slate-50"
+              >
+                {person.name}
+                {person.path ? ` - ${person.path}` : ""}
+              </button>
+            ))
+          )}
+        </div>
+        {props.saveError ? (
+          <p className="text-sm text-rose-700">{props.saveError}</p>
+        ) : null}
+      </header>
+      <div className="panel-surface min-h-0 flex-1 overflow-hidden">
+        <div className="border-b border-[color:var(--pp-border)] px-5 py-3">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
+            Current draft member list
+          </p>
+        </div>
+        <div className="thin-scrollbar min-h-0 overflow-auto px-5 py-4">
+          {props.membership.members.length === 0 ? (
+            <CatalogEmptyState
+              title="No members in this draft"
+              description="Use the persisted-person picker above to assemble the authoritative membership set before saving."
+            />
+          ) : (
+            <div className="flex flex-col gap-3">
+              {props.membership.members.map((member) => (
+                <div
+                  key={member.id}
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-[24px] border border-[color:rgba(98,80,46,0.14)] bg-white/70 px-4 py-3"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-slate-900">
+                      {member.name}
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-slate-500">
+                      {[member.path, member.aliases.join(", ")]
+                        .filter((value) => value.trim() !== "")
+                        .join(" • ") || "No path or aliases"}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => props.onRemoveMember(member.id)}
+                    className="rounded-full border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-800 transition hover:bg-rose-100"
+                  >
+                    Remove member
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  );
 }
 
 async function saveSectionData(
@@ -200,18 +394,12 @@ function PersonGroupsSection(props: {
   rows: PersonGroupCatalogDraftRow[];
   searchQuery: string;
   dirty: boolean;
-  activeMembershipRowId: string | null;
   onSearchChange: (value: string) => void;
   onAdd: () => void;
   onChangeRow: (rowId: string, field: "name", value: string) => void;
   onDeleteRow: (rowId: string) => void;
   onOpenMembershipEditor: (rowId: string) => void;
-  onCloseMembershipEditor: () => void;
 }) {
-  const activeMembershipRow =
-    props.activeMembershipRowId === null
-      ? null
-      : props.rows.find((row) => row.id === props.activeMembershipRowId) ?? null;
   const filteredRows = useMemo(() => {
     const normalizedQuery = props.searchQuery.trim().toLowerCase();
 
@@ -225,52 +413,6 @@ function PersonGroupsSection(props: {
       ),
     );
   }, [props.rows, props.searchQuery]);
-
-  if (activeMembershipRow !== null) {
-    return (
-      <section className="flex h-full min-h-0 flex-col gap-4">
-        <header className="panel-surface-strong flex flex-col gap-4 px-5 py-4 lg:px-6">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="min-w-0">
-              <p className="panel-title">Manage Data</p>
-              <h1 className="mt-2 text-2xl font-semibold text-slate-950">
-                Person Group Membership
-              </h1>
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-                Selected group:{" "}
-                <span className="font-semibold text-slate-900">
-                  {activeMembershipRow.name || "Untitled group"}
-                </span>
-                . The dedicated membership editor lands in the next subtask, but
-                this route already preserves the focused group context inside the
-                overlay.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={props.onCloseMembershipEditor}
-              className="rounded-full border border-[color:var(--pp-border)] bg-white/80 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-white"
-            >
-              Back to catalog
-            </button>
-          </div>
-        </header>
-        <div className="panel-surface flex min-h-0 flex-1 items-center justify-center px-6 py-10">
-          <div className="max-w-xl text-center">
-            <p className="panel-title">Membership</p>
-            <h2 className="mt-2 text-xl font-semibold text-slate-950">
-              Membership editing is scoped to its dedicated subtask
-            </h2>
-            <p className="mt-3 text-sm leading-6 text-slate-600">
-              This placeholder keeps the selected person group in focus so the
-              later membership implementation can attach to the same navigation
-              path.
-            </p>
-          </div>
-        </div>
-      </section>
-    );
-  }
 
   return (
     <CatalogSectionFrame
@@ -314,6 +456,7 @@ function PersonGroupsSection(props: {
                 <button
                   type="button"
                   onClick={() => props.onOpenMembershipEditor(row.id)}
+                  disabled={toPersistedIdentifier(row.id) === undefined || props.dirty}
                   className="rounded-full border border-[color:rgba(15,23,42,0.12)] bg-white px-3 py-2 text-sm font-medium text-slate-800 transition hover:bg-slate-50"
                 >
                   Manage members
@@ -347,11 +490,17 @@ export function ManageDataOverlay(props: {
   const [pendingDeletePersonGroupAction, setPendingDeletePersonGroupAction] =
     useState<PendingDeletePersonGroupAction>(null);
 
+  const membershipDirty =
+    sectionState.activePersonGroupMembershipRowId !== null &&
+    getMembershipFingerprint(sectionState.membership.snapshot) !==
+      getMembershipFingerprint(sectionState.membership.draft);
   const isDirty =
-    sectionState.status === "ready" &&
-    (getDraftFingerprint(sectionState.snapshot) !==
-      getDraftFingerprint(sectionState.draft) ||
-      sectionState.deletedPersonGroupIds.length > 0);
+    sectionState.activePersonGroupMembershipRowId !== null
+      ? membershipDirty
+      : sectionState.status === "ready" &&
+        (getDraftFingerprint(sectionState.snapshot) !==
+          getDraftFingerprint(sectionState.draft) ||
+          sectionState.deletedPersonGroupIds.length > 0);
 
   useEffect(() => {
     if (!props.isOpen) {
@@ -360,6 +509,94 @@ export function ManageDataOverlay(props: {
 
     void activateSection("persons");
   }, [props.isOpen]);
+
+  async function loadMembershipEditor(groupId: number) {
+    startTransition(() => {
+      setSectionState((currentState) => ({
+        ...currentState,
+        membership: {
+          ...currentState.membership,
+          status: "loading",
+          error: null,
+          saveError: null,
+          snapshot: null,
+          draft: null,
+          searchQuery: "",
+        },
+      }));
+    });
+
+    try {
+      const [membership, personOptions] = await Promise.all([
+        manageDataClient.loadPersonGroupMembership(groupId),
+        manageDataClient.loadPersonsCatalog(),
+      ]);
+      startTransition(() => {
+        setSectionState((currentState) => {
+          if (
+            currentState.activeSectionId !== "person_groups" ||
+            currentState.activePersonGroupMembershipRowId !== String(groupId)
+          ) {
+            return currentState;
+          }
+
+          return {
+            ...currentState,
+            membership: {
+              status: "ready",
+              error: null,
+              saveError: null,
+              snapshot: JSON.parse(JSON.stringify(membership)),
+              draft: JSON.parse(JSON.stringify(membership)),
+              personOptions,
+              searchQuery: "",
+            },
+          };
+        });
+      });
+    } catch (error) {
+      startTransition(() => {
+        setSectionState((currentState) => ({
+          ...currentState,
+          membership: {
+            ...currentState.membership,
+            status: "error",
+            error:
+              error instanceof Error
+                ? error.message
+                : "The membership editor could not be loaded.",
+            saveError: null,
+            snapshot: null,
+            draft: null,
+            searchQuery: "",
+          },
+        }));
+      });
+    }
+  }
+
+  useEffect(() => {
+    if (
+      !props.isOpen ||
+      sectionState.activeSectionId !== "person_groups" ||
+      sectionState.activePersonGroupMembershipRowId === null
+    ) {
+      return;
+    }
+
+    const groupId = toPersistedIdentifier(
+      sectionState.activePersonGroupMembershipRowId,
+    );
+    if (groupId === undefined) {
+      return;
+    }
+
+    void loadMembershipEditor(groupId);
+  }, [
+    props.isOpen,
+    sectionState.activePersonGroupMembershipRowId,
+    sectionState.activeSectionId,
+  ]);
 
   useEffect(() => {
     if (!props.isOpen) {
@@ -402,6 +639,7 @@ export function ManageDataOverlay(props: {
         draft: null,
         deletedPersonGroupIds: [],
         activePersonGroupMembershipRowId: null,
+        membership: initialSectionState.membership,
       }));
     });
 
@@ -419,6 +657,7 @@ export function ManageDataOverlay(props: {
           draft: cloneSectionRows(loadedRows),
           deletedPersonGroupIds: [],
           activePersonGroupMembershipRowId: null,
+          membership: initialSectionState.membership,
         });
       });
     } catch (error) {
@@ -437,6 +676,7 @@ export function ManageDataOverlay(props: {
           draft: null,
           deletedPersonGroupIds: [],
           activePersonGroupMembershipRowId: null,
+          membership: initialSectionState.membership,
         });
       });
     }
@@ -465,6 +705,25 @@ export function ManageDataOverlay(props: {
   }
 
   function discardCurrentDraft() {
+    if (sectionState.activePersonGroupMembershipRowId !== null) {
+      if (sectionState.membership.snapshot === null) {
+        return;
+      }
+
+      setSectionState((currentState) => ({
+        ...currentState,
+        membership: {
+          ...currentState.membership,
+          draft: JSON.parse(
+            JSON.stringify(currentState.membership.snapshot),
+          ) as PersonGroupMembershipDraft,
+          saveError: null,
+          searchQuery: "",
+        },
+      }));
+      return;
+    }
+
     if (sectionState.status !== "ready" || sectionState.snapshot === null) {
       return;
     }
@@ -482,6 +741,74 @@ export function ManageDataOverlay(props: {
   }
 
   async function saveCurrentDraft(): Promise<boolean> {
+    if (sectionState.activePersonGroupMembershipRowId !== null) {
+      const groupId = toPersistedIdentifier(
+        sectionState.activePersonGroupMembershipRowId,
+      );
+      if (groupId === undefined || sectionState.membership.draft === null) {
+        return false;
+      }
+
+      const membershipDraft = JSON.parse(
+        JSON.stringify(sectionState.membership.draft),
+      ) as PersonGroupMembershipDraft;
+
+      startTransition(() => {
+        setSectionState((currentState) => ({
+          ...currentState,
+          saveState: "saving",
+          membership: {
+            ...currentState.membership,
+            saveError: null,
+          },
+        }));
+      });
+
+      try {
+        const [, reloadedGroups, reloadedMembership] = await Promise.all([
+          manageDataClient.savePersonGroupMembership(groupId, membershipDraft),
+          manageDataClient.loadPersonGroupsCatalog(),
+          manageDataClient.loadPersonGroupMembership(groupId),
+        ]);
+
+        startTransition(() => {
+          setSectionState((currentState) => ({
+            ...currentState,
+            saveState: "idle",
+            snapshot: cloneSectionRows(reloadedGroups),
+            draft: cloneSectionRows(reloadedGroups),
+            deletedPersonGroupIds: [],
+            membership: {
+              ...currentState.membership,
+              status: "ready",
+              error: null,
+              saveError: null,
+              snapshot: JSON.parse(JSON.stringify(reloadedMembership)),
+              draft: JSON.parse(JSON.stringify(reloadedMembership)),
+              searchQuery: "",
+            },
+          }));
+        });
+        setPendingDeletePersonGroupAction(null);
+        return true;
+      } catch (error) {
+        startTransition(() => {
+          setSectionState((currentState) => ({
+            ...currentState,
+            saveState: "error",
+            membership: {
+              ...currentState.membership,
+              saveError:
+                error instanceof Error
+                  ? error.message
+                  : "Unable to save membership draft.",
+            },
+          }));
+        });
+        return false;
+      }
+    }
+
     if (sectionState.status !== "ready" || sectionState.draft === null) {
       return false;
     }
@@ -518,6 +845,7 @@ export function ManageDataOverlay(props: {
           saveError: null,
           deletedPersonGroupIds: [],
           activePersonGroupMembershipRowId: null,
+          membership: initialSectionState.membership,
         }));
       });
       setPendingDeletePersonGroupAction(null);
@@ -558,6 +886,11 @@ export function ManageDataOverlay(props: {
       return;
     }
 
+    if (pendingAction?.kind === "membership_back") {
+      closePersonGroupMembershipEditor(true);
+      return;
+    }
+
     props.onClose();
   }
 
@@ -568,6 +901,11 @@ export function ManageDataOverlay(props: {
 
     if (pendingAction?.kind === "switch") {
       void activateSection(pendingAction.nextSectionId);
+      return;
+    }
+
+    if (pendingAction?.kind === "membership_back") {
+      closePersonGroupMembershipEditor(true);
       return;
     }
 
@@ -730,6 +1068,14 @@ export function ManageDataOverlay(props: {
   }
 
   function openPersonGroupMembershipEditor(rowId: string) {
+    if (isDirty) {
+      setSectionState((currentState) => ({
+        ...currentState,
+        saveError: "Apply or discard the person-group catalog draft before editing members.",
+      }));
+      return;
+    }
+
     setSectionState((currentState) => {
       if (currentState.activeSectionId !== "person_groups") {
         return currentState;
@@ -737,16 +1083,104 @@ export function ManageDataOverlay(props: {
 
       return {
         ...currentState,
+        saveError: null,
         activePersonGroupMembershipRowId: rowId,
       };
     });
   }
 
-  function closePersonGroupMembershipEditor() {
+  function closePersonGroupMembershipEditor(force = false) {
+    if (!force && isDirty) {
+      setPendingGuardAction({ kind: "membership_back" });
+      return;
+    }
+
     setSectionState((currentState) => ({
       ...currentState,
       activePersonGroupMembershipRowId: null,
+      membership: initialSectionState.membership,
     }));
+  }
+
+  function updateMembershipSearchQuery(value: string) {
+    setSectionState((currentState) => ({
+      ...currentState,
+      membership: {
+        ...currentState.membership,
+        searchQuery: value,
+      },
+    }));
+  }
+
+  function addMembershipMember(personId: string) {
+    setSectionState((currentState) => {
+      if (currentState.membership.draft === null) {
+        return currentState;
+      }
+
+      const person = currentState.membership.personOptions.find(
+        (option) => option.id === personId,
+      );
+      if (person === undefined) {
+        return currentState;
+      }
+
+      if (
+        currentState.membership.draft.members.some(
+          (member) => member.id === person.id,
+        )
+      ) {
+        return {
+          ...currentState,
+          membership: {
+            ...currentState.membership,
+            searchQuery: "",
+          },
+        };
+      }
+
+      const nextMember: PersonGroupMembershipDraftMember = {
+        id: person.id,
+        name: person.name,
+        aliases: [...person.aliases],
+        path: person.path,
+      };
+
+      return {
+        ...currentState,
+        membership: {
+          ...currentState.membership,
+          draft: {
+            ...currentState.membership.draft,
+            members: [...currentState.membership.draft.members, nextMember].sort(
+              (left, right) => left.name.localeCompare(right.name),
+            ),
+          },
+          searchQuery: "",
+        },
+      };
+    });
+  }
+
+  function removeMembershipMember(personId: string) {
+    setSectionState((currentState) => {
+      if (currentState.membership.draft === null) {
+        return currentState;
+      }
+
+      return {
+        ...currentState,
+        membership: {
+          ...currentState.membership,
+          draft: {
+            ...currentState.membership.draft,
+            members: currentState.membership.draft.members.filter(
+              (member) => member.id !== personId,
+            ),
+          },
+        },
+      };
+    });
   }
 
   if (!props.isOpen) {
@@ -835,20 +1269,48 @@ export function ManageDataOverlay(props: {
               ) : null}
               {sectionState.status === "ready" &&
               sectionState.activeSectionId === "person_groups" &&
-              sectionState.draft !== null ? (
+              sectionState.activePersonGroupMembershipRowId !== null ? (
+                sectionState.membership.status === "loading" ? (
+                  <CatalogLoadingState label="Loading person-group membership" />
+                ) : sectionState.membership.status === "error" ? (
+                  <CatalogErrorState
+                    title="The membership editor could not be loaded"
+                    description={
+                      sectionState.membership.error ??
+                      "Person-group membership load failed."
+                    }
+                    onRetry={() => {
+                      const groupId = toPersistedIdentifier(
+                        sectionState.activePersonGroupMembershipRowId ?? "",
+                      );
+                      if (groupId !== undefined) {
+                        void loadMembershipEditor(groupId);
+                      }
+                    }}
+                  />
+                ) : sectionState.membership.draft !== null ? (
+                  <PersonGroupMembershipSection
+                    membership={sectionState.membership.draft}
+                    searchQuery={sectionState.membership.searchQuery}
+                    saveError={sectionState.membership.saveError}
+                    personOptions={sectionState.membership.personOptions}
+                    dirty={isDirty}
+                    onSearchChange={updateMembershipSearchQuery}
+                    onAddMember={addMembershipMember}
+                    onRemoveMember={removeMembershipMember}
+                    onClose={() => closePersonGroupMembershipEditor()}
+                  />
+                ) : null
+              ) : sectionState.draft !== null ? (
                 <PersonGroupsSection
                   rows={sectionState.draft as PersonGroupCatalogDraftRow[]}
                   searchQuery={sectionState.searchQuery}
                   dirty={isDirty}
-                  activeMembershipRowId={
-                    sectionState.activePersonGroupMembershipRowId
-                  }
                   onSearchChange={updateSearchQuery}
                   onAdd={addDraftRow}
                   onChangeRow={updatePersonGroupDraftRow}
                   onDeleteRow={requestDeletePersonGroup}
                   onOpenMembershipEditor={openPersonGroupMembershipEditor}
-                  onCloseMembershipEditor={closePersonGroupMembershipEditor}
                 />
               ) : null}
             </div>

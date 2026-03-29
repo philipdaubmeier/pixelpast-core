@@ -1,11 +1,13 @@
 import {
   manageDataTransport,
+  type ApiPersonGroupMembershipResponse,
   type ApiPersonGroupsCatalogResponse,
   type ApiPersonsCatalogResponse,
 } from "../../api/manageDataTransport";
 import type {
   PersonCatalogDraftRow,
   PersonGroupCatalogDraftRow,
+  PersonGroupMembershipDraft,
 } from "./types";
 
 function toDraftPersonsCatalog(
@@ -27,6 +29,22 @@ function toDraftPersonGroupsCatalog(
     name: group.name,
     memberCount: group.member_count,
   }));
+}
+
+function toDraftPersonGroupMembership(
+  response: ApiPersonGroupMembershipResponse,
+): PersonGroupMembershipDraft {
+  return {
+    groupId: String(response.person_group.id),
+    groupName: response.person_group.name,
+    memberCount: response.person_group.member_count,
+    members: response.members.map((member) => ({
+      id: String(member.id),
+      name: member.name,
+      aliases: [...member.aliases],
+      path: member.path ?? "",
+    })),
+  };
 }
 
 function toPersistedIdentifier(rowId: string): number | undefined {
@@ -79,5 +97,26 @@ export const manageDataClient = {
     });
 
     return toDraftPersonGroupsCatalog(response);
+  },
+
+  async loadPersonGroupMembership(
+    groupId: number,
+  ): Promise<PersonGroupMembershipDraft> {
+    return toDraftPersonGroupMembership(
+      await manageDataTransport.getPersonGroupMembership(groupId),
+    );
+  },
+
+  async savePersonGroupMembership(
+    groupId: number,
+    membership: PersonGroupMembershipDraft,
+  ): Promise<PersonGroupMembershipDraft> {
+    return toDraftPersonGroupMembership(
+      await manageDataTransport.savePersonGroupMembership(groupId, {
+        person_ids: membership.members
+          .map((member) => toPersistedIdentifier(member.id))
+          .filter((value): value is number => value !== undefined),
+      }),
+    );
   },
 };

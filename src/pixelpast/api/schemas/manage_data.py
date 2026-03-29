@@ -62,3 +62,33 @@ class SavePersonGroupsCatalogRequest(BaseModel):
 
     person_groups: list[PersonGroupCatalogWriteEntry]
     delete_ids: list[int] = Field(default_factory=list)
+
+
+class PersonGroupMembershipMemberEntry(BaseModel):
+    """Readable persisted person row exposed inside one group membership editor."""
+
+    id: int
+    name: str
+    aliases: list[str]
+    path: str | None
+
+
+class PersonGroupMembershipGroupEntry(BaseModel):
+    """Readable focused person-group context for the membership editor."""
+
+    id: int
+    name: str
+    member_count: int
+
+
+class PersonGroupMembershipResponse(BaseModel):
+    """Read response for one person group's persisted membership set."""
+
+    person_group: PersonGroupMembershipGroupEntry
+    members: list[PersonGroupMembershipMemberEntry]
+
+
+class SavePersonGroupMembershipRequest(BaseModel):
+    """Batch replacement request for one person group's membership set."""
+
+    person_ids: list[int] = Field(default_factory=list)

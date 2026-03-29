@@ -13,6 +13,20 @@ export type PersonGroupCatalogDraftRow = {
   memberCount: number;
 };
 
+export type PersonGroupMembershipDraftMember = {
+  id: string;
+  name: string;
+  aliases: string[];
+  path: string;
+};
+
+export type PersonGroupMembershipDraft = {
+  groupId: string;
+  groupName: string;
+  memberCount: number;
+  members: PersonGroupMembershipDraftMember[];
+};
+
 export type ManageDataSectionDescriptor = {
   id: ManageDataSectionId;
   label: string;

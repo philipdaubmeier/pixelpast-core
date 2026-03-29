@@ -151,6 +151,12 @@ def test_manage_data_routes_document_catalog_contracts() -> None:
     persons_put = schema["paths"]["/api/manage-data/persons"]["put"]
     groups_get = schema["paths"]["/api/manage-data/person-groups"]["get"]
     groups_put = schema["paths"]["/api/manage-data/person-groups"]["put"]
+    membership_get = schema["paths"]["/api/manage-data/person-groups/{group_id}/members"][
+        "get"
+    ]
+    membership_put = schema["paths"]["/api/manage-data/person-groups/{group_id}/members"][
+        "put"
+    ]
 
     assert persons_get["tags"] == ["manage-data"]
     assert persons_get["summary"] == "Get persons catalog"
@@ -174,6 +180,14 @@ def test_manage_data_routes_document_catalog_contracts() -> None:
     assert "replace_groups" in _request_examples(groups_put)
     assert groups_put["responses"]["200"]["description"] == (
         "Reloaded canonical person-group catalog after persistence."
+    )
+
+    assert membership_get["summary"] == "Get one person-group membership set"
+    assert "loaded_membership" in _response_examples(membership_get, 200)
+    assert membership_put["summary"] == "Save one person-group membership draft"
+    assert "replace_membership" in _request_examples(membership_put)
+    assert membership_put["responses"]["200"]["description"] == (
+        "Reloaded person-group membership state after persistence."
     )
 
 

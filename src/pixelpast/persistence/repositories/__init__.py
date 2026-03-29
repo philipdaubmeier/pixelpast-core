@@ -23,6 +23,7 @@ from pixelpast.persistence.repositories.manage_data import (
     ManageDataPersonRepository,
     PersonCatalogSnapshot,
     PersonGroupCatalogSnapshot,
+    PersonGroupMembershipSnapshot,
 )
 from pixelpast.persistence.repositories.places import (
     EventPlaceLinkUpsertResult,
@@ -81,6 +82,7 @@ __all__ = [
     "PersonRepository",
     "PersonCatalogSnapshot",
     "PersonGroupCatalogSnapshot",
+    "PersonGroupMembershipSnapshot",
     "PlaceRepository",
     "PlaceUpsertResult",
     "PersonAssetMembershipSnapshot",

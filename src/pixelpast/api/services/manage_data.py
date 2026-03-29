@@ -7,6 +7,9 @@ from pixelpast.api.schemas.manage_data import (
     PersonCatalogWriteEntry,
     PersonGroupCatalogEntry,
     PersonGroupCatalogWriteEntry,
+    PersonGroupMembershipGroupEntry,
+    PersonGroupMembershipMemberEntry,
+    PersonGroupMembershipResponse,
     PersonGroupsCatalogResponse,
     PersonsCatalogResponse,
 )
@@ -107,6 +110,54 @@ class ManageDataCatalogService:
         )
         return self.get_person_groups_catalog()
 
+    def get_person_group_membership(
+        self,
+        *,
+        group_id: int,
+    ) -> PersonGroupMembershipResponse:
+        """Return one persisted group together with its persisted members."""
+
+        group_snapshot = self._person_group_repository.get_catalog_snapshot(
+            group_id=group_id
+        )
+        if group_snapshot is None:
+            raise ManageDataValidationError(f"person group id {group_id} does not exist")
+
+        return PersonGroupMembershipResponse(
+            person_group=PersonGroupMembershipGroupEntry(
+                id=group_snapshot.id,
+                name=group_snapshot.name,
+                member_count=group_snapshot.member_count,
+            ),
+            members=[
+                PersonGroupMembershipMemberEntry(
+                    id=member.id,
+                    name=member.name,
+                    aliases=list(member.aliases),
+                    path=member.path,
+                )
+                for member in self._person_group_repository.list_members(group_id=group_id)
+            ],
+        )
+
+    def save_person_group_membership(
+        self,
+        *,
+        group_id: int,
+        person_ids: list[int],
+    ) -> PersonGroupMembershipResponse:
+        """Replace one group's member set and return the reloaded persisted state."""
+
+        if group_id not in self._person_group_repository.get_existing_ids():
+            raise ManageDataValidationError(f"person group id {group_id} does not exist")
+
+        self._validate_person_group_membership_person_ids(person_ids=person_ids)
+        self._person_group_repository.replace_membership(
+            group_id=group_id,
+            person_ids=_normalize_member_identifier_list(person_ids),
+        )
+        return self.get_person_group_membership(group_id=group_id)
+
     def _validate_person_identifiers(
         self,
         *,
@@ -164,6 +215,16 @@ class ManageDataCatalogService:
                     f"person group id {group_id} does not exist"
                 )
 
+    def _validate_person_group_membership_person_ids(
+        self,
+        *,
+        person_ids: list[int],
+    ) -> None:
+        existing_person_ids = self._person_repository.get_existing_ids()
+        for person_id in _normalize_member_identifier_list(person_ids):
+            if person_id not in existing_person_ids:
+                raise ManageDataValidationError(f"person id {person_id} does not exist")
+
 
 def _normalize_person_write_entry(row: PersonCatalogWriteEntry) -> PersonCatalogSnapshot:
     name = row.name.strip()
@@ -203,3 +264,14 @@ def _normalize_person_group_write_entry(
         name=name,
         member_count=0,
     )
+
+
+def _normalize_member_identifier_list(person_ids: list[int]) -> list[int]:
+    normalized_ids: list[int] = []
+    seen_ids: set[int] = set()
+    for person_id in person_ids:
+        if person_id <= 0 or person_id in seen_ids:
+            continue
+        normalized_ids.append(person_id)
+        seen_ids.add(person_id)
+    return normalized_ids

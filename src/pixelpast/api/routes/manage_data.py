@@ -13,7 +13,9 @@ from pixelpast.api.routes.metadata import (
 )
 from pixelpast.api.schemas import (
     PersonGroupsCatalogResponse,
+    PersonGroupMembershipResponse,
     PersonsCatalogResponse,
+    SavePersonGroupMembershipRequest,
     SavePersonGroupsCatalogRequest,
     SavePersonsCatalogRequest,
 )
@@ -100,6 +102,42 @@ SAVE_PERSON_GROUPS_EXAMPLES = {
                 {"name": "Travel Buddies"},
             ],
             "delete_ids": [8],
+        },
+    }
+}
+
+PERSON_GROUP_MEMBERSHIP_EXAMPLES = {
+    "loaded_membership": {
+        "summary": "Loaded one group's persisted members",
+        "value": {
+            "person_group": {
+                "id": 3,
+                "name": "Immediate Family",
+                "member_count": 2,
+            },
+            "members": [
+                {
+                    "id": 7,
+                    "name": "Anna Becker",
+                    "aliases": ["Annie"],
+                    "path": "family/anna-becker",
+                },
+                {
+                    "id": 12,
+                    "name": "Milo Tan",
+                    "aliases": [],
+                    "path": "friends/milo-tan",
+                },
+            ],
+        },
+    }
+}
+
+SAVE_PERSON_GROUP_MEMBERSHIP_EXAMPLES = {
+    "replace_membership": {
+        "summary": "Replace one group's persisted member set",
+        "value": {
+            "person_ids": [7, 12, 18],
         },
     }
 }
@@ -287,6 +325,99 @@ def save_person_groups_catalog(
         response = service.save_person_groups_catalog(
             person_groups=request.person_groups,
             delete_ids=request.delete_ids,
+        )
+        session.commit()
+        return response
+    except ManageDataValidationError as error:
+        session.rollback()
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@router.get(
+    "/manage-data/person-groups/{group_id}/members",
+    response_model=PersonGroupMembershipResponse,
+    summary="Get one person-group membership set",
+    description=(
+        "Return one canonical person group in focus together with its current "
+        "persisted members."
+    ),
+    response_description="Focused person-group membership state for manual maintenance.",
+    responses=combine_responses(
+        {
+            200: {
+                "content": {
+                    "application/json": {
+                        "examples": PERSON_GROUP_MEMBERSHIP_EXAMPLES,
+                    }
+                }
+            }
+        },
+        BAD_REQUEST_RESPONSE,
+        VALIDATION_ERROR_RESPONSE,
+    ),
+)
+def get_person_group_membership(
+    group_id: int,
+    session: Session = Depends(get_db_session),
+) -> PersonGroupMembershipResponse:
+    """Return one person group's persisted member set."""
+
+    service = _build_manage_data_catalog_service(session)
+    try:
+        return service.get_person_group_membership(group_id=group_id)
+    except ManageDataValidationError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@router.put(
+    "/manage-data/person-groups/{group_id}/members",
+    response_model=PersonGroupMembershipResponse,
+    summary="Save one person-group membership draft",
+    description=(
+        "Replace one canonical person group's persisted membership set as one "
+        "authoritative batch."
+    ),
+    response_description="Reloaded person-group membership state after persistence.",
+    responses=combine_responses(
+        {
+            200: {
+                "content": {
+                    "application/json": {
+                        "examples": PERSON_GROUP_MEMBERSHIP_EXAMPLES,
+                    }
+                }
+            }
+        },
+        {
+            400: {
+                **BAD_REQUEST_RESPONSE[400],
+                "content": {
+                    "application/json": {
+                        "examples": BAD_REQUEST_RESPONSE[400]["content"][
+                            "application/json"
+                        ]["examples"],
+                    }
+                },
+            }
+        },
+        VALIDATION_ERROR_RESPONSE,
+    ),
+)
+def save_person_group_membership(
+    group_id: int,
+    request: SavePersonGroupMembershipRequest = Body(
+        ...,
+        openapi_examples=SAVE_PERSON_GROUP_MEMBERSHIP_EXAMPLES,
+    ),
+    session: Session = Depends(get_db_session),
+) -> PersonGroupMembershipResponse:
+    """Persist one focused person-group membership draft and return persisted truth."""
+
+    service = _build_manage_data_catalog_service(session)
+    try:
+        response = service.save_person_group_membership(
+            group_id=group_id,
+            person_ids=request.person_ids,
         )
         session.commit()
         return response

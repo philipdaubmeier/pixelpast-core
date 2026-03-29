@@ -31,6 +31,16 @@ class PersonGroupCatalogSnapshot:
     member_count: int
 
 
+@dataclass(frozen=True, slots=True)
+class PersonGroupMembershipSnapshot:
+    """Stable read snapshot for one persisted member inside one group."""
+
+    id: int
+    name: str
+    aliases: list[str]
+    path: str | None
+
+
 class ManageDataPersonRepository:
     """Repository for deterministic person-catalog maintenance."""
 
@@ -136,6 +146,53 @@ class ManageDataPersonGroupRepository:
         statement = select(PersonGroup.id)
         return set(self._session.execute(statement).scalars())
 
+    def get_catalog_snapshot(self, *, group_id: int) -> PersonGroupCatalogSnapshot | None:
+        """Return one persisted person-group catalog row with current member count."""
+
+        statement = (
+            select(
+                PersonGroup.id,
+                PersonGroup.name,
+                func.count(PersonGroupMember.person_id),
+            )
+            .outerjoin(
+                PersonGroupMember,
+                PersonGroupMember.group_id == PersonGroup.id,
+            )
+            .where(PersonGroup.id == group_id)
+            .group_by(PersonGroup.id, PersonGroup.name)
+        )
+        row = self._session.execute(statement).one_or_none()
+        if row is None:
+            return None
+
+        snapshot_group_id, name, member_count = row
+        return PersonGroupCatalogSnapshot(
+            id=snapshot_group_id,
+            name=name,
+            member_count=member_count,
+        )
+
+    def list_members(self, *, group_id: int) -> list[PersonGroupMembershipSnapshot]:
+        """Return one group's persisted members in deterministic display order."""
+
+        statement = (
+            select(Person)
+            .join(PersonGroupMember, PersonGroupMember.person_id == Person.id)
+            .where(PersonGroupMember.group_id == group_id)
+            .order_by(func.lower(Person.name), Person.id)
+        )
+        members = self._session.execute(statement).scalars().all()
+        return [
+            PersonGroupMembershipSnapshot(
+                id=person.id,
+                name=person.name,
+                aliases=_normalize_aliases_shape(person.aliases),
+                path=person.path,
+            )
+            for person in members
+        ]
+
     def replace_catalog(
         self,
         *,
@@ -181,6 +238,17 @@ class ManageDataPersonGroupRepository:
             self._session.execute(
                 delete(PersonGroup).where(PersonGroup.id.in_(delete_ids))
             )
+
+        self._session.flush()
+
+    def replace_membership(self, *, group_id: int, person_ids: list[int]) -> None:
+        """Replace one person group's membership links with the provided person set."""
+
+        self._session.execute(
+            delete(PersonGroupMember).where(PersonGroupMember.group_id == group_id)
+        )
+        for person_id in person_ids:
+            self._session.add(PersonGroupMember(group_id=group_id, person_id=person_id))
 
         self._session.flush()
 

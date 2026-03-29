@@ -298,6 +298,128 @@ def test_manage_data_person_groups_save_supports_member_counts_and_cleanup() -> 
         shutil.rmtree(workspace_root, ignore_errors=True)
 
 
+def test_manage_data_person_group_membership_contract_replaces_member_set() -> None:
+    workspace_root = _create_workspace_dir(prefix="manage-data-person-group-membership")
+    runtime = None
+    try:
+        runtime = _create_runtime(workspace_root=workspace_root)
+        with runtime.session_factory() as session:
+            anna = Person(
+                name="Anna Becker",
+                aliases=["Annie"],
+                path="family/anna-becker",
+                metadata_json=None,
+            )
+            milo = Person(
+                name="Milo Tan",
+                aliases=[],
+                path="friends/milo-tan",
+                metadata_json=None,
+            )
+            noa = Person(
+                name="Noa Stein",
+                aliases=["N."],
+                path="friends/noa-stein",
+                metadata_json=None,
+            )
+            group = PersonGroup(
+                name="Travel Buddies",
+                type=MANUAL_PERSON_GROUP_TYPE,
+                path=None,
+                metadata_json={},
+            )
+            session.add_all([anna, milo, noa, group])
+            session.flush()
+            session.add_all(
+                [
+                    PersonGroupMember(group_id=group.id, person_id=anna.id),
+                    PersonGroupMember(group_id=group.id, person_id=milo.id),
+                ]
+            )
+            session.commit()
+
+        app = create_app(settings=runtime.settings)
+        with TestClient(app) as client:
+            get_response = client.get("/api/manage-data/person-groups/1/members")
+
+        assert get_response.status_code == 200
+        assert get_response.json() == {
+            "person_group": {
+                "id": 1,
+                "name": "Travel Buddies",
+                "member_count": 2,
+            },
+            "members": [
+                {
+                    "id": 1,
+                    "name": "Anna Becker",
+                    "aliases": ["Annie"],
+                    "path": "family/anna-becker",
+                },
+                {
+                    "id": 2,
+                    "name": "Milo Tan",
+                    "aliases": [],
+                    "path": "friends/milo-tan",
+                },
+            ],
+        }
+
+        with TestClient(app) as client:
+            save_response = client.put(
+                "/api/manage-data/person-groups/1/members",
+                json={"person_ids": [3, 3, 1]},
+            )
+
+        assert save_response.status_code == 200
+        assert save_response.json() == {
+            "person_group": {
+                "id": 1,
+                "name": "Travel Buddies",
+                "member_count": 2,
+            },
+            "members": [
+                {
+                    "id": 1,
+                    "name": "Anna Becker",
+                    "aliases": ["Annie"],
+                    "path": "family/anna-becker",
+                },
+                {
+                    "id": 3,
+                    "name": "Noa Stein",
+                    "aliases": ["N."],
+                    "path": "friends/noa-stein",
+                },
+            ],
+        }
+
+        with runtime.session_factory() as session:
+            memberships = (
+                session.query(PersonGroupMember)
+                .order_by(PersonGroupMember.group_id, PersonGroupMember.person_id)
+                .all()
+            )
+
+        assert [(link.group_id, link.person_id) for link in memberships] == [
+            (1, 1),
+            (1, 3),
+        ]
+
+        with TestClient(app) as client:
+            rejected_response = client.put(
+                "/api/manage-data/person-groups/1/members",
+                json={"person_ids": [999]},
+            )
+
+        assert rejected_response.status_code == 400
+        assert rejected_response.json() == {"detail": "person id 999 does not exist"}
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
 def _create_runtime(*, workspace_root: Path):
     database_path = workspace_root / "pixelpast.db"
     settings = Settings(database_url=f"sqlite:///{database_path.as_posix()}")

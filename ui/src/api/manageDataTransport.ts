@@ -33,6 +33,24 @@ export type ApiSavePersonGroupsCatalogRequest = {
   delete_ids: number[];
 };
 
+export type ApiPersonGroupMembershipResponse = {
+  person_group: {
+    id: number;
+    name: string;
+    member_count: number;
+  };
+  members: Array<{
+    id: number;
+    name: string;
+    aliases: string[];
+    path: string | null;
+  }>;
+};
+
+export type ApiSavePersonGroupMembershipRequest = {
+  person_ids: number[];
+};
+
 function normalizeConfiguredApiBaseUrl(value: string): string {
   const trimmedValue = value.replace(/\/$/, "");
 
@@ -114,6 +132,27 @@ export const manageDataTransport = {
   ): Promise<ApiPersonGroupsCatalogResponse> {
     return requestJson<ApiPersonGroupsCatalogResponse>(
       "/manage-data/person-groups",
+      {
+        method: "PUT",
+        body: JSON.stringify(request),
+      },
+    );
+  },
+
+  getPersonGroupMembership(
+    groupId: number,
+  ): Promise<ApiPersonGroupMembershipResponse> {
+    return requestJson<ApiPersonGroupMembershipResponse>(
+      `/manage-data/person-groups/${groupId}/members`,
+    );
+  },
+
+  savePersonGroupMembership(
+    groupId: number,
+    request: ApiSavePersonGroupMembershipRequest,
+  ): Promise<ApiPersonGroupMembershipResponse> {
+    return requestJson<ApiPersonGroupMembershipResponse>(
+      `/manage-data/person-groups/${groupId}/members`,
       {
         method: "PUT",
         body: JSON.stringify(request),

@@ -18,6 +18,8 @@ def test_manage_data_client_maps_person_groups_catalog_and_delete_contract() -> 
     assert "manageDataTransport.savePersonGroupsCatalog" in source
     assert "memberCount: group.member_count" in source
     assert "delete_ids: deleteIds" in source
+    assert "getPersonGroupMembership(groupId)" in source
+    assert "savePersonGroupMembership(groupId" in source
 
 
 def test_manage_data_overlay_renders_person_groups_editor_actions() -> None:
@@ -33,7 +35,7 @@ def test_manage_data_overlay_renders_person_groups_editor_actions() -> None:
     assert "Confirm delete" in source
 
 
-def test_manage_data_overlay_preserves_membership_subview_context() -> None:
+def test_manage_data_overlay_renders_person_group_membership_subview() -> None:
     source = (
         UI_ROOT / "features" / "manage-data" / "components" / "ManageDataOverlay.tsx"
     ).read_text(encoding="utf-8")
@@ -41,4 +43,6 @@ def test_manage_data_overlay_preserves_membership_subview_context() -> None:
     assert "activePersonGroupMembershipRowId" in source
     assert "Person Group Membership" in source
     assert "Back to catalog" in source
-    assert "selected person group in focus" in source
+    assert "Search persisted persons by name, alias, or path" in source
+    assert "Remove member" in source
+    assert "Apply or discard the person-group catalog draft before editing members." in source
