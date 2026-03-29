@@ -2,12 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from datetime import datetime
 from pathlib import Path
-from time import monotonic
 
-from pixelpast.ingestion.staged import StagedIngestionRunner
+from pixelpast.ingestion.service_base import SharedStagedIngestionServiceBase
 from pixelpast.ingestion.workdays_vacation.connector import WorkdaysVacationConnector
 from pixelpast.ingestion.workdays_vacation.contracts import (
     WorkdaysVacationIngestionResult,
@@ -26,30 +23,78 @@ from pixelpast.ingestion.workdays_vacation.staged import (
 from pixelpast.shared.progress import JobProgressCallback
 from pixelpast.shared.runtime import RuntimeContext
 
-_HEARTBEAT_INTERVAL_SECONDS = 10.0
 
-
-class WorkdaysVacationIngestionService:
+class WorkdaysVacationIngestionService(
+    SharedStagedIngestionServiceBase[
+        WorkdaysVacationConnector,
+        WorkdaysVacationIngestionRunCoordinator,
+        WorkdaysVacationStagedIngestionStrategy,
+        WorkdaysVacationIngestionProgressTracker,
+        WorkdaysVacationIngestionPersistenceScope,
+        WorkdaysVacationIngestionResult,
+    ]
+):
     """Wire connector-specific collaborators into the staged ingestion runner."""
 
-    def __init__(
+    def _build_default_connector(self) -> WorkdaysVacationConnector:
+        return WorkdaysVacationConnector()
+
+    def _build_default_lifecycle(self) -> WorkdaysVacationIngestionRunCoordinator:
+        return WorkdaysVacationIngestionRunCoordinator()
+
+    def _resolve_runtime_root(
         self,
-        connector: WorkdaysVacationConnector | None = None,
-        lifecycle: WorkdaysVacationIngestionRunCoordinator | None = None,
         *,
-        heartbeat_interval_seconds: float = _HEARTBEAT_INTERVAL_SECONDS,
-        now_factory: Callable[[], datetime] | None = None,
-        monotonic_factory: Callable[[], float] | None = None,
-    ) -> None:
-        self._connector = connector or WorkdaysVacationConnector()
-        self._lifecycle = lifecycle or WorkdaysVacationIngestionRunCoordinator()
-        self._heartbeat_interval_seconds = heartbeat_interval_seconds
-        self._now_factory = now_factory
-        self._monotonic_factory = monotonic_factory or monotonic
-        self._runner = StagedIngestionRunner(
-            strategy=WorkdaysVacationStagedIngestionStrategy(
-                connector=self._connector
+        runtime: RuntimeContext,
+        **kwargs: object,
+    ) -> Path:
+        configured_root = kwargs.get("root") or runtime.settings.workdays_vacation_root
+        if configured_root is None:
+            raise ValueError(
+                "Workdays vacation ingestion requires "
+                "PIXELPAST_WORKDAYS_VACATION_ROOT to be configured."
             )
+        return configured_root.expanduser().resolve()
+
+    def _build_strategy(
+        self,
+        *,
+        runtime: RuntimeContext,
+        resolved_root: Path,
+        **kwargs: object,
+    ) -> WorkdaysVacationStagedIngestionStrategy:
+        del runtime, resolved_root, kwargs
+        return WorkdaysVacationStagedIngestionStrategy(connector=self._connector)
+
+    def _build_progress_tracker(
+        self,
+        *,
+        runtime: RuntimeContext,
+        run_id: int,
+        progress_callback: JobProgressCallback | None,
+        **kwargs: object,
+    ) -> WorkdaysVacationIngestionProgressTracker:
+        del kwargs
+        return WorkdaysVacationIngestionProgressTracker(
+            run_id=run_id,
+            runtime=runtime,
+            callback=progress_callback,
+            heartbeat_interval_seconds=self._heartbeat_interval_seconds,
+            now_factory=self._now_factory,
+            monotonic_factory=self._monotonic_factory,
+        )
+
+    def _build_persistence_scope(
+        self,
+        *,
+        runtime: RuntimeContext,
+        resolved_root: Path,
+        **kwargs: object,
+    ) -> WorkdaysVacationIngestionPersistenceScope:
+        del resolved_root, kwargs
+        return WorkdaysVacationIngestionPersistenceScope(
+            runtime=runtime,
+            lifecycle=self._lifecycle,
         )
 
     def ingest(
@@ -61,35 +106,10 @@ class WorkdaysVacationIngestionService:
     ) -> WorkdaysVacationIngestionResult:
         """Run staged workdays-vacation ingestion and return the public result."""
 
-        configured_root = root or runtime.settings.workdays_vacation_root
-        if configured_root is None:
-            raise ValueError(
-                "Workdays vacation ingestion requires "
-                "PIXELPAST_WORKDAYS_VACATION_ROOT to be configured."
-            )
-
-        resolved_root = configured_root.expanduser().resolve()
-        run_id = self._lifecycle.create_run(
+        return self._ingest(
             runtime=runtime,
-            resolved_root=resolved_root,
-        )
-        progress = WorkdaysVacationIngestionProgressTracker(
-            run_id=run_id,
-            runtime=runtime,
-            callback=progress_callback,
-            heartbeat_interval_seconds=self._heartbeat_interval_seconds,
-            now_factory=self._now_factory,
-            monotonic_factory=self._monotonic_factory,
-        )
-        persistence = WorkdaysVacationIngestionPersistenceScope(
-            runtime=runtime,
-            lifecycle=self._lifecycle,
-        )
-        return self._runner.run(
-            resolved_root=resolved_root,
-            run_id=run_id,
-            progress=progress,
-            persistence=persistence,
+            root=root,
+            progress_callback=progress_callback,
         )
 
 

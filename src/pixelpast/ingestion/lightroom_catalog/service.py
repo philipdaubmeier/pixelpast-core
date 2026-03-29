@@ -2,48 +2,122 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from datetime import datetime
 from pathlib import Path
-from time import monotonic
 
 from pixelpast.ingestion.lightroom_catalog.connector import LightroomCatalogConnector
 from pixelpast.ingestion.lightroom_catalog.contracts import LightroomIngestionResult
+from pixelpast.ingestion.lightroom_catalog.lifecycle import (
+    LightroomCatalogIngestionRunCoordinator,
+)
 from pixelpast.ingestion.lightroom_catalog.progress import (
     LightroomCatalogIngestionProgressSnapshot,
     LightroomCatalogIngestionProgressTracker,
-)
-from pixelpast.ingestion.lightroom_catalog.lifecycle import (
-    LightroomCatalogIngestionRunCoordinator,
 )
 from pixelpast.ingestion.lightroom_catalog.staged import (
     LightroomCatalogIngestionPersistenceScope,
     LightroomCatalogStagedIngestionStrategy,
 )
-from pixelpast.ingestion.staged import StagedIngestionRunner
+from pixelpast.ingestion.service_base import SharedStagedIngestionServiceBase
 from pixelpast.shared.progress import JobProgressCallback
 from pixelpast.shared.runtime import RuntimeContext
 
-_HEARTBEAT_INTERVAL_SECONDS = 10.0
 
-
-class LightroomCatalogIngestionService:
+class LightroomCatalogIngestionService(
+    SharedStagedIngestionServiceBase[
+        LightroomCatalogConnector,
+        LightroomCatalogIngestionRunCoordinator,
+        LightroomCatalogStagedIngestionStrategy,
+        LightroomCatalogIngestionProgressTracker,
+        LightroomCatalogIngestionPersistenceScope,
+        LightroomIngestionResult,
+    ]
+):
     """Wire Lightroom-specific collaborators into the staged ingestion runner."""
 
-    def __init__(
+    def _build_default_connector(self) -> LightroomCatalogConnector:
+        return LightroomCatalogConnector()
+
+    def _build_default_lifecycle(self) -> LightroomCatalogIngestionRunCoordinator:
+        return LightroomCatalogIngestionRunCoordinator()
+
+    def _resolve_runtime_root(
         self,
-        connector: LightroomCatalogConnector | None = None,
-        lifecycle: LightroomCatalogIngestionRunCoordinator | None = None,
         *,
-        heartbeat_interval_seconds: float = _HEARTBEAT_INTERVAL_SECONDS,
-        now_factory: Callable[[], datetime] | None = None,
-        monotonic_factory: Callable[[], float] | None = None,
+        runtime: RuntimeContext,
+        **kwargs: object,
+    ) -> Path:
+        configured_root = kwargs.get("root") or runtime.settings.lightroom_catalog_path
+        if configured_root is None:
+            raise ValueError(
+                "Lightroom catalog ingestion requires "
+                "PIXELPAST_LIGHTROOM_CATALOG_PATH to be configured."
+            )
+        return configured_root.expanduser().resolve()
+
+    def _validate_request(
+        self,
+        *,
+        runtime: RuntimeContext,
+        resolved_root: Path,
+        **kwargs: object,
     ) -> None:
-        self._connector = connector or LightroomCatalogConnector()
-        self._lifecycle = lifecycle or LightroomCatalogIngestionRunCoordinator()
-        self._heartbeat_interval_seconds = heartbeat_interval_seconds
-        self._now_factory = now_factory
-        self._monotonic_factory = monotonic_factory or monotonic
+        del runtime, resolved_root
+        start_index = kwargs.get("start_index")
+        end_index = kwargs.get("end_index")
+        if (
+            isinstance(start_index, int)
+            and isinstance(end_index, int)
+            and start_index > end_index
+        ):
+            raise ValueError(
+                "Lightroom asset range start index must be less than or equal to the end index."
+            )
+
+    def _build_strategy(
+        self,
+        *,
+        runtime: RuntimeContext,
+        resolved_root: Path,
+        **kwargs: object,
+    ) -> LightroomCatalogStagedIngestionStrategy:
+        del runtime, resolved_root
+        return LightroomCatalogStagedIngestionStrategy(
+            connector=self._connector,
+            start_index=kwargs.get("start_index"),
+            end_index=kwargs.get("end_index"),
+        )
+
+    def _build_progress_tracker(
+        self,
+        *,
+        runtime: RuntimeContext,
+        run_id: int,
+        progress_callback: JobProgressCallback | None,
+        **kwargs: object,
+    ) -> LightroomCatalogIngestionProgressTracker:
+        del kwargs
+        return LightroomCatalogIngestionProgressTracker(
+            run_id=run_id,
+            runtime=runtime,
+            callback=progress_callback,
+            heartbeat_interval_seconds=self._heartbeat_interval_seconds,
+            now_factory=self._now_factory,
+            monotonic_factory=self._monotonic_factory,
+        )
+
+    def _build_persistence_scope(
+        self,
+        *,
+        runtime: RuntimeContext,
+        resolved_root: Path,
+        **kwargs: object,
+    ) -> LightroomCatalogIngestionPersistenceScope:
+        del kwargs
+        return LightroomCatalogIngestionPersistenceScope(
+            runtime=runtime,
+            lifecycle=self._lifecycle,
+            resolved_root=resolved_root,
+        )
 
     def ingest(
         self,
@@ -56,48 +130,12 @@ class LightroomCatalogIngestionService:
     ) -> LightroomIngestionResult:
         """Run staged Lightroom catalog ingestion and return the public result."""
 
-        configured_root = root or runtime.settings.lightroom_catalog_path
-        if configured_root is None:
-            raise ValueError(
-                "Lightroom catalog ingestion requires "
-                "PIXELPAST_LIGHTROOM_CATALOG_PATH to be configured."
-            )
-
-        resolved_root = configured_root.expanduser().resolve()
-        if start_index is not None and end_index is not None and start_index > end_index:
-            raise ValueError(
-                "Lightroom asset range start index must be less than or equal to the end index."
-            )
-
-        run_id = self._lifecycle.create_run(
+        return self._ingest(
             runtime=runtime,
-            resolved_root=resolved_root,
-        )
-        progress = LightroomCatalogIngestionProgressTracker(
-            run_id=run_id,
-            runtime=runtime,
-            callback=progress_callback,
-            heartbeat_interval_seconds=self._heartbeat_interval_seconds,
-            now_factory=self._now_factory,
-            monotonic_factory=self._monotonic_factory,
-        )
-        persistence = LightroomCatalogIngestionPersistenceScope(
-            runtime=runtime,
-            lifecycle=self._lifecycle,
-            resolved_root=resolved_root,
-        )
-        runner = StagedIngestionRunner(
-            strategy=LightroomCatalogStagedIngestionStrategy(
-                connector=self._connector,
-                start_index=start_index,
-                end_index=end_index,
-            )
-        )
-        return runner.run(
-            resolved_root=resolved_root,
-            run_id=run_id,
-            progress=progress,
-            persistence=persistence,
+            root=root,
+            start_index=start_index,
+            end_index=end_index,
+            progress_callback=progress_callback,
         )
 
 

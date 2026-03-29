@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from datetime import datetime
 from pathlib import Path
-from time import monotonic
 
 from pixelpast.ingestion.google_maps_timeline.connector import (
     GoogleMapsTimelineConnector,
@@ -27,35 +24,94 @@ from pixelpast.ingestion.google_maps_timeline.staged import (
     GoogleMapsTimelineIngestionPersistenceScope,
     GoogleMapsTimelineStagedIngestionStrategy,
 )
-from pixelpast.ingestion.staged import StagedIngestionRunner
+from pixelpast.ingestion.service_base import SharedStagedIngestionServiceBase
 from pixelpast.shared.progress import JobProgressCallback
 from pixelpast.shared.runtime import RuntimeContext
 
-_HEARTBEAT_INTERVAL_SECONDS = 10.0
 
-
-class GoogleMapsTimelineIngestionService:
+class GoogleMapsTimelineIngestionService(
+    SharedStagedIngestionServiceBase[
+        GoogleMapsTimelineConnector,
+        GoogleMapsTimelineIngestionRunCoordinator,
+        GoogleMapsTimelineStagedIngestionStrategy,
+        GoogleMapsTimelineIngestionProgressTracker,
+        GoogleMapsTimelineIngestionPersistenceScope,
+        GoogleMapsTimelineIngestionResult,
+    ]
+):
     """Wire Google Maps Timeline collaborators into the staged runner."""
 
-    def __init__(
+    def _build_default_connector(self) -> GoogleMapsTimelineConnector:
+        return GoogleMapsTimelineConnector()
+
+    def _build_default_lifecycle(self) -> GoogleMapsTimelineIngestionRunCoordinator:
+        return GoogleMapsTimelineIngestionRunCoordinator()
+
+    def _resolve_runtime_root(
         self,
-        connector: GoogleMapsTimelineConnector | None = None,
-        lifecycle: GoogleMapsTimelineIngestionRunCoordinator | None = None,
         *,
-        heartbeat_interval_seconds: float = _HEARTBEAT_INTERVAL_SECONDS,
-        now_factory: Callable[[], datetime] | None = None,
-        monotonic_factory: Callable[[], float] | None = None,
-    ) -> None:
-        self._connector = connector or GoogleMapsTimelineConnector()
-        self._lifecycle = lifecycle or GoogleMapsTimelineIngestionRunCoordinator()
-        self._heartbeat_interval_seconds = heartbeat_interval_seconds
-        self._now_factory = now_factory
-        self._monotonic_factory = monotonic_factory or monotonic
-        self._runner = StagedIngestionRunner(
-            strategy=GoogleMapsTimelineStagedIngestionStrategy(
-                connector=self._connector
-            )
+        runtime: RuntimeContext,
+        **kwargs: object,
+    ) -> Path:
+        root = kwargs.get("root")
+        return resolve_google_maps_timeline_ingestion_root(
+            settings=runtime.settings,
+            root=root,
         )
+
+    def _build_strategy(
+        self,
+        *,
+        runtime: RuntimeContext,
+        resolved_root: Path,
+        **kwargs: object,
+    ) -> GoogleMapsTimelineStagedIngestionStrategy:
+        del runtime, resolved_root, kwargs
+        return GoogleMapsTimelineStagedIngestionStrategy(connector=self._connector)
+
+    def _build_progress_tracker(
+        self,
+        *,
+        runtime: RuntimeContext,
+        run_id: int,
+        progress_callback: JobProgressCallback | None,
+        **kwargs: object,
+    ) -> GoogleMapsTimelineIngestionProgressTracker:
+        del kwargs
+        return GoogleMapsTimelineIngestionProgressTracker(
+            run_id=run_id,
+            runtime=runtime,
+            callback=progress_callback,
+            heartbeat_interval_seconds=self._heartbeat_interval_seconds,
+            now_factory=self._now_factory,
+            monotonic_factory=self._monotonic_factory,
+        )
+
+    def _build_persistence_scope(
+        self,
+        *,
+        runtime: RuntimeContext,
+        resolved_root: Path,
+        **kwargs: object,
+    ) -> GoogleMapsTimelineIngestionPersistenceScope:
+        del resolved_root, kwargs
+        return GoogleMapsTimelineIngestionPersistenceScope(
+            runtime=runtime,
+            lifecycle=self._lifecycle,
+        )
+
+    def _post_process_result(
+        self,
+        *,
+        runtime: RuntimeContext,
+        resolved_root: Path,
+        result: GoogleMapsTimelineIngestionResult,
+        **kwargs: object,
+    ) -> GoogleMapsTimelineIngestionResult:
+        del runtime, resolved_root, kwargs
+        if result.persisted_source_count == 0 and result.transform_errors:
+            raise ValueError(result.transform_errors[0].message)
+        return result
 
     def ingest(
         self,
@@ -66,35 +122,11 @@ class GoogleMapsTimelineIngestionService:
     ) -> GoogleMapsTimelineIngestionResult:
         """Run staged Google Maps Timeline ingestion and return the result."""
 
-        resolved_root = resolve_google_maps_timeline_ingestion_root(
-            settings=runtime.settings,
+        return self._ingest(
+            runtime=runtime,
             root=root,
+            progress_callback=progress_callback,
         )
-        run_id = self._lifecycle.create_run(
-            runtime=runtime,
-            resolved_root=resolved_root,
-        )
-        progress = GoogleMapsTimelineIngestionProgressTracker(
-            run_id=run_id,
-            runtime=runtime,
-            callback=progress_callback,
-            heartbeat_interval_seconds=self._heartbeat_interval_seconds,
-            now_factory=self._now_factory,
-            monotonic_factory=self._monotonic_factory,
-        )
-        persistence = GoogleMapsTimelineIngestionPersistenceScope(
-            runtime=runtime,
-            lifecycle=self._lifecycle,
-        )
-        result = self._runner.run(
-            resolved_root=resolved_root,
-            run_id=run_id,
-            progress=progress,
-            persistence=persistence,
-        )
-        if result.persisted_source_count == 0 and result.transform_errors:
-            raise ValueError(result.transform_errors[0].message)
-        return result
 
 
 __all__ = [
