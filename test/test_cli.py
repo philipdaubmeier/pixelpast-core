@@ -416,6 +416,65 @@ def test_cli_ingest_calendar_subprocess_completes_with_zip_fixture() -> None:
         shutil.rmtree(workspace_root, ignore_errors=True)
 
 
+def test_cli_ingest_lightroom_catalog_persists_assets_from_fixture(monkeypatch) -> None:
+    database_path = _build_test_database_path("cli-lightroom-ingest")
+    workspace_root = Path("var") / f"cli-lightroom-{uuid4().hex}"
+    fixture_path = (
+        Path("test") / "assets" / "lightroom-classic-catalog-test-fixture.lrcat"
+    )
+    workspace_root.mkdir(parents=True, exist_ok=False)
+    catalog_path = workspace_root / fixture_path.name
+    shutil.copy2(fixture_path, catalog_path)
+    monkeypatch.setenv(
+        "PIXELPAST_DATABASE_URL", f"sqlite:///{database_path.as_posix()}"
+    )
+    monkeypatch.setenv(
+        "PIXELPAST_LIGHTROOM_CATALOG_PATH",
+        str(catalog_path.resolve()),
+    )
+    get_settings.cache_clear()
+
+    try:
+        result = runner.invoke(app, ["ingest", "lightroom_catalog"])
+        assert result.exit_code == 0
+        assert database_path.exists()
+        assert "[lightroom_catalog] completed" in result.stdout
+        assert "inserted: 3" in result.stdout
+        assert "failed: 0" in result.stdout
+
+        engine = create_engine(f"sqlite:///{database_path.as_posix()}")
+        try:
+            with Session(engine) as session:
+                assets = list(
+                    session.execute(select(Asset).order_by(Asset.external_id)).scalars()
+                )
+                job_runs = list(
+                    session.execute(select(JobRun).order_by(JobRun.id)).scalars()
+                )
+        finally:
+            engine.dispose()
+
+        assert len(assets) == 3
+        assert [asset.external_id for asset in assets] == [
+            "0B2B664356B0F811D277461F8953ABE4",
+            "3EC1FA8A05CE57D59B0BA4C353580C5F",
+            "4E7C6031A061CE51AF186FE5022D4BFB",
+        ]
+        assert len(job_runs) == 1
+        assert job_runs[0].type == "ingest"
+        assert job_runs[0].job == "lightroom_catalog"
+        assert job_runs[0].status == "completed"
+        assert job_runs[0].phase == "finalization"
+        assert job_runs[0].progress_json is not None
+        assert job_runs[0].progress_json["inserted"] == 3
+        assert job_runs[0].progress_json["failed"] == 0
+    finally:
+        get_settings.cache_clear()
+        if database_path.exists():
+            database_path.unlink()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
 def test_cli_ingest_spotify_persists_events_from_fixture(monkeypatch) -> None:
     database_path = _build_test_database_path("cli-spotify-ingest")
     workspace_root = Path("var") / f"cli-spotify-{uuid4().hex}"
@@ -1453,6 +1512,26 @@ def test_cli_returns_invalid_argument_exit_code_when_spotify_root_is_missing(
         result = runner.invoke(app, ["ingest", "spotify"])
         assert result.exit_code == 2
         assert "error: Spotify ingestion requires" in result.stderr
+    finally:
+        get_settings.cache_clear()
+        if database_path.exists():
+            database_path.unlink()
+
+
+def test_cli_returns_invalid_argument_exit_code_when_lightroom_catalog_path_is_missing(
+    monkeypatch,
+) -> None:
+    database_path = _build_test_database_path("cli-lightroom-missing-root")
+    monkeypatch.setenv(
+        "PIXELPAST_DATABASE_URL", f"sqlite:///{database_path.as_posix()}"
+    )
+    monkeypatch.delenv("PIXELPAST_LIGHTROOM_CATALOG_PATH", raising=False)
+    get_settings.cache_clear()
+
+    try:
+        result = runner.invoke(app, ["ingest", "lightroom_catalog"])
+        assert result.exit_code == 2
+        assert "error: Lightroom catalog ingestion requires" in result.stderr
     finally:
         get_settings.cache_clear()
         if database_path.exists():

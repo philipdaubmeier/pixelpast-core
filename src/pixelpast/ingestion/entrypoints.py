@@ -11,6 +11,10 @@ from pixelpast.ingestion.google_maps_timeline.service import (
     GoogleMapsTimelineIngestionResult,
     GoogleMapsTimelineIngestionService,
 )
+from pixelpast.ingestion.lightroom_catalog.service import (
+    LightroomCatalogIngestionService,
+    LightroomIngestionResult,
+)
 from pixelpast.ingestion.photos.service import (
     PhotoIngestionResult,
     PhotoIngestionService,
@@ -32,6 +36,7 @@ _SUPPORTED_SOURCES = frozenset(
     {
         "calendar",
         "google_maps_timeline",
+        "lightroom_catalog",
         "photos",
         "spotify",
         "workdays_vacation",
@@ -54,6 +59,7 @@ def run_ingest_source(
     PhotoIngestionResult
     | CalendarIngestionResult
     | GoogleMapsTimelineIngestionResult
+    | LightroomIngestionResult
     | SpotifyIngestionResult
     | WorkdaysVacationIngestionResult
 ):
@@ -148,6 +154,26 @@ def run_ingest_source(
                 "processed_document_count": result.processed_document_count,
                 "persisted_source_count": result.persisted_source_count,
                 "persisted_event_count": result.persisted_event_count,
+                "error_count": result.error_count,
+                "status": result.status,
+                "run_id": result.run_id,
+            },
+        )
+        return result
+
+    if source == "lightroom_catalog":
+        result = LightroomCatalogIngestionService().ingest(
+            runtime=runtime,
+            progress_callback=progress_callback,
+        )
+        logger.info(
+            "ingest completed",
+            extra={
+                "source": source,
+                "database_url": runtime.settings.database_url,
+                "processed_catalog_count": result.processed_catalog_count,
+                "processed_asset_count": result.processed_asset_count,
+                "persisted_asset_count": result.persisted_asset_count,
                 "error_count": result.error_count,
                 "status": result.status,
                 "run_id": result.run_id,
