@@ -5,9 +5,13 @@ from __future__ import annotations
 from collections.abc import Sequence
 from pathlib import Path
 
+from pixelpast.ingestion.lightroom_catalog.connector import LightroomCatalogConnector
 from pixelpast.ingestion.lightroom_catalog.contracts import (
+    LoadedLightroomCatalog,
     LightroomCatalogCandidate,
     LightroomCatalogDescriptor,
+    LightroomIngestionResult,
+    LightroomTransformError,
 )
 from pixelpast.ingestion.lightroom_catalog.lifecycle import (
     LightroomCatalogIngestionRunCoordinator,
@@ -15,6 +19,9 @@ from pixelpast.ingestion.lightroom_catalog.lifecycle import (
 from pixelpast.ingestion.lightroom_catalog.persist import (
     LightroomCatalogAssetPersister,
     summarize_lightroom_catalog_persistence_outcome,
+)
+from pixelpast.ingestion.lightroom_catalog.progress import (
+    LightroomCatalogIngestionProgressTracker,
 )
 from pixelpast.persistence.repositories import (
     AssetRepository,
@@ -85,4 +92,82 @@ class LightroomCatalogIngestionPersistenceScope:
         self._session.close()
 
 
-__all__ = ["LightroomCatalogIngestionPersistenceScope"]
+class LightroomCatalogStagedIngestionStrategy:
+    """Bind the Lightroom connector to the generic staged runner contract."""
+
+    def __init__(self, *, connector: LightroomCatalogConnector) -> None:
+        self._connector = connector
+
+    def discover_units(
+        self,
+        *,
+        root: Path,
+        on_unit_discovered,
+    ) -> Sequence[LightroomCatalogDescriptor]:
+        return self._connector.discover_catalogs(
+            root,
+            on_catalog_discovered=on_unit_discovered,
+        )
+
+    def fetch_payloads(
+        self,
+        *,
+        units: Sequence[LightroomCatalogDescriptor],
+        on_batch_progress,
+    ) -> dict[LightroomCatalogDescriptor, LoadedLightroomCatalog]:
+        loaded_catalogs = self._connector.fetch_catalogs(
+            catalogs=units,
+            on_catalog_progress=on_batch_progress,
+        )
+        return {
+            loaded_catalog.descriptor: loaded_catalog
+            for loaded_catalog in loaded_catalogs
+        }
+
+    def build_candidate(
+        self,
+        *,
+        root: Path,
+        unit: LightroomCatalogDescriptor,
+        fetched_payloads: dict[LightroomCatalogDescriptor, LoadedLightroomCatalog],
+    ) -> LightroomCatalogCandidate:
+        del root
+        return self._connector.build_catalog_candidate(
+            catalog=fetched_payloads[unit]
+        )
+
+    def build_transform_error(
+        self,
+        *,
+        unit: LightroomCatalogDescriptor,
+        error: Exception,
+    ) -> LightroomTransformError:
+        return self._connector.build_transform_error(catalog=unit, error=error)
+
+    def describe_unit(self, *, unit: LightroomCatalogDescriptor) -> str:
+        return unit.origin_label
+
+    def build_result(
+        self,
+        *,
+        run_id: int,
+        progress: LightroomCatalogIngestionProgressTracker,
+        transform_errors: Sequence[LightroomTransformError],
+    ) -> LightroomIngestionResult:
+        status = "partial_failure" if transform_errors else "completed"
+        counters = progress.counters
+        return LightroomIngestionResult(
+            run_id=run_id,
+            processed_catalog_count=counters.analyzed_catalog_count,
+            processed_asset_count=counters.processed_asset_count,
+            persisted_asset_count=counters.persisted_asset_count,
+            error_count=len(transform_errors),
+            status=status,
+            transform_errors=tuple(transform_errors),
+        )
+
+
+__all__ = [
+    "LightroomCatalogIngestionPersistenceScope",
+    "LightroomCatalogStagedIngestionStrategy",
+]

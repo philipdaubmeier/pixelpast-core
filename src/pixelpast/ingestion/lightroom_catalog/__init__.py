@@ -32,12 +32,20 @@ from pixelpast.ingestion.lightroom_catalog.lifecycle import (
     build_lightroom_catalog_source_external_id,
     build_lightroom_catalog_source_name,
 )
+from pixelpast.ingestion.lightroom_catalog.progress import (
+    LightroomCatalogIngestionProgressSnapshot,
+    LightroomCatalogIngestionProgressTracker,
+)
 from pixelpast.ingestion.lightroom_catalog.persist import (
     LightroomCatalogAssetPersister,
     summarize_lightroom_catalog_persistence_outcome,
 )
+from pixelpast.ingestion.lightroom_catalog.service import (
+    LightroomCatalogIngestionService,
+)
 from pixelpast.ingestion.lightroom_catalog.staged import (
     LightroomCatalogIngestionPersistenceScope,
+    LightroomCatalogStagedIngestionStrategy,
 )
 from pixelpast.ingestion.lightroom_catalog.transform import (
     LightroomCatalogTransformer,
@@ -53,9 +61,13 @@ __all__ = [
     "LightroomCatalogDiscoverer",
     "LightroomCatalogFetcher",
     "LightroomCatalogIngestionPersistenceScope",
+    "LightroomCatalogIngestionProgressSnapshot",
+    "LightroomCatalogIngestionProgressTracker",
     "LightroomCatalogIngestionRunCoordinator",
+    "LightroomCatalogIngestionService",
     "LightroomCatalogLoadProgress",
     "LightroomCatalogAssetPersister",
+    "LightroomCatalogStagedIngestionStrategy",
     "LightroomCatalogTransformer",
     "LIGHTROOM_CATALOG_INITIAL_PHASE",
     "LIGHTROOM_CATALOG_JOB_NAME",

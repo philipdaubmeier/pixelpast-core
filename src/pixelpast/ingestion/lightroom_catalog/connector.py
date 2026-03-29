@@ -7,13 +7,16 @@ from pathlib import Path
 
 from pixelpast.ingestion.lightroom_catalog.contracts import (
     LoadedLightroomCatalog,
+    LightroomCatalogCandidate,
     LightroomCatalogDescriptor,
+    LightroomTransformError,
 )
 from pixelpast.ingestion.lightroom_catalog.discovery import LightroomCatalogDiscoverer
 from pixelpast.ingestion.lightroom_catalog.fetch import (
     LightroomCatalogFetcher,
     LightroomCatalogLoadProgress,
 )
+from pixelpast.ingestion.lightroom_catalog.transform import LightroomCatalogTransformer
 
 
 class LightroomCatalogConnector:
@@ -24,6 +27,7 @@ class LightroomCatalogConnector:
         *,
         catalog_discoverer: LightroomCatalogDiscoverer | None = None,
         catalog_fetcher: LightroomCatalogFetcher | None = None,
+        catalog_transformer: LightroomCatalogTransformer | None = None,
     ) -> None:
         self._catalog_discoverer = (
             catalog_discoverer
@@ -34,6 +38,11 @@ class LightroomCatalogConnector:
             catalog_fetcher
             if catalog_fetcher is not None
             else LightroomCatalogFetcher()
+        )
+        self._catalog_transformer = (
+            catalog_transformer
+            if catalog_transformer is not None
+            else LightroomCatalogTransformer()
         )
 
     def discover_catalogs(
@@ -65,6 +74,25 @@ class LightroomCatalogConnector:
             catalogs=catalogs,
             on_catalog_progress=on_catalog_progress,
         )
+
+    def build_catalog_candidate(
+        self,
+        *,
+        catalog: LoadedLightroomCatalog,
+    ) -> LightroomCatalogCandidate:
+        """Transform one loaded Lightroom catalog into canonical asset candidates."""
+
+        return self._catalog_transformer.build_catalog_candidate(catalog)
+
+    def build_transform_error(
+        self,
+        *,
+        catalog: LightroomCatalogDescriptor,
+        error: Exception,
+    ) -> LightroomTransformError:
+        """Translate one transform failure into the stable Lightroom error contract."""
+
+        return LightroomTransformError(catalog=catalog, message=str(error))
 
 
 __all__ = ["LightroomCatalogConnector"]
