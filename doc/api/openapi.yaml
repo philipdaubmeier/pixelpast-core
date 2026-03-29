@@ -1035,6 +1035,535 @@
                         "input": "2026/07/14"
               "schema":
                 "$ref": "#/components/schemas/ApiValidationErrorResponse"
+  "/api/manage-data/persons":
+    "get":
+      "tags":
+        - "manage-data"
+      "summary": "Get persons catalog"
+      "description": "Return the canonical persons catalog used by the manage-data workspace. Rows are delivered in deterministic display order."
+      "operationId": "get_persons_catalog_api_manage_data_persons_get"
+      "responses":
+        "200":
+          "description": "Canonical persons catalog for manual maintenance."
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/PersonsCatalogResponse"
+              "examples":
+                "family_catalog":
+                  "summary": "Loaded persons catalog"
+                  "value":
+                    "persons":
+                      -
+                        "id": 7
+                        "name": "Anna Becker"
+                        "aliases":
+                          - "Anna B."
+                          - "Annie"
+                        "path": "family/anna-becker"
+                      -
+                        "id": 12
+                        "name": "Milo Tan"
+                        "aliases": []
+        "400":
+          "description": "The request was syntactically valid but violated a documented PixelPast API contract constraint."
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/ApiErrorResponse"
+              "examples":
+                "invalid_range":
+                  "summary": "Start date after end date"
+                  "value":
+                    "detail": "start must be less than or equal to end"
+                "partial_range":
+                  "summary": "Only one range boundary provided"
+                  "value":
+                    "detail": "start and end must both be provided together"
+        "422":
+          "description": "The request could not be parsed or failed declared parameter validation."
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/ApiValidationErrorResponse"
+              "examples":
+                "invalid_date":
+                  "summary": "Unparseable ISO date"
+                  "value":
+                    "detail":
+                      -
+                        "type": "date_from_datetime_parsing"
+                        "loc":
+                          - "query"
+                          - "start"
+                        "msg": "Input should be a valid date or datetime, input is too short"
+                        "input": "2026-02"
+                "invalid_path_date":
+                  "summary": "Invalid path day format"
+                  "value":
+                    "detail":
+                      -
+                        "type": "date_from_datetime_parsing"
+                        "loc":
+                          - "path"
+                          - "day"
+                        "msg": "Input should be a valid date or datetime, invalid date separator"
+                        "input": "2026/07/14"
+    "put":
+      "tags":
+        - "manage-data"
+      "summary": "Save persons catalog draft"
+      "description": "Create and update canonical persons as one batch save. Deletion semantics are explicitly rejected in the v1 contract."
+      "operationId": "save_persons_catalog_api_manage_data_persons_put"
+      "requestBody":
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/SavePersonsCatalogRequest"
+            "examples":
+              "upsert_people":
+                "summary": "Create and update person rows"
+                "value":
+                  "persons":
+                    -
+                      "id": 7
+                      "name": "Anna Becker"
+                      "aliases":
+                        - "Anna B."
+                        - "Annie"
+                      "path": "family/anna-becker"
+                    -
+                      "name": "Milo Tan"
+                      "aliases":
+                        - "Miles"
+                      "path": "friends/milo-tan"
+                  "delete_ids": []
+              "rejected_delete_semantics":
+                "summary": "Delete semantics are reserved for later"
+                "value":
+                  "persons": []
+                  "delete_ids":
+                    - 12
+        "required": true
+      "responses":
+        "200":
+          "description": "Reloaded canonical persons catalog after persistence."
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/PersonsCatalogResponse"
+              "examples":
+                "family_catalog":
+                  "summary": "Loaded persons catalog"
+                  "value":
+                    "persons":
+                      -
+                        "id": 7
+                        "name": "Anna Becker"
+                        "aliases":
+                          - "Anna B."
+                          - "Annie"
+                        "path": "family/anna-becker"
+                      -
+                        "id": 12
+                        "name": "Milo Tan"
+                        "aliases": []
+        "400":
+          "description": "The request was syntactically valid but violated a documented PixelPast API contract constraint."
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/ApiErrorResponse"
+              "examples":
+                "invalid_range":
+                  "summary": "Start date after end date"
+                  "value":
+                    "detail": "start must be less than or equal to end"
+                "partial_range":
+                  "summary": "Only one range boundary provided"
+                  "value":
+                    "detail": "start and end must both be provided together"
+                "duplicate_person_path":
+                  "summary": "Two persons claim the same path"
+                  "value":
+                    "detail": "person path 'family/anna-becker' must be unique"
+                "person_delete_forbidden":
+                  "summary": "Persons cannot be deleted in v1"
+                  "value":
+                    "detail": "person deletion is not supported in the v1 manage-data contract"
+        "422":
+          "description": "The request could not be parsed or failed declared parameter validation."
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/ApiValidationErrorResponse"
+              "examples":
+                "invalid_date":
+                  "summary": "Unparseable ISO date"
+                  "value":
+                    "detail":
+                      -
+                        "type": "date_from_datetime_parsing"
+                        "loc":
+                          - "query"
+                          - "start"
+                        "msg": "Input should be a valid date or datetime, input is too short"
+                        "input": "2026-02"
+                "invalid_path_date":
+                  "summary": "Invalid path day format"
+                  "value":
+                    "detail":
+                      -
+                        "type": "date_from_datetime_parsing"
+                        "loc":
+                          - "path"
+                          - "day"
+                        "msg": "Input should be a valid date or datetime, invalid date separator"
+                        "input": "2026/07/14"
+  "/api/manage-data/person-groups":
+    "get":
+      "tags":
+        - "manage-data"
+      "summary": "Get person-group catalog"
+      "description": "Return the manually managed canonical person-group catalog with read-only member counts."
+      "operationId": "get_person_groups_catalog_api_manage_data_person_groups_get"
+      "responses":
+        "200":
+          "description": "Canonical person-group catalog for manual maintenance."
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/PersonGroupsCatalogResponse"
+              "examples":
+                "managed_groups":
+                  "summary": "Loaded manual person-group catalog"
+                  "value":
+                    "person_groups":
+                      -
+                        "id": 3
+                        "name": "Immediate Family"
+                        "member_count": 4
+                      -
+                        "id": 8
+                        "name": "Berlin Friends"
+                        "member_count": 7
+        "400":
+          "description": "The request was syntactically valid but violated a documented PixelPast API contract constraint."
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/ApiErrorResponse"
+              "examples":
+                "invalid_range":
+                  "summary": "Start date after end date"
+                  "value":
+                    "detail": "start must be less than or equal to end"
+                "partial_range":
+                  "summary": "Only one range boundary provided"
+                  "value":
+                    "detail": "start and end must both be provided together"
+        "422":
+          "description": "The request could not be parsed or failed declared parameter validation."
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/ApiValidationErrorResponse"
+              "examples":
+                "invalid_date":
+                  "summary": "Unparseable ISO date"
+                  "value":
+                    "detail":
+                      -
+                        "type": "date_from_datetime_parsing"
+                        "loc":
+                          - "query"
+                          - "start"
+                        "msg": "Input should be a valid date or datetime, input is too short"
+                        "input": "2026-02"
+                "invalid_path_date":
+                  "summary": "Invalid path day format"
+                  "value":
+                    "detail":
+                      -
+                        "type": "date_from_datetime_parsing"
+                        "loc":
+                          - "path"
+                          - "day"
+                        "msg": "Input should be a valid date or datetime, invalid date separator"
+                        "input": "2026/07/14"
+    "put":
+      "tags":
+        - "manage-data"
+      "summary": "Save person-group catalog draft"
+      "description": "Create, update, and delete manual canonical person groups as one batch save. Member counts remain server-owned read data."
+      "operationId": "save_person_groups_catalog_api_manage_data_person_groups_put"
+      "requestBody":
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/SavePersonGroupsCatalogRequest"
+            "examples":
+              "replace_groups":
+                "summary": "Create, update, and delete manual groups"
+                "value":
+                  "person_groups":
+                    -
+                      "id": 3
+                      "name": "Immediate Family"
+                    -
+                      "name": "Travel Buddies"
+                  "delete_ids":
+                    - 8
+        "required": true
+      "responses":
+        "200":
+          "description": "Reloaded canonical person-group catalog after persistence."
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/PersonGroupsCatalogResponse"
+              "examples":
+                "managed_groups":
+                  "summary": "Loaded manual person-group catalog"
+                  "value":
+                    "person_groups":
+                      -
+                        "id": 3
+                        "name": "Immediate Family"
+                        "member_count": 4
+                      -
+                        "id": 8
+                        "name": "Berlin Friends"
+                        "member_count": 7
+        "400":
+          "description": "The request was syntactically valid but violated a documented PixelPast API contract constraint."
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/ApiErrorResponse"
+              "examples":
+                "invalid_range":
+                  "summary": "Start date after end date"
+                  "value":
+                    "detail": "start must be less than or equal to end"
+                "partial_range":
+                  "summary": "Only one range boundary provided"
+                  "value":
+                    "detail": "start and end must both be provided together"
+        "422":
+          "description": "The request could not be parsed or failed declared parameter validation."
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/ApiValidationErrorResponse"
+              "examples":
+                "invalid_date":
+                  "summary": "Unparseable ISO date"
+                  "value":
+                    "detail":
+                      -
+                        "type": "date_from_datetime_parsing"
+                        "loc":
+                          - "query"
+                          - "start"
+                        "msg": "Input should be a valid date or datetime, input is too short"
+                        "input": "2026-02"
+                "invalid_path_date":
+                  "summary": "Invalid path day format"
+                  "value":
+                    "detail":
+                      -
+                        "type": "date_from_datetime_parsing"
+                        "loc":
+                          - "path"
+                          - "day"
+                        "msg": "Input should be a valid date or datetime, invalid date separator"
+                        "input": "2026/07/14"
+  "/api/manage-data/person-groups/{group_id}/members":
+    "get":
+      "tags":
+        - "manage-data"
+      "summary": "Get one person-group membership set"
+      "description": "Return one canonical person group in focus together with its current persisted members."
+      "operationId": "get_person_group_membership_api_manage_data_person_groups__group_id__members_get"
+      "parameters":
+        -
+          "name": "group_id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "integer"
+            "title": "Group Id"
+      "responses":
+        "200":
+          "description": "Focused person-group membership state for manual maintenance."
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/PersonGroupMembershipResponse"
+              "examples":
+                "loaded_membership":
+                  "summary": "Loaded one group's persisted members"
+                  "value":
+                    "person_group":
+                      "id": 3
+                      "name": "Immediate Family"
+                      "member_count": 2
+                    "members":
+                      -
+                        "id": 7
+                        "name": "Anna Becker"
+                        "aliases":
+                          - "Annie"
+                        "path": "family/anna-becker"
+                      -
+                        "id": 12
+                        "name": "Milo Tan"
+                        "aliases": []
+                        "path": "friends/milo-tan"
+        "400":
+          "description": "The request was syntactically valid but violated a documented PixelPast API contract constraint."
+          "content":
+            "application/json":
+              "examples":
+                "invalid_range":
+                  "summary": "Start date after end date"
+                  "value":
+                    "detail": "start must be less than or equal to end"
+                "partial_range":
+                  "summary": "Only one range boundary provided"
+                  "value":
+                    "detail": "start and end must both be provided together"
+              "schema":
+                "$ref": "#/components/schemas/ApiErrorResponse"
+        "422":
+          "description": "The request could not be parsed or failed declared parameter validation."
+          "content":
+            "application/json":
+              "examples":
+                "invalid_date":
+                  "summary": "Unparseable ISO date"
+                  "value":
+                    "detail":
+                      -
+                        "type": "date_from_datetime_parsing"
+                        "loc":
+                          - "query"
+                          - "start"
+                        "msg": "Input should be a valid date or datetime, input is too short"
+                        "input": "2026-02"
+                "invalid_path_date":
+                  "summary": "Invalid path day format"
+                  "value":
+                    "detail":
+                      -
+                        "type": "date_from_datetime_parsing"
+                        "loc":
+                          - "path"
+                          - "day"
+                        "msg": "Input should be a valid date or datetime, invalid date separator"
+                        "input": "2026/07/14"
+              "schema":
+                "$ref": "#/components/schemas/ApiValidationErrorResponse"
+    "put":
+      "tags":
+        - "manage-data"
+      "summary": "Save one person-group membership draft"
+      "description": "Replace one canonical person group's persisted membership set as one authoritative batch."
+      "operationId": "save_person_group_membership_api_manage_data_person_groups__group_id__members_put"
+      "parameters":
+        -
+          "name": "group_id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "integer"
+            "title": "Group Id"
+      "requestBody":
+        "required": true
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/SavePersonGroupMembershipRequest"
+            "examples":
+              "replace_membership":
+                "summary": "Replace one group's persisted member set"
+                "value":
+                  "person_ids":
+                    - 7
+                    - 12
+                    - 18
+      "responses":
+        "200":
+          "description": "Reloaded person-group membership state after persistence."
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/PersonGroupMembershipResponse"
+              "examples":
+                "loaded_membership":
+                  "summary": "Loaded one group's persisted members"
+                  "value":
+                    "person_group":
+                      "id": 3
+                      "name": "Immediate Family"
+                      "member_count": 2
+                    "members":
+                      -
+                        "id": 7
+                        "name": "Anna Becker"
+                        "aliases":
+                          - "Annie"
+                        "path": "family/anna-becker"
+                      -
+                        "id": 12
+                        "name": "Milo Tan"
+                        "aliases": []
+                        "path": "friends/milo-tan"
+        "400":
+          "description": "The request was syntactically valid but violated a documented PixelPast API contract constraint."
+          "content":
+            "application/json":
+              "examples":
+                "invalid_range":
+                  "summary": "Start date after end date"
+                  "value":
+                    "detail": "start must be less than or equal to end"
+                "partial_range":
+                  "summary": "Only one range boundary provided"
+                  "value":
+                    "detail": "start and end must both be provided together"
+              "schema":
+                "$ref": "#/components/schemas/ApiErrorResponse"
+        "422":
+          "description": "The request could not be parsed or failed declared parameter validation."
+          "content":
+            "application/json":
+              "examples":
+                "invalid_date":
+                  "summary": "Unparseable ISO date"
+                  "value":
+                    "detail":
+                      -
+                        "type": "date_from_datetime_parsing"
+                        "loc":
+                          - "query"
+                          - "start"
+                        "msg": "Input should be a valid date or datetime, input is too short"
+                        "input": "2026-02"
+                "invalid_path_date":
+                  "summary": "Invalid path day format"
+                  "value":
+                    "detail":
+                      -
+                        "type": "date_from_datetime_parsing"
+                        "loc":
+                          - "path"
+                          - "day"
+                        "msg": "Input should be a valid date or datetime, invalid date separator"
+                        "input": "2026/07/14"
+              "schema":
+                "$ref": "#/components/schemas/ApiValidationErrorResponse"
 "components":
   "schemas":
     "ApiErrorResponse":
@@ -1152,10 +1681,18 @@
     "DayContextMapPoint":
       "properties":
         "id":
-          "type": "string"
+          "anyOf":
+            -
+              "type": "string"
+            -
+              "type": "null"
           "title": "Id"
         "label":
-          "type": "string"
+          "anyOf":
+            -
+              "type": "string"
+            -
+              "type": "null"
           "title": "Label"
         "latitude":
           "type": "number"
@@ -1165,8 +1702,6 @@
           "title": "Longitude"
       "type": "object"
       "required":
-        - "id"
-        - "label"
         - "latitude"
         - "longitude"
       "title": "DayContextMapPoint"
@@ -1414,6 +1949,229 @@
         - "description"
       "title": "ExplorationViewMode"
       "description": "Backend-defined exploration view mode metadata."
+    "PersonCatalogEntry":
+      "properties":
+        "id":
+          "type": "integer"
+          "title": "Id"
+        "name":
+          "type": "string"
+          "title": "Name"
+        "aliases":
+          "items":
+            "type": "string"
+          "type": "array"
+          "title": "Aliases"
+        "path":
+          "anyOf":
+            -
+              "type": "string"
+            -
+              "type": "null"
+          "title": "Path"
+      "type": "object"
+      "required":
+        - "id"
+        - "name"
+        - "aliases"
+        - "path"
+      "title": "PersonCatalogEntry"
+      "description": "Readable person-catalog row exposed to the manage-data UI."
+    "PersonCatalogWriteEntry":
+      "properties":
+        "id":
+          "anyOf":
+            -
+              "type": "integer"
+            -
+              "type": "null"
+          "title": "Id"
+        "name":
+          "type": "string"
+          "minLength": 1
+          "title": "Name"
+        "aliases":
+          "items":
+            "type": "string"
+          "type": "array"
+          "title": "Aliases"
+        "path":
+          "anyOf":
+            -
+              "type": "string"
+            -
+              "type": "null"
+          "title": "Path"
+      "type": "object"
+      "required":
+        - "name"
+      "title": "PersonCatalogWriteEntry"
+      "description": "Batch-write payload row for manual person maintenance."
+    "PersonGroupCatalogEntry":
+      "properties":
+        "id":
+          "type": "integer"
+          "title": "Id"
+        "name":
+          "type": "string"
+          "title": "Name"
+        "member_count":
+          "type": "integer"
+          "title": "Member Count"
+      "type": "object"
+      "required":
+        - "id"
+        - "name"
+        - "member_count"
+      "title": "PersonGroupCatalogEntry"
+      "description": "Readable person-group catalog row exposed to the manage-data UI."
+    "PersonGroupCatalogWriteEntry":
+      "properties":
+        "id":
+          "anyOf":
+            -
+              "type": "integer"
+            -
+              "type": "null"
+          "title": "Id"
+        "name":
+          "type": "string"
+          "minLength": 1
+          "title": "Name"
+      "type": "object"
+      "required":
+        - "name"
+      "title": "PersonGroupCatalogWriteEntry"
+      "description": "Batch-write payload row for manual person-group maintenance."
+    "PersonGroupMembershipGroupEntry":
+      "properties":
+        "id":
+          "type": "integer"
+          "title": "Id"
+        "name":
+          "type": "string"
+          "title": "Name"
+        "member_count":
+          "type": "integer"
+          "title": "Member Count"
+      "type": "object"
+      "required":
+        - "id"
+        - "name"
+        - "member_count"
+      "title": "PersonGroupMembershipGroupEntry"
+      "description": "Readable focused person-group context for the membership editor."
+    "PersonGroupMembershipMemberEntry":
+      "properties":
+        "id":
+          "type": "integer"
+          "title": "Id"
+        "name":
+          "type": "string"
+          "title": "Name"
+        "aliases":
+          "items":
+            "type": "string"
+          "type": "array"
+          "title": "Aliases"
+        "path":
+          "anyOf":
+            -
+              "type": "string"
+            -
+              "type": "null"
+          "title": "Path"
+      "type": "object"
+      "required":
+        - "id"
+        - "name"
+        - "aliases"
+        - "path"
+      "title": "PersonGroupMembershipMemberEntry"
+      "description": "Readable persisted person row exposed inside one group membership editor."
+    "PersonGroupMembershipResponse":
+      "properties":
+        "person_group":
+          "$ref": "#/components/schemas/PersonGroupMembershipGroupEntry"
+        "members":
+          "items":
+            "$ref": "#/components/schemas/PersonGroupMembershipMemberEntry"
+          "type": "array"
+          "title": "Members"
+      "type": "object"
+      "required":
+        - "person_group"
+        - "members"
+      "title": "PersonGroupMembershipResponse"
+      "description": "Read response for one person group's persisted membership set."
+    "PersonGroupsCatalogResponse":
+      "properties":
+        "person_groups":
+          "items":
+            "$ref": "#/components/schemas/PersonGroupCatalogEntry"
+          "type": "array"
+          "title": "Person Groups"
+      "type": "object"
+      "required":
+        - "person_groups"
+      "title": "PersonGroupsCatalogResponse"
+      "description": "Read response for the canonical person-group catalog."
+    "PersonsCatalogResponse":
+      "properties":
+        "persons":
+          "items":
+            "$ref": "#/components/schemas/PersonCatalogEntry"
+          "type": "array"
+          "title": "Persons"
+      "type": "object"
+      "required":
+        - "persons"
+      "title": "PersonsCatalogResponse"
+      "description": "Read response for the canonical persons catalog."
+    "SavePersonGroupMembershipRequest":
+      "properties":
+        "person_ids":
+          "items":
+            "type": "integer"
+          "type": "array"
+          "title": "Person Ids"
+      "type": "object"
+      "title": "SavePersonGroupMembershipRequest"
+      "description": "Batch replacement request for one person group's membership set."
+    "SavePersonGroupsCatalogRequest":
+      "properties":
+        "person_groups":
+          "items":
+            "$ref": "#/components/schemas/PersonGroupCatalogWriteEntry"
+          "type": "array"
+          "title": "Person Groups"
+        "delete_ids":
+          "items":
+            "type": "integer"
+          "type": "array"
+          "title": "Delete Ids"
+      "type": "object"
+      "required":
+        - "person_groups"
+      "title": "SavePersonGroupsCatalogRequest"
+      "description": "Batch write request for canonical person-group catalog rows."
+    "SavePersonsCatalogRequest":
+      "properties":
+        "persons":
+          "items":
+            "$ref": "#/components/schemas/PersonCatalogWriteEntry"
+          "type": "array"
+          "title": "Persons"
+        "delete_ids":
+          "items":
+            "type": "integer"
+          "type": "array"
+          "title": "Delete Ids"
+      "type": "object"
+      "required":
+        - "persons"
+      "title": "SavePersonsCatalogRequest"
+      "description": "Batch write request for canonical person catalog rows."
     "SocialGraphLink":
       "properties":
         "person_ids":
@@ -1480,3 +2238,6 @@
   -
     "name": "social"
     "description": "Person relationship projections derived from canonical assets."
+  -
+    "name": "manage-data"
+    "description": "Manual catalog maintenance for canonical persons and groups."
