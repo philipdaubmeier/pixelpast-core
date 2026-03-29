@@ -13,7 +13,7 @@ from pixelpast.ingestion.workdays_vacation.contracts import (
 from pixelpast.ingestion.workdays_vacation.fetch import (
     WorkdaysVacationWorkbookLoadProgress,
 )
-from pixelpast.shared.job_progress_tracker import SharedJobProgressTrackerBase
+from pixelpast.ingestion.progress_base import SharedIngestionProgressTrackerBase
 from pixelpast.shared.progress import JobProgressCallback, JobProgressSnapshot
 from pixelpast.shared.runtime import RuntimeContext
 
@@ -101,9 +101,14 @@ class WorkdaysVacationIngestionProgressState:
 
 
 class WorkdaysVacationIngestionProgressTracker(
-    SharedJobProgressTrackerBase[WorkdaysVacationIngestionProgressState]
+    SharedIngestionProgressTrackerBase[
+        WorkdaysVacationIngestionProgressState,
+        WorkdaysVacationTransformError,
+    ]
 ):
     """Workdays-vacation adapter over the generic ingestion progress engine."""
+
+    analysis_failure_log_message = "workdays vacation ingestion skipped workbook"
 
     def __init__(
         self,
@@ -117,52 +122,15 @@ class WorkdaysVacationIngestionProgressTracker(
     ) -> None:
         super().__init__(
             state=WorkdaysVacationIngestionProgressState(),
-            job_type="ingest",
             job="workdays_vacation",
             run_id=run_id,
             runtime=runtime,
             logger=logger,
-            heartbeat_log_message="workdays vacation ingest heartbeat written",
             callback=callback,
             heartbeat_interval_seconds=heartbeat_interval_seconds,
             now_factory=now_factory,
             monotonic_factory=monotonic_factory,
         )
-
-    def start_phase(self, *, phase: str, total: int | None) -> None:
-        self._start_phase(
-            phase=phase,
-            total=total,
-            log_message="workdays vacation ingest phase started",
-        )
-
-    def mark_discovered(self, *, path: str, discovered_file_count: int) -> None:
-        self._state.apply_discovery_count(discovered_file_count=discovered_file_count)
-        self._engine.state.set_phase_progress(
-            completed=discovered_file_count,
-            total=discovered_file_count,
-        )
-        logger.info(
-            "workdays vacation ingest discovery progress",
-            extra={
-                "run_id": self._engine.state.run_id,
-                "phase": self._engine.state.phase,
-                "path": path,
-                "completed": discovered_file_count,
-            },
-        )
-        self._emit(event="progress")
-
-    def finish_phase(self) -> None:
-        self._finish_phase(
-            log_message="workdays vacation ingest phase completed",
-        )
-
-    def mark_missing_from_source(self, *, missing_from_source_count: int) -> None:
-        self._state.apply_missing_from_source_count(
-            missing_from_source_count=missing_from_source_count
-        )
-        self._emit(event="progress", force_persist=True)
 
     def mark_metadata_batch(
         self,
@@ -175,50 +143,15 @@ class WorkdaysVacationIngestionProgressTracker(
             )
         self._emit(event="progress")
 
-    def mark_analysis_success(self) -> None:
-        self._engine.state.set_phase_progress(
-            completed=max(
-                self._engine.state.completed,
-                self._state.mark_analysis_success(),
-            )
-        )
-        self._emit(event="progress")
-
-    def mark_analysis_failure(
+    def _build_analysis_failure_log_extra(
         self,
         *,
         error: WorkdaysVacationTransformError,
-    ) -> None:
-        self._engine.state.set_phase_progress(
-            completed=max(
-                self._engine.state.completed,
-                self._state.mark_analysis_failure(),
-            )
-        )
-        logger.warning(
-            "workdays vacation ingestion skipped workbook",
-            extra={
-                "run_id": self._engine.state.run_id,
-                "phase": self._engine.state.phase,
-                "workbook": error.workbook.origin_label,
-                "reason": error.message,
-            },
-        )
-        self._emit(event="progress", force_persist=True)
-
-    def mark_persisted(self, *, outcome: str) -> None:
-        self._engine.state.increment_phase_completed()
-        self._state.mark_persisted(outcome=outcome)
-        self._emit(event="progress")
-
-    def finish_run(self, *, status: str) -> JobProgressSnapshot:
-        return self._finish_run(
-            status=status,
-            log_message="workdays vacation ingest completed",
-        )
-
-    def fail_run(self) -> JobProgressSnapshot:
-        return self._fail_run(log_message="workdays vacation ingest failed")
+    ) -> dict[str, object]:
+        return {
+            "workbook": error.workbook.origin_label,
+            "reason": error.message,
+        }
 
 
 def _parse_workbook_outcome(

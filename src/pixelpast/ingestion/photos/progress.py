@@ -11,7 +11,7 @@ from pixelpast.ingestion.photos.contracts import (
     PhotoDiscoveryError,
     PhotoMetadataBatchProgress,
 )
-from pixelpast.shared.job_progress_tracker import SharedJobProgressTrackerBase
+from pixelpast.ingestion.progress_base import SharedIngestionProgressTrackerBase
 from pixelpast.shared.progress import JobProgressCallback, JobProgressSnapshot
 from pixelpast.shared.runtime import RuntimeContext
 
@@ -124,9 +124,14 @@ class PhotoIngestionProgressState:
 
 
 class PhotoIngestionProgressTracker(
-    SharedJobProgressTrackerBase[PhotoIngestionProgressState]
+    SharedIngestionProgressTrackerBase[
+        PhotoIngestionProgressState,
+        PhotoDiscoveryError,
+    ]
 ):
     """Photo-specific adapter over the generic ingestion progress engine."""
+
+    analysis_failure_log_message = "photo ingestion skipped file"
 
     def __init__(
         self,
@@ -140,51 +145,14 @@ class PhotoIngestionProgressTracker(
     ) -> None:
         super().__init__(
             state=PhotoIngestionProgressState(),
-            job_type="ingest",
             job="photos",
             run_id=run_id,
             runtime=runtime,
             logger=logger,
-            heartbeat_log_message="photo ingest heartbeat written",
             callback=callback,
             heartbeat_interval_seconds=heartbeat_interval_seconds,
             now_factory=now_factory,
             monotonic_factory=monotonic_factory,
-        )
-
-    def start_phase(self, *, phase: str, total: int | None) -> None:
-        """Enter a new operational phase and persist the transition immediately."""
-
-        self._start_phase(
-            phase=phase,
-            total=total,
-            log_message="photo ingest phase started",
-        )
-
-    def mark_discovered(self, *, path: str, discovered_file_count: int) -> None:
-        """Update discovery counts as supported files are found."""
-
-        self._state.apply_discovery_count(discovered_file_count=discovered_file_count)
-        self._engine.state.set_phase_progress(
-            completed=discovered_file_count,
-            total=discovered_file_count,
-        )
-        logger.info(
-            "photo ingest discovery progress",
-            extra={
-                "run_id": self._engine.state.run_id,
-                "phase": self._engine.state.phase,
-                "path": path,
-                "completed": discovered_file_count,
-            },
-        )
-        self._emit(event="progress")
-
-    def finish_phase(self) -> None:
-        """Persist the end of the current phase."""
-
-        self._finish_phase(
-            log_message="photo ingest phase completed",
         )
 
     def mark_missing_from_source(self, *, missing_from_source_count: int) -> None:
@@ -228,37 +196,6 @@ class PhotoIngestionProgressTracker(
         )
         self._emit(event="progress")
 
-    def mark_analysis_success(self) -> None:
-        """Record one successfully analyzed file."""
-
-        self._engine.state.set_phase_progress(
-            completed=max(
-                self._engine.state.completed,
-                self._state.mark_analysis_success(),
-            ),
-        )
-        self._emit(event="progress")
-
-    def mark_analysis_failure(self, *, error: PhotoDiscoveryError) -> None:
-        """Record one file that failed during analysis."""
-
-        self._engine.state.set_phase_progress(
-            completed=max(
-                self._engine.state.completed,
-                self._state.mark_analysis_failure(),
-            ),
-        )
-        logger.warning(
-            "photo ingestion skipped file",
-            extra={
-                "run_id": self._engine.state.run_id,
-                "phase": self._engine.state.phase,
-                "path": error.path.as_posix(),
-                "reason": error.message,
-            },
-        )
-        self._emit(event="progress", force_persist=True)
-
     def mark_persisted(self, *, outcome: str) -> None:
         """Record one completed persistence outcome for an analyzed asset."""
 
@@ -282,23 +219,26 @@ class PhotoIngestionProgressTracker(
     def finish_run(self, *, status: str) -> JobProgressSnapshot:
         """Persist the terminal success or partial-failure state."""
 
-        logger.info(
-            "photo ingest finalization started",
-            extra={
-                "run_id": self._engine.state.run_id,
-                "status": status,
-            },
-        )
         return self._finish_run(
             status=status,
-            before_log_message="photo ingest finalization started",
-            log_message="photo ingest completed",
+            before_log_message=self._job_log_message("finalization started"),
+            log_message=self._job_log_message("completed"),
         )
 
     def fail_run(self) -> JobProgressSnapshot:
         """Persist the terminal failed state using the current counters."""
 
-        return self._fail_run(log_message="photo ingest failed")
+        return self._fail_run(log_message=self._job_log_message("failed"))
+
+    def _build_analysis_failure_log_extra(
+        self,
+        *,
+        error: PhotoDiscoveryError,
+    ) -> dict[str, object]:
+        return {
+            "path": error.path.as_posix(),
+            "reason": error.message,
+        }
 
 
 __all__ = [
