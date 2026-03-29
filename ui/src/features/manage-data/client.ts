@@ -68,13 +68,14 @@ export const manageDataClient = {
 
   async savePersonGroupsCatalog(
     rows: PersonGroupCatalogDraftRow[],
+    deleteIds: number[] = [],
   ): Promise<PersonGroupCatalogDraftRow[]> {
     const response = await manageDataTransport.savePersonGroupsCatalog({
       person_groups: rows.map((row) => ({
         id: toPersistedIdentifier(row.id),
         name: row.name,
       })),
-      delete_ids: [],
+      delete_ids: deleteIds,
     });
 
     return toDraftPersonGroupsCatalog(response);

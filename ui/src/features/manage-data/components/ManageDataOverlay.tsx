@@ -26,7 +26,8 @@ const MANAGE_SECTIONS: ManageDataSectionDescriptor[] = [
   {
     id: "person_groups",
     label: "Person Groups",
-    description: "Named group catalogs that later sections can extend with membership editing.",
+    description:
+      "Named group catalogs that later sections can extend with membership editing.",
   },
 ];
 
@@ -44,12 +45,19 @@ type SectionRuntimeState = {
   saveError: string | null;
   snapshot: SectionRuntimeRows | null;
   draft: SectionRuntimeRows | null;
+  deletedPersonGroupIds: number[];
+  activePersonGroupMembershipRowId: string | null;
 };
 
 type PendingGuardAction =
   | { kind: "close" }
   | { kind: "switch"; nextSectionId: ManageDataSectionId }
   | null;
+
+type PendingDeletePersonGroupAction = {
+  rowId: string;
+  name: string;
+} | null;
 
 const initialSectionState: SectionRuntimeState = {
   activeSectionId: "persons",
@@ -60,6 +68,8 @@ const initialSectionState: SectionRuntimeState = {
   saveError: null,
   snapshot: null,
   draft: null,
+  deletedPersonGroupIds: [],
+  activePersonGroupMembershipRowId: null,
 };
 
 function cloneSectionRows(rows: SectionRuntimeRows) {
@@ -72,6 +82,11 @@ function getDraftFingerprint(rows: SectionRuntimeRows | null): string {
 
 function createTemporaryId(prefix: string): string {
   return `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function toPersistedIdentifier(rowId: string): number | undefined {
+  const parsedId = Number(rowId);
+  return Number.isInteger(parsedId) && parsedId > 0 ? parsedId : undefined;
 }
 
 async function loadSectionData(
@@ -87,6 +102,7 @@ async function loadSectionData(
 async function saveSectionData(
   sectionId: ManageDataSectionId,
   rows: SectionRuntimeRows,
+  deletedPersonGroupIds: number[] = [],
 ): Promise<SectionRuntimeRows> {
   if (sectionId === "persons") {
     return manageDataClient.savePersonsCatalog(rows as PersonCatalogDraftRow[]);
@@ -94,6 +110,7 @@ async function saveSectionData(
 
   return manageDataClient.savePersonGroupsCatalog(
     rows as PersonGroupCatalogDraftRow[],
+    deletedPersonGroupIds,
   );
 }
 
@@ -183,10 +200,18 @@ function PersonGroupsSection(props: {
   rows: PersonGroupCatalogDraftRow[];
   searchQuery: string;
   dirty: boolean;
+  activeMembershipRowId: string | null;
   onSearchChange: (value: string) => void;
   onAdd: () => void;
   onChangeRow: (rowId: string, field: "name", value: string) => void;
+  onDeleteRow: (rowId: string) => void;
+  onOpenMembershipEditor: (rowId: string) => void;
+  onCloseMembershipEditor: () => void;
 }) {
+  const activeMembershipRow =
+    props.activeMembershipRowId === null
+      ? null
+      : props.rows.find((row) => row.id === props.activeMembershipRowId) ?? null;
   const filteredRows = useMemo(() => {
     const normalizedQuery = props.searchQuery.trim().toLowerCase();
 
@@ -201,11 +226,57 @@ function PersonGroupsSection(props: {
     );
   }, [props.rows, props.searchQuery]);
 
+  if (activeMembershipRow !== null) {
+    return (
+      <section className="flex h-full min-h-0 flex-col gap-4">
+        <header className="panel-surface-strong flex flex-col gap-4 px-5 py-4 lg:px-6">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="min-w-0">
+              <p className="panel-title">Manage Data</p>
+              <h1 className="mt-2 text-2xl font-semibold text-slate-950">
+                Person Group Membership
+              </h1>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+                Selected group:{" "}
+                <span className="font-semibold text-slate-900">
+                  {activeMembershipRow.name || "Untitled group"}
+                </span>
+                . The dedicated membership editor lands in the next subtask, but
+                this route already preserves the focused group context inside the
+                overlay.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={props.onCloseMembershipEditor}
+              className="rounded-full border border-[color:var(--pp-border)] bg-white/80 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-white"
+            >
+              Back to catalog
+            </button>
+          </div>
+        </header>
+        <div className="panel-surface flex min-h-0 flex-1 items-center justify-center px-6 py-10">
+          <div className="max-w-xl text-center">
+            <p className="panel-title">Membership</p>
+            <h2 className="mt-2 text-xl font-semibold text-slate-950">
+              Membership editing is scoped to its dedicated subtask
+            </h2>
+            <p className="mt-3 text-sm leading-6 text-slate-600">
+              This placeholder keeps the selected person group in focus so the
+              later membership implementation can attach to the same navigation
+              path.
+            </p>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
   return (
     <CatalogSectionFrame
       eyebrow="Manage Data"
       title="Person Groups"
-      description="The group catalog uses the same overlay shell and section draft lifecycle, ready for later membership-specific editing."
+      description="Create, rename, and stage deletions for canonical groups while keeping member counts read-only and membership editing in a dedicated subview."
       searchValue={props.searchQuery}
       searchPlaceholder="Search group name"
       onSearchChange={props.onSearchChange}
@@ -224,7 +295,7 @@ function PersonGroupsSection(props: {
         </span>
       }
     >
-      <CatalogTable columns={["Group Name", "Members", "Status", "Notes"]}>
+      <CatalogTable columns={["Group Name", "Members", "Membership", "Delete"]}>
         {filteredRows.length === 0 ? (
           <CatalogEmptyState
             title="No matching groups"
@@ -239,8 +310,24 @@ function PersonGroupsSection(props: {
                 onChange={(value) => props.onChangeRow(row.id, "name", value)}
               />
               <ReadonlyCell>{row.memberCount} persisted members</ReadonlyCell>
-              <ReadonlyCell>Delete and membership actions land in later subtasks.</ReadonlyCell>
-              <ReadonlyCell>Membership editing lands in a later subtask.</ReadonlyCell>
+              <div className="flex min-h-[2.75rem] items-center">
+                <button
+                  type="button"
+                  onClick={() => props.onOpenMembershipEditor(row.id)}
+                  className="rounded-full border border-[color:rgba(15,23,42,0.12)] bg-white px-3 py-2 text-sm font-medium text-slate-800 transition hover:bg-slate-50"
+                >
+                  Manage members
+                </button>
+              </div>
+              <div className="flex min-h-[2.75rem] items-center">
+                <button
+                  type="button"
+                  onClick={() => props.onDeleteRow(row.id)}
+                  className="rounded-full border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-800 transition hover:bg-rose-100"
+                >
+                  Delete group
+                </button>
+              </div>
             </CatalogRow>
           ))
         )}
@@ -257,11 +344,14 @@ export function ManageDataOverlay(props: {
     useState<SectionRuntimeState>(initialSectionState);
   const [pendingGuardAction, setPendingGuardAction] =
     useState<PendingGuardAction>(null);
+  const [pendingDeletePersonGroupAction, setPendingDeletePersonGroupAction] =
+    useState<PendingDeletePersonGroupAction>(null);
 
   const isDirty =
     sectionState.status === "ready" &&
-    getDraftFingerprint(sectionState.snapshot) !==
-      getDraftFingerprint(sectionState.draft);
+    (getDraftFingerprint(sectionState.snapshot) !==
+      getDraftFingerprint(sectionState.draft) ||
+      sectionState.deletedPersonGroupIds.length > 0);
 
   useEffect(() => {
     if (!props.isOpen) {
@@ -279,6 +369,10 @@ export function ManageDataOverlay(props: {
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
         event.preventDefault();
+        if (pendingDeletePersonGroupAction !== null) {
+          setPendingDeletePersonGroupAction(null);
+          return;
+        }
         if (isDirty) {
           setPendingGuardAction({ kind: "close" });
           return;
@@ -290,9 +384,11 @@ export function ManageDataOverlay(props: {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isDirty, props.isOpen, props.onClose]);
+  }, [isDirty, pendingDeletePersonGroupAction, props.isOpen, props.onClose]);
 
   async function activateSection(sectionId: ManageDataSectionId) {
+    setPendingDeletePersonGroupAction(null);
+
     startTransition(() => {
       setSectionState((currentState) => ({
         activeSectionId: sectionId,
@@ -304,6 +400,8 @@ export function ManageDataOverlay(props: {
         saveError: null,
         snapshot: null,
         draft: null,
+        deletedPersonGroupIds: [],
+        activePersonGroupMembershipRowId: null,
       }));
     });
 
@@ -319,6 +417,8 @@ export function ManageDataOverlay(props: {
           saveError: null,
           snapshot: cloneSectionRows(loadedRows),
           draft: cloneSectionRows(loadedRows),
+          deletedPersonGroupIds: [],
+          activePersonGroupMembershipRowId: null,
         });
       });
     } catch (error) {
@@ -335,6 +435,8 @@ export function ManageDataOverlay(props: {
           saveError: null,
           snapshot: null,
           draft: null,
+          deletedPersonGroupIds: [],
+          activePersonGroupMembershipRowId: null,
         });
       });
     }
@@ -368,11 +470,14 @@ export function ManageDataOverlay(props: {
     }
 
     const snapshotRows = cloneSectionRows(sectionState.snapshot);
+    setPendingDeletePersonGroupAction(null);
 
     setSectionState((currentState) => ({
       ...currentState,
       draft: snapshotRows,
       saveError: null,
+      deletedPersonGroupIds: [],
+      activePersonGroupMembershipRowId: null,
     }));
   }
 
@@ -393,7 +498,15 @@ export function ManageDataOverlay(props: {
     });
 
     try {
-      await saveSectionData(activeSectionId, draftRows);
+      if (activeSectionId === "persons") {
+        await saveSectionData(activeSectionId, draftRows);
+      } else {
+        await saveSectionData(
+          activeSectionId,
+          draftRows,
+          sectionState.deletedPersonGroupIds,
+        );
+      }
       const reloadedRows = await loadSectionData(activeSectionId);
 
       startTransition(() => {
@@ -403,8 +516,11 @@ export function ManageDataOverlay(props: {
           snapshot: cloneSectionRows(reloadedRows),
           draft: cloneSectionRows(reloadedRows),
           saveError: null,
+          deletedPersonGroupIds: [],
+          activePersonGroupMembershipRowId: null,
         }));
       });
+      setPendingDeletePersonGroupAction(null);
       return true;
     } catch (error) {
       startTransition(() => {
@@ -558,6 +674,81 @@ export function ManageDataOverlay(props: {
     });
   }
 
+  function requestDeletePersonGroup(rowId: string) {
+    if (
+      sectionState.activeSectionId !== "person_groups" ||
+      sectionState.draft === null
+    ) {
+      return;
+    }
+
+    const row = (sectionState.draft as PersonGroupCatalogDraftRow[]).find(
+      (draftRow) => draftRow.id === rowId,
+    );
+    if (row === undefined) {
+      return;
+    }
+
+    setPendingDeletePersonGroupAction({
+      rowId,
+      name: row.name,
+    });
+  }
+
+  function confirmDeletePersonGroup() {
+    const pendingDelete = pendingDeletePersonGroupAction;
+    if (pendingDelete === null) {
+      return;
+    }
+
+    setSectionState((currentState) => {
+      if (
+        currentState.activeSectionId !== "person_groups" ||
+        currentState.draft === null
+      ) {
+        return currentState;
+      }
+
+      const persistedId = toPersistedIdentifier(pendingDelete.rowId);
+      return {
+        ...currentState,
+        draft: (currentState.draft as PersonGroupCatalogDraftRow[]).filter(
+          (row) => row.id !== pendingDelete.rowId,
+        ),
+        deletedPersonGroupIds:
+          persistedId === undefined
+            ? currentState.deletedPersonGroupIds
+            : [...new Set([...currentState.deletedPersonGroupIds, persistedId])],
+        activePersonGroupMembershipRowId:
+          currentState.activePersonGroupMembershipRowId === pendingDelete.rowId
+            ? null
+            : currentState.activePersonGroupMembershipRowId,
+      };
+    });
+
+    setPendingDeletePersonGroupAction(null);
+  }
+
+  function openPersonGroupMembershipEditor(rowId: string) {
+    setSectionState((currentState) => {
+      if (currentState.activeSectionId !== "person_groups") {
+        return currentState;
+      }
+
+      return {
+        ...currentState,
+        activePersonGroupMembershipRowId: rowId,
+      };
+    });
+  }
+
+  function closePersonGroupMembershipEditor() {
+    setSectionState((currentState) => ({
+      ...currentState,
+      activePersonGroupMembershipRowId: null,
+    }));
+  }
+
   if (!props.isOpen) {
     return null;
   }
@@ -649,9 +840,15 @@ export function ManageDataOverlay(props: {
                   rows={sectionState.draft as PersonGroupCatalogDraftRow[]}
                   searchQuery={sectionState.searchQuery}
                   dirty={isDirty}
+                  activeMembershipRowId={
+                    sectionState.activePersonGroupMembershipRowId
+                  }
                   onSearchChange={updateSearchQuery}
                   onAdd={addDraftRow}
                   onChangeRow={updatePersonGroupDraftRow}
+                  onDeleteRow={requestDeletePersonGroup}
+                  onOpenMembershipEditor={openPersonGroupMembershipEditor}
+                  onCloseMembershipEditor={closePersonGroupMembershipEditor}
                 />
               ) : null}
             </div>
@@ -751,6 +948,40 @@ export function ManageDataOverlay(props: {
                   className="rounded-full border border-slate-900 bg-slate-900 px-4 py-2 text-sm font-medium text-white transition disabled:cursor-not-allowed disabled:opacity-50 hover:bg-slate-800"
                 >
                   Save changes
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+        {pendingDeletePersonGroupAction !== null ? (
+          <div className="absolute inset-0 flex items-center justify-center bg-[color:rgba(28,36,48,0.22)] p-4">
+            <div className="panel-surface-strong w-full max-w-lg p-6">
+              <p className="panel-title text-rose-700">Delete group</p>
+              <h2 className="mt-2 text-2xl font-semibold text-slate-950">
+                Confirm removal from the local draft
+              </h2>
+              <p className="mt-3 text-sm leading-6 text-slate-600">
+                Delete{" "}
+                <span className="font-semibold text-slate-900">
+                  {pendingDeletePersonGroupAction.name || "this group"}
+                </span>{" "}
+                from the current draft? The persisted row and its membership links
+                will be removed only after you apply or save the section.
+              </p>
+              <div className="mt-6 flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={() => setPendingDeletePersonGroupAction(null)}
+                  className="rounded-full border border-[color:var(--pp-border)] bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                >
+                  Keep group
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmDeletePersonGroup}
+                  className="rounded-full border border-rose-200 bg-rose-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-rose-700"
+                >
+                  Confirm delete
                 </button>
               </div>
             </div>
