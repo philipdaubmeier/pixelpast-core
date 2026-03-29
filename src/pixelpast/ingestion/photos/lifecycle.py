@@ -6,10 +6,9 @@ from pathlib import Path
 
 from pixelpast.persistence.repositories import (
     AssetRepository,
-    JobRunRepository,
     SourceRepository,
 )
-from pixelpast.shared.progress import build_initial_job_progress_payload
+from pixelpast.shared.job_run_coordinator import JobRunCoordinatorBase
 from pixelpast.shared.runtime import RuntimeContext
 
 PHOTO_SOURCE_NAME = "Photos"
@@ -19,8 +18,13 @@ PHOTO_MODE = "full"
 PHOTO_INITIAL_PHASE = "initializing"
 
 
-class PhotoIngestionRunCoordinator:
+class PhotoIngestionRunCoordinator(JobRunCoordinatorBase):
     """Coordinate source state and run bootstrap for photo ingestion."""
+
+    job_type = PHOTO_JOB_TYPE
+    job_name = PHOTO_JOB_NAME
+    mode = PHOTO_MODE
+    initial_phase = PHOTO_INITIAL_PHASE
 
     def create_run(
         self,
@@ -30,26 +34,24 @@ class PhotoIngestionRunCoordinator:
     ) -> int:
         """Create or update the photo source and persist a new run."""
 
-        session = runtime.session_factory()
-        try:
-            source_repository = SourceRepository(session)
-            job_run_repository = JobRunRepository(session)
-            source_repository.get_or_create(
-                name=PHOTO_SOURCE_NAME,
-                source_type=PHOTO_JOB_NAME,
-                config={"root_path": resolved_root.as_posix()},
-            )
-            job_run = job_run_repository.create(
-                job_type=PHOTO_JOB_TYPE,
-                job=PHOTO_JOB_NAME,
-                mode=PHOTO_MODE,
-                phase=PHOTO_INITIAL_PHASE,
-                progress_json=build_initial_job_progress_payload(),
-            )
-            session.commit()
-            return job_run.id
-        finally:
-            session.close()
+        return self._create_run(runtime=runtime, resolved_root=resolved_root)
+
+    def _bootstrap_source_state(
+        self,
+        *,
+        session,
+        runtime: RuntimeContext,
+        resolved_root: Path | None = None,
+        **kwargs: object,
+    ) -> None:
+        del runtime, kwargs
+        if resolved_root is None:
+            raise ValueError("Photo ingestion run bootstrap requires resolved_root.")
+        SourceRepository(session).get_or_create(
+            name=PHOTO_SOURCE_NAME,
+            source_type=PHOTO_JOB_NAME,
+            config={"root_path": resolved_root.as_posix()},
+        )
 
     def count_missing_from_source(
         self,

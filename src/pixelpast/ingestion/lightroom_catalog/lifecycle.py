@@ -9,8 +9,8 @@ from pixelpast.ingestion.lightroom_catalog.contracts import (
     LightroomCatalogCandidate,
     LightroomCatalogDescriptor,
 )
-from pixelpast.persistence.repositories import JobRunRepository, SourceRepository
-from pixelpast.shared.progress import build_initial_job_progress_payload
+from pixelpast.persistence.repositories import SourceRepository
+from pixelpast.shared.job_run_coordinator import JobRunCoordinatorBase
 from pixelpast.shared.runtime import RuntimeContext
 
 LIGHTROOM_CATALOG_JOB_NAME = "lightroom_catalog"
@@ -20,8 +20,13 @@ LIGHTROOM_CATALOG_INITIAL_PHASE = "initializing"
 LIGHTROOM_CATALOG_SOURCE_TYPE = "lightroom_catalog"
 
 
-class LightroomCatalogIngestionRunCoordinator:
+class LightroomCatalogIngestionRunCoordinator(JobRunCoordinatorBase):
     """Coordinate source state and run bootstrap for Lightroom catalog ingest."""
+
+    job_type = LIGHTROOM_CATALOG_JOB_TYPE
+    job_name = LIGHTROOM_CATALOG_JOB_NAME
+    mode = LIGHTROOM_CATALOG_MODE
+    initial_phase = LIGHTROOM_CATALOG_INITIAL_PHASE
 
     def create_run(
         self,
@@ -32,30 +37,32 @@ class LightroomCatalogIngestionRunCoordinator:
         """Create or update the catalog-scoped source and persist a new run."""
 
         normalized_root = resolved_root.expanduser().resolve()
-        session = runtime.session_factory()
-        try:
-            SourceRepository(session).upsert_by_external_id(
-                external_id=build_lightroom_catalog_source_external_id(
-                    catalog_path=normalized_root
-                ),
-                name=build_lightroom_catalog_source_name(catalog_path=normalized_root),
-                source_type=LIGHTROOM_CATALOG_SOURCE_TYPE,
-                config={"catalog_path": normalized_root.as_posix()},
+        return self._create_run(runtime=runtime, resolved_root=normalized_root)
+
+    def _bootstrap_source_state(
+        self,
+        *,
+        session,
+        runtime: RuntimeContext,
+        resolved_root: Path | None = None,
+        **kwargs: object,
+    ) -> None:
+        del runtime, kwargs
+        if resolved_root is None:
+            raise ValueError(
+                "Lightroom catalog ingestion run bootstrap requires resolved_root."
             )
-            job_run = JobRunRepository(session).create(
-                job_type=LIGHTROOM_CATALOG_JOB_TYPE,
-                job=LIGHTROOM_CATALOG_JOB_NAME,
-                mode=LIGHTROOM_CATALOG_MODE,
-                phase=LIGHTROOM_CATALOG_INITIAL_PHASE,
-                progress_json={
-                    **build_initial_job_progress_payload(),
-                    "root_path": normalized_root.as_posix(),
-                },
-            )
-            session.commit()
-            return job_run.id
-        finally:
-            session.close()
+        SourceRepository(session).upsert_by_external_id(
+            external_id=build_lightroom_catalog_source_external_id(
+                catalog_path=resolved_root
+            ),
+            name=build_lightroom_catalog_source_name(catalog_path=resolved_root),
+            source_type=LIGHTROOM_CATALOG_SOURCE_TYPE,
+            config={"catalog_path": resolved_root.as_posix()},
+        )
+
+    def _include_root_path_in_payload(self) -> bool:
+        return True
 
     def count_missing_from_source(
         self,

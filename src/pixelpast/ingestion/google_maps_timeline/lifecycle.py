@@ -13,10 +13,9 @@ from pixelpast.ingestion.google_maps_timeline.persist import (
 )
 from pixelpast.persistence.repositories import (
     EventRepository,
-    JobRunRepository,
     SourceRepository,
 )
-from pixelpast.shared.progress import build_initial_job_progress_payload
+from pixelpast.shared.job_run_coordinator import JobRunCoordinatorBase
 from pixelpast.shared.runtime import RuntimeContext
 
 GOOGLE_MAPS_TIMELINE_JOB_NAME = "google_maps_timeline"
@@ -25,8 +24,13 @@ GOOGLE_MAPS_TIMELINE_MODE = "full"
 GOOGLE_MAPS_TIMELINE_INITIAL_PHASE = "initializing"
 
 
-class GoogleMapsTimelineIngestionRunCoordinator:
+class GoogleMapsTimelineIngestionRunCoordinator(JobRunCoordinatorBase):
     """Coordinate run bootstrap for Google Maps Timeline ingestion."""
+
+    job_type = GOOGLE_MAPS_TIMELINE_JOB_TYPE
+    job_name = GOOGLE_MAPS_TIMELINE_JOB_NAME
+    mode = GOOGLE_MAPS_TIMELINE_MODE
+    initial_phase = GOOGLE_MAPS_TIMELINE_INITIAL_PHASE
 
     def create_run(
         self,
@@ -36,22 +40,10 @@ class GoogleMapsTimelineIngestionRunCoordinator:
     ) -> int:
         """Persist a new Google Maps Timeline ingestion run."""
 
-        session = runtime.session_factory()
-        try:
-            job_run = JobRunRepository(session).create(
-                job_type=GOOGLE_MAPS_TIMELINE_JOB_TYPE,
-                job=GOOGLE_MAPS_TIMELINE_JOB_NAME,
-                mode=GOOGLE_MAPS_TIMELINE_MODE,
-                phase=GOOGLE_MAPS_TIMELINE_INITIAL_PHASE,
-                progress_json={
-                    **build_initial_job_progress_payload(),
-                    "root_path": resolved_root.as_posix(),
-                },
-            )
-            session.commit()
-            return job_run.id
-        finally:
-            session.close()
+        return self._create_run(runtime=runtime, resolved_root=resolved_root)
+
+    def _include_root_path_in_payload(self) -> bool:
+        return True
 
     def count_missing_from_source(
         self,

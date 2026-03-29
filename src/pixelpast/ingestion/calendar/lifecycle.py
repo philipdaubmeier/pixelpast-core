@@ -4,8 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pixelpast.persistence.repositories import JobRunRepository
-from pixelpast.shared.progress import build_initial_job_progress_payload
+from pixelpast.shared.job_run_coordinator import JobRunCoordinatorBase
 from pixelpast.shared.runtime import RuntimeContext
 
 CALENDAR_JOB_NAME = "calendar"
@@ -14,8 +13,13 @@ CALENDAR_MODE = "full"
 CALENDAR_INITIAL_PHASE = "initializing"
 
 
-class CalendarIngestionRunCoordinator:
+class CalendarIngestionRunCoordinator(JobRunCoordinatorBase):
     """Coordinate run bootstrap for calendar ingestion."""
+
+    job_type = CALENDAR_JOB_TYPE
+    job_name = CALENDAR_JOB_NAME
+    mode = CALENDAR_MODE
+    initial_phase = CALENDAR_INITIAL_PHASE
 
     def create_run(
         self,
@@ -25,22 +29,10 @@ class CalendarIngestionRunCoordinator:
     ) -> int:
         """Persist a new calendar ingestion run."""
 
-        session = runtime.session_factory()
-        try:
-            job_run = JobRunRepository(session).create(
-                job_type=CALENDAR_JOB_TYPE,
-                job=CALENDAR_JOB_NAME,
-                mode=CALENDAR_MODE,
-                phase=CALENDAR_INITIAL_PHASE,
-                progress_json={
-                    **build_initial_job_progress_payload(),
-                    "root_path": resolved_root.as_posix(),
-                },
-            )
-            session.commit()
-            return job_run.id
-        finally:
-            session.close()
+        return self._create_run(runtime=runtime, resolved_root=resolved_root)
+
+    def _include_root_path_in_payload(self) -> bool:
+        return True
 
     def count_missing_from_source(
         self,
