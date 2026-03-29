@@ -185,7 +185,7 @@ function PersonGroupsSection(props: {
   dirty: boolean;
   onSearchChange: (value: string) => void;
   onAdd: () => void;
-  onChangeRow: (rowId: string, field: "name" | "path", value: string) => void;
+  onChangeRow: (rowId: string, field: "name", value: string) => void;
 }) {
   const filteredRows = useMemo(() => {
     const normalizedQuery = props.searchQuery.trim().toLowerCase();
@@ -195,7 +195,7 @@ function PersonGroupsSection(props: {
     }
 
     return props.rows.filter((row) =>
-      [row.name, row.path, String(row.memberCount)].some((value) =>
+      [row.name, String(row.memberCount)].some((value) =>
         value.toLowerCase().includes(normalizedQuery),
       ),
     );
@@ -207,7 +207,7 @@ function PersonGroupsSection(props: {
       title="Person Groups"
       description="The group catalog uses the same overlay shell and section draft lifecycle, ready for later membership-specific editing."
       searchValue={props.searchQuery}
-      searchPlaceholder="Search group name or path"
+      searchPlaceholder="Search group name"
       onSearchChange={props.onSearchChange}
       addLabel="+ Add group"
       onAdd={props.onAdd}
@@ -224,7 +224,7 @@ function PersonGroupsSection(props: {
         </span>
       }
     >
-      <CatalogTable columns={["Group Name", "Path", "Members", "Notes"]}>
+      <CatalogTable columns={["Group Name", "Members", "Status", "Notes"]}>
         {filteredRows.length === 0 ? (
           <CatalogEmptyState
             title="No matching groups"
@@ -238,12 +238,8 @@ function PersonGroupsSection(props: {
                 placeholder="Group name"
                 onChange={(value) => props.onChangeRow(row.id, "name", value)}
               />
-              <InlineTextField
-                value={row.path}
-                placeholder="groups/path"
-                onChange={(value) => props.onChangeRow(row.id, "path", value)}
-              />
               <ReadonlyCell>{row.memberCount} persisted members</ReadonlyCell>
+              <ReadonlyCell>Delete and membership actions land in later subtasks.</ReadonlyCell>
               <ReadonlyCell>Membership editing lands in a later subtask.</ReadonlyCell>
             </CatalogRow>
           ))
@@ -385,6 +381,9 @@ export function ManageDataOverlay(props: {
       return false;
     }
 
+    const activeSectionId = sectionState.activeSectionId;
+    const draftRows = cloneSectionRows(sectionState.draft);
+
     startTransition(() => {
       setSectionState((currentState) => ({
         ...currentState,
@@ -394,17 +393,15 @@ export function ManageDataOverlay(props: {
     });
 
     try {
-      const persistedDraft = await saveSectionData(
-        sectionState.activeSectionId,
-        sectionState.draft,
-      );
+      await saveSectionData(activeSectionId, draftRows);
+      const reloadedRows = await loadSectionData(activeSectionId);
 
       startTransition(() => {
         setSectionState((currentState) => ({
           ...currentState,
           saveState: "idle",
-          snapshot: cloneSectionRows(persistedDraft),
-          draft: cloneSectionRows(persistedDraft),
+          snapshot: cloneSectionRows(reloadedRows),
+          draft: cloneSectionRows(reloadedRows),
           saveError: null,
         }));
       });
@@ -496,7 +493,6 @@ export function ManageDataOverlay(props: {
         {
           id: createTemporaryId("group"),
           name: "",
-          path: "",
           memberCount: 0,
         },
       ],
@@ -540,7 +536,7 @@ export function ManageDataOverlay(props: {
 
   function updatePersonGroupDraftRow(
     rowId: string,
-    field: "name" | "path",
+    field: "name",
     value: string,
   ) {
     setSectionState((currentState) => {

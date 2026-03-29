@@ -10,7 +10,6 @@ export type PersonCatalogDraftRow = {
 export type PersonGroupCatalogDraftRow = {
   id: string;
   name: string;
-  path: string;
   memberCount: number;
 };
 

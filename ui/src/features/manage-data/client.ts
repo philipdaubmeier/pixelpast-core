@@ -1,85 +1,82 @@
+import {
+  manageDataTransport,
+  type ApiPersonGroupsCatalogResponse,
+  type ApiPersonsCatalogResponse,
+} from "../../api/manageDataTransport";
 import type {
   PersonCatalogDraftRow,
   PersonGroupCatalogDraftRow,
 } from "./types";
 
-const LOAD_LATENCY_MS = 140;
-
-let persistedPersonsCatalog: PersonCatalogDraftRow[] = [
-  {
-    id: "person-1",
-    name: "Alex Morgan",
-    aliases: ["Lex", "A. Morgan"],
-    path: "family/alex-morgan",
-  },
-  {
-    id: "person-2",
-    name: "Samira Becker",
-    aliases: ["Sam"],
-    path: "friends/samira-becker",
-  },
-];
-
-let persistedPersonGroupsCatalog: PersonGroupCatalogDraftRow[] = [
-  {
-    id: "group-1",
-    name: "Immediate Family",
-    path: "family/immediate",
-    memberCount: 4,
-  },
-  {
-    id: "group-2",
-    name: "Berlin Friends",
-    path: "friends/berlin",
-    memberCount: 7,
-  },
-];
-
-function clonePersonsCatalog(
-  rows: PersonCatalogDraftRow[],
+function toDraftPersonsCatalog(
+  response: ApiPersonsCatalogResponse,
 ): PersonCatalogDraftRow[] {
-  return rows.map((row) => ({
-    ...row,
-    aliases: [...row.aliases],
+  return response.persons.map((person) => ({
+    id: String(person.id),
+    name: person.name,
+    aliases: [...person.aliases],
+    path: person.path ?? "",
   }));
 }
 
-function clonePersonGroupsCatalog(
-  rows: PersonGroupCatalogDraftRow[],
+function toDraftPersonGroupsCatalog(
+  response: ApiPersonGroupsCatalogResponse,
 ): PersonGroupCatalogDraftRow[] {
-  return rows.map((row) => ({ ...row }));
+  return response.person_groups.map((group) => ({
+    id: String(group.id),
+    name: group.name,
+    memberCount: group.member_count,
+  }));
 }
 
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    window.setTimeout(resolve, ms);
-  });
+function toPersistedIdentifier(rowId: string): number | undefined {
+  const parsedId = Number(rowId);
+  return Number.isInteger(parsedId) && parsedId > 0 ? parsedId : undefined;
+}
+
+function toOptionalText(value: string): string | null {
+  const trimmedValue = value.trim();
+  return trimmedValue === "" ? null : trimmedValue;
 }
 
 export const manageDataClient = {
   async loadPersonsCatalog(): Promise<PersonCatalogDraftRow[]> {
-    await delay(LOAD_LATENCY_MS);
-    return clonePersonsCatalog(persistedPersonsCatalog);
+    return toDraftPersonsCatalog(await manageDataTransport.getPersonsCatalog());
   },
 
   async savePersonsCatalog(
     rows: PersonCatalogDraftRow[],
   ): Promise<PersonCatalogDraftRow[]> {
-    await delay(LOAD_LATENCY_MS);
-    persistedPersonsCatalog = clonePersonsCatalog(rows);
-    return clonePersonsCatalog(persistedPersonsCatalog);
+    const response = await manageDataTransport.savePersonsCatalog({
+      persons: rows.map((row) => ({
+        id: toPersistedIdentifier(row.id),
+        name: row.name,
+        aliases: [...row.aliases],
+        path: toOptionalText(row.path),
+      })),
+      delete_ids: [],
+    });
+
+    return toDraftPersonsCatalog(response);
   },
 
   async loadPersonGroupsCatalog(): Promise<PersonGroupCatalogDraftRow[]> {
-    await delay(LOAD_LATENCY_MS);
-    return clonePersonGroupsCatalog(persistedPersonGroupsCatalog);
+    return toDraftPersonGroupsCatalog(
+      await manageDataTransport.getPersonGroupsCatalog(),
+    );
   },
 
   async savePersonGroupsCatalog(
     rows: PersonGroupCatalogDraftRow[],
   ): Promise<PersonGroupCatalogDraftRow[]> {
-    await delay(LOAD_LATENCY_MS);
-    persistedPersonGroupsCatalog = clonePersonGroupsCatalog(rows);
-    return clonePersonGroupsCatalog(persistedPersonGroupsCatalog);
+    const response = await manageDataTransport.savePersonGroupsCatalog({
+      person_groups: rows.map((row) => ({
+        id: toPersistedIdentifier(row.id),
+        name: row.name,
+      })),
+      delete_ids: [],
+    });
+
+    return toDraftPersonGroupsCatalog(response);
   },
 };
