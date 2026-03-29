@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { LeftGridPane } from "./layout/LeftGridPane";
 import { MainSplitLayout } from "./layout/MainSplitLayout";
 import { RightContextPane } from "./layout/RightContextPane";
@@ -6,6 +6,7 @@ import { TopBar } from "./layout/TopBar";
 import { MapPanel } from "../features/context/components/MapPanel";
 import { PersonsPanel } from "../features/context/components/PersonsPanel";
 import { TagsPanel } from "../features/context/components/TagsPanel";
+import { ManageDataOverlay } from "../features/manage-data/components/ManageDataOverlay";
 import { SocialGraphView } from "../features/social-graph/components/SocialGraphView";
 import {
   buildGridDays,
@@ -186,6 +187,7 @@ export function AppShell({
   socialGraphMaxPeoplePerAsset,
   onChangeSocialGraphMaxPeoplePerAsset,
 }: AppShellProps) {
+  const [isManageDataOpen, setManageDataOpen] = useState(false);
   const {
     state,
     clearSelections,
@@ -242,6 +244,8 @@ export function AppShell({
         onTogglePerson={togglePerson}
         onToggleTag={toggleTag}
         onClearSelections={clearSelections}
+        isManageDataOpen={isManageDataOpen}
+        onToggleManageData={() => setManageDataOpen((currentValue) => !currentValue)}
       />
       {state.mainView === "day_grid" ? (
         <MainContentFrame mainView="day_grid">
@@ -271,6 +275,10 @@ export function AppShell({
           />
         </MainContentFrame>
       )}
+      <ManageDataOverlay
+        isOpen={isManageDataOpen}
+        onClose={() => setManageDataOpen(false)}
+      />
     </main>
   );
 }

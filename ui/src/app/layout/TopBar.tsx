@@ -26,6 +26,8 @@ type TopBarProps = {
   onTogglePerson: (personId: string) => void;
   onToggleTag: (tagPath: string) => void;
   onClearSelections: () => void;
+  isManageDataOpen: boolean;
+  onToggleManageData: () => void;
 };
 
 export function TopBar({
@@ -45,6 +47,8 @@ export function TopBar({
   onTogglePerson,
   onToggleTag,
   onClearSelections,
+  isManageDataOpen,
+  onToggleManageData,
 }: TopBarProps) {
   return (
     <header className="thin-scrollbar fixed inset-x-0 top-0 z-20 overflow-x-auto border-b border-[color:var(--pp-border)] bg-[color:rgba(255,249,241,0.96)] shadow-[0_10px_30px_rgba(61,44,15,0.06)] backdrop-blur-sm">
@@ -77,6 +81,21 @@ export function TopBar({
               onRemoveTag={onToggleTag}
               onClear={onClearSelections}
             />
+          </div>
+          <div className="ml-auto flex shrink-0 items-center">
+            <button
+              type="button"
+              onClick={onToggleManageData}
+              aria-pressed={isManageDataOpen}
+              className={[
+                "rounded-full border px-4 py-2 text-sm font-medium transition",
+                isManageDataOpen
+                  ? "border-slate-900 bg-slate-900 text-white shadow-[0_12px_28px_rgba(15,23,42,0.16)]"
+                  : "border-[color:rgba(98,80,46,0.2)] bg-white/55 text-slate-600 hover:bg-white/85",
+              ].join(" ")}
+            >
+              Manage
+            </button>
           </div>
         </div>
         {mainView === "day_grid" ? (
