@@ -27,6 +27,16 @@ from pixelpast.api.schemas.hovercontext import (
     DayContextResponse,
     DayContextSummaryCounts,
 )
+from pixelpast.api.schemas.manage_data import (
+    PersonCatalogEntry,
+    PersonCatalogWriteEntry,
+    PersonGroupCatalogEntry,
+    PersonGroupCatalogWriteEntry,
+    PersonGroupsCatalogResponse,
+    PersonsCatalogResponse,
+    SavePersonGroupsCatalogRequest,
+    SavePersonsCatalogRequest,
+)
 from pixelpast.api.schemas.social_graph import (
     SocialGraphLink,
     SocialGraphPerson,
@@ -51,6 +61,14 @@ __all__ = [
     "ExplorationRange",
     "ExplorationTag",
     "ExplorationViewMode",
+    "PersonCatalogEntry",
+    "PersonCatalogWriteEntry",
+    "PersonGroupCatalogEntry",
+    "PersonGroupCatalogWriteEntry",
+    "PersonGroupsCatalogResponse",
+    "PersonsCatalogResponse",
+    "SavePersonGroupsCatalogRequest",
+    "SavePersonsCatalogRequest",
     "SocialGraphLink",
     "SocialGraphPerson",
     "SocialGraphResponse",

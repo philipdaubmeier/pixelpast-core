@@ -22,6 +22,10 @@ OPENAPI_TAGS = [
         "name": "social",
         "description": "Person relationship projections derived from canonical assets.",
     },
+    {
+        "name": "manage-data",
+        "description": "Manual catalog maintenance for canonical persons and groups.",
+    },
 ]
 
 BAD_REQUEST_EXAMPLES = {

@@ -17,6 +17,13 @@ from pixelpast.persistence.repositories.daily_aggregates import (
     DailyAggregateSnapshot,
     DailyViewRepository,
 )
+from pixelpast.persistence.repositories.manage_data import (
+    MANUAL_PERSON_GROUP_TYPE,
+    ManageDataPersonGroupRepository,
+    ManageDataPersonRepository,
+    PersonCatalogSnapshot,
+    PersonGroupCatalogSnapshot,
+)
 from pixelpast.persistence.repositories.places import (
     EventPlaceLinkUpsertResult,
     GooglePlaceEventCandidateLoadResult,
@@ -68,7 +75,12 @@ __all__ = [
     "EventPlaceLinkUpsertResult",
     "GooglePlaceEventCandidateLoadResult",
     "GooglePlaceEventCandidateSnapshot",
+    "MANUAL_PERSON_GROUP_TYPE",
+    "ManageDataPersonGroupRepository",
+    "ManageDataPersonRepository",
     "PersonRepository",
+    "PersonCatalogSnapshot",
+    "PersonGroupCatalogSnapshot",
     "PlaceRepository",
     "PlaceUpsertResult",
     "PersonAssetMembershipSnapshot",

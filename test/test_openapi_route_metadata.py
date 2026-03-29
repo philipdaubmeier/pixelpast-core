@@ -26,6 +26,10 @@ def test_public_routes_expose_stable_openapi_tags() -> None:
             "name": "social",
             "description": "Person relationship projections derived from canonical assets.",
         },
+        {
+            "name": "manage-data",
+            "description": "Manual catalog maintenance for canonical persons and groups.",
+        },
     ]
 
 
@@ -141,6 +145,38 @@ def test_social_graph_route_documents_supported_and_rejected_filters() -> None:
     assert "unsupported_tag" in _parameter_examples(parameters["tag_paths"])
 
 
+def test_manage_data_routes_document_catalog_contracts() -> None:
+    schema = _build_openapi_schema()
+    persons_get = schema["paths"]["/api/manage-data/persons"]["get"]
+    persons_put = schema["paths"]["/api/manage-data/persons"]["put"]
+    groups_get = schema["paths"]["/api/manage-data/person-groups"]["get"]
+    groups_put = schema["paths"]["/api/manage-data/person-groups"]["put"]
+
+    assert persons_get["tags"] == ["manage-data"]
+    assert persons_get["summary"] == "Get persons catalog"
+    assert persons_get["responses"]["200"]["description"] == (
+        "Canonical persons catalog for manual maintenance."
+    )
+    assert "family_catalog" in _response_examples(persons_get, 200)
+
+    assert persons_put["summary"] == "Save persons catalog draft"
+    assert persons_put["responses"]["400"]["description"].startswith(
+        "The request was syntactically valid"
+    )
+    assert "upsert_people" in _request_examples(persons_put)
+    assert "person_delete_forbidden" in _response_examples(persons_put, 400)
+
+    assert groups_get["tags"] == ["manage-data"]
+    assert groups_get["summary"] == "Get person-group catalog"
+    assert "managed_groups" in _response_examples(groups_get, 200)
+
+    assert groups_put["summary"] == "Save person-group catalog draft"
+    assert "replace_groups" in _request_examples(groups_put)
+    assert groups_put["responses"]["200"]["description"] == (
+        "Reloaded canonical person-group catalog after persistence."
+    )
+
+
 def _build_openapi_schema() -> dict[str, object]:
     workspace_root = _create_workspace_dir(prefix="openapi-route-metadata")
     try:
@@ -176,6 +212,10 @@ def _response_examples(
 
 def _parameter_examples(parameter: dict[str, object]) -> dict[str, object]:
     return parameter.get("examples", {})
+
+
+def _request_examples(operation: dict[str, object]) -> dict[str, object]:
+    return operation["requestBody"]["content"]["application/json"].get("examples", {})
 
 
 def _non_null_schema(parameter: dict[str, object]) -> dict[str, object]:
