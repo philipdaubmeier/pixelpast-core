@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pixelpast.ingestion.spotify.contracts import SpotifyAccountCandidate
 from pixelpast.persistence.repositories import EventRepository, SourceRepository
+from pixelpast.shared.persistence_outcome_summary import PersistenceOutcomeSummary
 
 
 class SpotifyAccountPersister:
@@ -79,17 +80,13 @@ class SpotifyAccountPersister:
 
 
 def _compose_account_outcome(*, event_result) -> str:
-    return (
-        "inserted="
-        f"{event_result.inserted_event_count};"
-        "updated="
-        f"{event_result.updated_event_count};"
-        "unchanged="
-        f"{event_result.unchanged_event_count};"
-        "skipped=0;"
-        "persisted_event_count="
-        f"{event_result.persisted_event_count}"
-    )
+    return PersistenceOutcomeSummary(
+        inserted=event_result.inserted_event_count,
+        updated=event_result.updated_event_count,
+        unchanged=event_result.unchanged_event_count,
+        skipped=0,
+        persisted_event_count=event_result.persisted_event_count,
+    ).to_wire()
 
 
 def _require_source_external_id(candidate: SpotifyAccountCandidate) -> str:

@@ -10,6 +10,7 @@ from datetime import datetime
 from pixelpast.ingestion.calendar.contracts import CalendarTransformError
 from pixelpast.ingestion.calendar.fetch import CalendarDocumentLoadProgress
 from pixelpast.ingestion.progress_base import SharedIngestionProgressTrackerBase
+from pixelpast.shared.persistence_outcome_summary import PersistenceOutcomeSummary
 from pixelpast.shared.progress import JobProgressCallback, JobProgressSnapshot
 from pixelpast.shared.runtime import RuntimeContext
 
@@ -60,29 +61,27 @@ class CalendarIngestionProgressState:
         return self.analysis_completed_count
 
     def mark_persisted(self, *, outcome: str) -> None:
-        normalized_outcome, event_count, detailed_counts = _parse_document_outcome(
-            outcome
-        )
+        summary = PersistenceOutcomeSummary.parse(outcome)
         self.persisted_document_count += 1
-        if detailed_counts is not None:
-            self.inserted += detailed_counts["inserted"]
-            self.updated += detailed_counts["updated"]
-            self.unchanged += detailed_counts["unchanged"]
-            self.skipped += detailed_counts["skipped"]
-            self.persisted_event_count += detailed_counts["persisted_event_count"]
+        if summary.is_detailed:
+            self.inserted += summary.inserted
+            self.updated += summary.updated
+            self.unchanged += summary.unchanged
+            self.skipped += summary.skipped
+            self.persisted_event_count += summary.persisted_event_count
             return
 
-        self.persisted_event_count += event_count
-        if normalized_outcome == "inserted":
-            self.inserted += event_count
-        elif normalized_outcome == "updated":
-            self.updated += event_count
-        elif normalized_outcome == "unchanged":
-            self.unchanged += event_count
-        elif normalized_outcome == "skipped":
-            self.skipped += event_count
+        self.persisted_event_count += summary.persisted_event_count
+        if summary.simple_outcome == "inserted":
+            self.inserted += summary.persisted_event_count
+        elif summary.simple_outcome == "updated":
+            self.updated += summary.persisted_event_count
+        elif summary.simple_outcome == "unchanged":
+            self.unchanged += summary.persisted_event_count
+        elif summary.simple_outcome == "skipped":
+            self.skipped += summary.persisted_event_count
         else:
-            raise ValueError(f"Unsupported persistence outcome: {normalized_outcome}")
+            raise ValueError(f"Unsupported persistence outcome: {summary.simple_outcome}")
 
     @property
     def analysis_completed_count(self) -> int:
@@ -158,38 +157,6 @@ class CalendarIngestionProgressTracker(
             "document": error.document.origin_label,
             "reason": error.message,
         }
-
-
-def _parse_document_outcome(
-    outcome: str,
-) -> tuple[str, int, dict[str, int] | None]:
-    if "=" in outcome and ";" in outcome:
-        detailed_counts = {
-            key: int(value)
-            for key, value in (
-                part.split("=", 1) for part in outcome.split(";") if part.strip()
-            )
-        }
-        return (
-            "detailed",
-            detailed_counts.get("persisted_event_count", 0),
-            {
-                "inserted": detailed_counts.get("inserted", 0),
-                "updated": detailed_counts.get("updated", 0),
-                "unchanged": detailed_counts.get("unchanged", 0),
-                "skipped": detailed_counts.get("skipped", 0),
-                "persisted_event_count": detailed_counts.get(
-                    "persisted_event_count",
-                    0,
-                ),
-            },
-        )
-
-    normalized_outcome, separator, event_count = outcome.partition(":")
-    if not separator:
-        return normalized_outcome, 0, None
-    return normalized_outcome, int(event_count), None
-
 
 __all__ = [
     "CalendarIngestionProgressSnapshot",

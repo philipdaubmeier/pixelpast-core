@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pixelpast.ingestion.calendar.contracts import CalendarDocumentCandidate
 from pixelpast.persistence.repositories import EventRepository, SourceRepository
+from pixelpast.shared.persistence_outcome_summary import PersistenceOutcomeSummary
 
 
 class CalendarDocumentPersister:
@@ -93,21 +94,13 @@ def _compose_document_outcome(
     event_result,
 ) -> str:
     del source_status
-    inserted_event_count = event_result.inserted_event_count
-    updated_event_count = event_result.updated_event_count
-    unchanged_event_count = event_result.unchanged_event_count
-
-    return (
-        "inserted="
-        f"{inserted_event_count};"
-        "updated="
-        f"{updated_event_count};"
-        "unchanged="
-        f"{unchanged_event_count};"
-        "skipped=0;"
-        "persisted_event_count="
-        f"{event_result.persisted_event_count}"
-    )
+    return PersistenceOutcomeSummary(
+        inserted=event_result.inserted_event_count,
+        updated=event_result.updated_event_count,
+        unchanged=event_result.unchanged_event_count,
+        skipped=0,
+        persisted_event_count=event_result.persisted_event_count,
+    ).to_wire()
 
 
 def _require_source_external_id(candidate: CalendarDocumentCandidate) -> str:

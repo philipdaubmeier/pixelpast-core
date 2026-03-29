@@ -12,6 +12,7 @@ from pixelpast.persistence.repositories import (
     PersonRepository,
     TagRepository,
 )
+from pixelpast.shared.persistence_outcome_summary import PersistenceOutcomeSummary
 
 
 class LightroomCatalogAssetPersister:
@@ -88,19 +89,15 @@ def summarize_lightroom_catalog_persistence_outcome(
     """Render one deterministic catalog-level persistence outcome summary."""
 
     counts = Counter(asset_outcomes)
-    return (
-        "inserted="
-        f"{counts.get('inserted', 0)};"
-        "updated="
-        f"{counts.get('updated', 0)};"
-        "unchanged="
-        f"{counts.get('unchanged', 0)};"
-        "missing_from_source="
-        f"{missing_from_source_count};"
-        "skipped=0;"
-        "persisted_asset_count="
-        f"{len(asset_outcomes)}"
-    )
+    return PersistenceOutcomeSummary(
+        inserted=counts.get("inserted", 0),
+        updated=counts.get("updated", 0),
+        unchanged=counts.get("unchanged", 0),
+        missing_from_source=missing_from_source_count,
+        skipped=0,
+        persisted_asset_count=len(asset_outcomes),
+        included_fields=frozenset({"missing_from_source"}),
+    ).to_wire()
 
 
 def _resolve_asset_persistence_outcome(

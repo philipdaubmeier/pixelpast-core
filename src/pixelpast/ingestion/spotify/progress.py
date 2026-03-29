@@ -10,6 +10,7 @@ from datetime import datetime
 from pixelpast.ingestion.spotify.contracts import SpotifyTransformError
 from pixelpast.ingestion.spotify.fetch import SpotifyDocumentLoadProgress
 from pixelpast.ingestion.progress_base import SharedIngestionProgressTrackerBase
+from pixelpast.shared.persistence_outcome_summary import PersistenceOutcomeSummary
 from pixelpast.shared.progress import JobProgressCallback, JobProgressSnapshot
 from pixelpast.shared.runtime import RuntimeContext
 
@@ -60,15 +61,15 @@ class SpotifyIngestionProgressState:
         return self.analysis_completed_count
 
     def mark_persisted(self, *, outcome: str) -> None:
-        _normalized_outcome, _event_count, detailed_counts = _parse_account_outcome(outcome)
+        summary = PersistenceOutcomeSummary.parse(outcome)
         self.persisted_source_count += 1
-        if detailed_counts is None:
+        if not summary.is_detailed:
             return
-        self.inserted += detailed_counts["inserted"]
-        self.updated += detailed_counts["updated"]
-        self.unchanged += detailed_counts["unchanged"]
-        self.skipped += detailed_counts["skipped"]
-        self.persisted_event_count += detailed_counts["persisted_event_count"]
+        self.inserted += summary.inserted
+        self.updated += summary.updated
+        self.unchanged += summary.unchanged
+        self.skipped += summary.skipped
+        self.persisted_event_count += summary.persisted_event_count
 
     @property
     def analysis_completed_count(self) -> int:
@@ -140,38 +141,6 @@ class SpotifyIngestionProgressTracker(
             "document": error.document.origin_label,
             "reason": error.message,
         }
-
-
-def _parse_account_outcome(
-    outcome: str,
-) -> tuple[str, int, dict[str, int] | None]:
-    if "=" in outcome and ";" in outcome:
-        detailed_counts = {
-            key: int(value)
-            for key, value in (
-                part.split("=", 1) for part in outcome.split(";") if part.strip()
-            )
-        }
-        return (
-            "detailed",
-            detailed_counts.get("persisted_event_count", 0),
-            {
-                "inserted": detailed_counts.get("inserted", 0),
-                "updated": detailed_counts.get("updated", 0),
-                "unchanged": detailed_counts.get("unchanged", 0),
-                "skipped": detailed_counts.get("skipped", 0),
-                "persisted_event_count": detailed_counts.get(
-                    "persisted_event_count",
-                    0,
-                ),
-            },
-        )
-
-    normalized_outcome, separator, event_count = outcome.partition(":")
-    if not separator:
-        return normalized_outcome, 0, None
-    return normalized_outcome, int(event_count), None
-
 
 __all__ = [
     "SpotifyIngestionProgressSnapshot",
