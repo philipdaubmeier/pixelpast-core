@@ -1,9 +1,8 @@
 import { useDeferredValue, type PropsWithChildren, type ReactNode } from "react";
 
 type CatalogSectionFrameProps = PropsWithChildren<{
-  eyebrow: string;
   title: string;
-  description: string;
+  description?: string;
   searchValue: string;
   searchPlaceholder: string;
   onSearchChange: (value: string) => void;
@@ -13,7 +12,6 @@ type CatalogSectionFrameProps = PropsWithChildren<{
 }>;
 
 export function CatalogSectionFrame({
-  eyebrow,
   title,
   description,
   searchValue,
@@ -27,29 +25,30 @@ export function CatalogSectionFrame({
   const deferredSearchValue = useDeferredValue(searchValue);
 
   return (
-    <section className="flex h-full min-h-0 flex-col gap-4">
-      <header className="panel-surface-strong flex flex-col gap-4 px-5 py-4 lg:px-6">
+    <section className="flex h-full min-h-0 flex-col gap-1 overflow-hidden">
+      <header className="panel-surface-strong flex flex-col gap-2 px-3 py-4 lg:px-3">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
-            <p className="panel-title">{eyebrow}</p>
-            <h1 className="mt-2 text-2xl font-semibold text-slate-950">{title}</h1>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-              {description}
-            </p>
+            <h1 className="text-2xl font-semibold text-slate-950">{title}</h1>
+            {description ? (
+              <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
+                {description}
+              </p>
+            ) : null}
           </div>
           <div className="flex items-center gap-3">
             {statusBadge}
             <button
               type="button"
               onClick={onAdd}
-              className="rounded-full border border-[color:var(--pp-border)] bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-[0_14px_30px_rgba(15,23,42,0.18)] transition hover:bg-slate-800"
+              className="rounded-full border border-[color:var(--pp-border)] bg-slate-900 px-3 py-1.5 text-sm font-medium text-white shadow-[0_14px_30px_rgba(15,23,42,0.18)] transition hover:bg-slate-800"
             >
               {addLabel}
             </button>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <label className="flex min-w-[18rem] flex-1 items-center gap-2 rounded-full border border-[color:var(--pp-border)] bg-white/75 px-4 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
+          <label className="flex min-w-[18rem] flex-1 items-center gap-2 rounded-full border border-[color:var(--pp-border)] bg-white/75 px-3 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
             <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
               Search
             </span>
@@ -66,30 +65,52 @@ export function CatalogSectionFrame({
           </p>
         </div>
       </header>
-      <div className="min-h-0 flex-1">{children}</div>
+      <div className="min-h-0 flex flex-1 flex-col overflow-hidden">{children}</div>
     </section>
   );
 }
 
 export function CatalogTable({
   columns,
+  gridClassName,
   children,
-}: PropsWithChildren<{ columns: string[] }>) {
+}: PropsWithChildren<{ columns: string[]; gridClassName?: string }>) {
+  const resolvedGridClassName =
+    gridClassName ??
+    "grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(10rem,0.7fr)_minmax(8rem,0.6fr)]";
+
   return (
-    <div className="panel-surface min-h-0 overflow-hidden">
-      <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(10rem,0.7fr)_minmax(8rem,0.6fr)] gap-3 border-b border-[color:var(--pp-border)] px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
+    <div className="panel-surface flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div
+        className={[
+          "grid gap-0.5 px-2 py-1.5 text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500",
+          resolvedGridClassName,
+        ].join(" ")}
+      >
         {columns.map((column) => (
           <span key={column}>{column}</span>
         ))}
       </div>
-      <div className="thin-scrollbar min-h-0 overflow-auto">{children}</div>
+      <div className="thin-scrollbar min-h-0 flex-1 overflow-y-auto overflow-x-hidden">{children}</div>
     </div>
   );
 }
 
-export function CatalogRow({ children }: PropsWithChildren) {
+export function CatalogRow({
+  children,
+  gridClassName,
+}: PropsWithChildren<{ gridClassName?: string }>) {
+  const resolvedGridClassName =
+    gridClassName ??
+    "grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(10rem,0.7fr)_minmax(8rem,0.6fr)]";
+
   return (
-    <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(10rem,0.7fr)_minmax(8rem,0.6fr)] gap-3 border-b border-[color:rgba(98,80,46,0.12)] px-4 py-3 last:border-b-0">
+    <div
+      className={[
+        "grid gap-0.5 px-2 py-0.5",
+        resolvedGridClassName,
+      ].join(" ")}
+    >
       {children}
     </div>
   );
@@ -106,14 +127,14 @@ export function InlineTextField(props: {
       value={props.value}
       onChange={(event) => props.onChange(event.target.value)}
       placeholder={props.placeholder}
-      className="w-full rounded-2xl border border-[color:rgba(98,80,46,0.16)] bg-white/80 px-3 py-2 text-sm text-slate-800 outline-none transition focus:border-slate-400 focus:bg-white"
+      className="w-full rounded-lg border border-[color:rgba(98,80,46,0.16)] bg-white/80 px-1 py-0.5 text-sm text-slate-800 outline-none transition focus:border-slate-400 focus:bg-white"
     />
   );
 }
 
 export function ReadonlyCell({ children }: PropsWithChildren) {
   return (
-    <div className="flex min-h-[2.75rem] items-center rounded-2xl border border-dashed border-[color:rgba(98,80,46,0.16)] bg-[color:rgba(255,255,255,0.4)] px-3 text-sm text-slate-600">
+    <div className="flex min-h-[2rem] items-center rounded-lg border border-dashed border-[color:rgba(98,80,46,0.16)] bg-[color:rgba(255,255,255,0.4)] px-1.5 text-sm text-slate-600">
       {children}
     </div>
   );

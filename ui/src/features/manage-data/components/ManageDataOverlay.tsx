@@ -16,20 +16,18 @@ import {
   CatalogSectionFrame,
   CatalogTable,
   InlineTextField,
-  ReadonlyCell,
 } from "./CatalogEditorPrimitives";
 
 const MANAGE_SECTIONS: ManageDataSectionDescriptor[] = [
   {
     id: "persons",
     label: "Persons",
-    description: "Canonical people records, aliases, and timeline-facing paths.",
+    description: "",
   },
   {
     id: "person_groups",
     label: "Person Groups",
-    description:
-      "Named group catalogs that later sections can extend with membership editing.",
+    description: "",
   },
 ];
 
@@ -162,21 +160,15 @@ function PersonGroupMembershipSection(props: {
   const firstSuggestion = availableSuggestions[0] ?? null;
 
   return (
-    <section className="flex h-full min-h-0 flex-col gap-4">
-      <header className="panel-surface-strong flex flex-col gap-4 px-5 py-4 lg:px-6">
+    <section className="flex h-full min-h-0 flex-col gap-1 overflow-hidden">
+      <header className="panel-surface-strong flex flex-col gap-2 px-3 py-4 lg:px-3">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
-            <p className="panel-title">Manage Data</p>
-            <h1 className="mt-2 text-2xl font-semibold text-slate-950">
+            <h1 className="text-2xl font-semibold text-slate-950">
               Person Group Membership
             </h1>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-              Review and replace the persisted membership set for{" "}
-              <span className="font-semibold text-slate-900">
-                {props.membership.groupName || "Untitled group"}
-              </span>
-              . This subview keeps one group in focus with one explicit member
-              draft.
+            <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
+              {props.membership.groupName || "Untitled group"}
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -199,8 +191,8 @@ function PersonGroupMembershipSection(props: {
             </button>
           </div>
         </div>
-        <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
-          <label className="flex items-center gap-2 rounded-[24px] border border-[color:var(--pp-border)] bg-white/80 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
+        <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
+          <label className="flex items-center gap-2 rounded-[18px] border border-[color:var(--pp-border)] bg-white/80 px-2 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
             <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
               Add member
             </span>
@@ -218,7 +210,7 @@ function PersonGroupMembershipSection(props: {
               className="w-full border-none bg-transparent text-sm text-slate-800 outline-none placeholder:text-slate-400"
             />
           </label>
-          <div className="rounded-[24px] border border-[color:rgba(98,80,46,0.14)] bg-[color:rgba(255,255,255,0.45)] px-4 py-3 text-sm text-slate-600">
+          <div className="rounded-[18px] border border-[color:rgba(98,80,46,0.14)] bg-[color:rgba(255,255,255,0.45)] px-2 py-1.5 text-sm text-slate-600">
             {props.membership.memberCount} persisted members at last reload
           </div>
         </div>
@@ -235,7 +227,7 @@ function PersonGroupMembershipSection(props: {
                 key={person.id}
                 type="button"
                 onClick={() => props.onAddMember(person.id)}
-                className="rounded-full border border-[color:rgba(15,23,42,0.12)] bg-white px-3 py-1.5 text-left text-sm text-slate-800 transition hover:bg-slate-50"
+                className="rounded-full border border-[color:rgba(15,23,42,0.12)] bg-white px-2 py-1 text-left text-sm text-slate-800 transition hover:bg-slate-50"
               >
                 {person.name}
                 {person.path ? ` - ${person.path}` : ""}
@@ -247,24 +239,24 @@ function PersonGroupMembershipSection(props: {
           <p className="text-sm text-rose-700">{props.saveError}</p>
         ) : null}
       </header>
-      <div className="panel-surface min-h-0 flex-1 overflow-hidden">
-        <div className="border-b border-[color:var(--pp-border)] px-5 py-3">
+      <div className="panel-surface flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div className="px-3 py-1.5">
           <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
             Current draft member list
           </p>
         </div>
-        <div className="thin-scrollbar min-h-0 overflow-auto px-5 py-4">
+        <div className="thin-scrollbar min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-2 py-1">
           {props.membership.members.length === 0 ? (
             <CatalogEmptyState
               title="No members in this draft"
               description="Use the persisted-person picker above to assemble the authoritative membership set before saving."
             />
           ) : (
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-0.5">
               {props.membership.members.map((member) => (
                 <div
                   key={member.id}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-[24px] border border-[color:rgba(98,80,46,0.14)] bg-white/70 px-4 py-3"
+                  className="flex flex-wrap items-center justify-between gap-1 rounded-[16px] border border-[color:rgba(98,80,46,0.14)] bg-white/70 px-2 py-1"
                 >
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold text-slate-900">
@@ -279,7 +271,7 @@ function PersonGroupMembershipSection(props: {
                   <button
                     type="button"
                     onClick={() => props.onRemoveMember(member.id)}
-                    className="rounded-full border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-800 transition hover:bg-rose-100"
+                    className="rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-sm font-medium text-rose-800 transition hover:bg-rose-100"
                   >
                     Remove member
                   </button>
@@ -336,9 +328,7 @@ function PersonsSection(props: {
 
   return (
     <CatalogSectionFrame
-      eyebrow="Manage Data"
       title="Persons"
-      description="This draft-first editor establishes the shared person catalog runtime without calling the API on every keystroke."
       searchValue={props.searchQuery}
       searchPlaceholder="Search name, aliases, or path"
       onSearchChange={props.onSearchChange}
@@ -357,7 +347,10 @@ function PersonsSection(props: {
         </span>
       }
     >
-      <CatalogTable columns={["Display Name", "Aliases", "Path", "Notes"]}>
+      <CatalogTable
+        columns={["Display Name", "Aliases", "Path"]}
+        gridClassName="grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)]"
+      >
         {filteredRows.length === 0 ? (
           <CatalogEmptyState
             title="No matching people"
@@ -365,7 +358,10 @@ function PersonsSection(props: {
           />
         ) : (
           filteredRows.map((row) => (
-            <CatalogRow key={row.id}>
+            <CatalogRow
+              key={row.id}
+              gridClassName="grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)]"
+            >
               <InlineTextField
                 value={row.name}
                 placeholder="Display name"
@@ -381,7 +377,6 @@ function PersonsSection(props: {
                 placeholder="catalog/path"
                 onChange={(value) => props.onChangeRow(row.id, "path", value)}
               />
-              <ReadonlyCell>Deletion intentionally unavailable in v1.</ReadonlyCell>
             </CatalogRow>
           ))
         )}
@@ -416,9 +411,7 @@ function PersonGroupsSection(props: {
 
   return (
     <CatalogSectionFrame
-      eyebrow="Manage Data"
       title="Person Groups"
-      description="Create, rename, and stage deletions for canonical groups while keeping member counts read-only and membership editing in a dedicated subview."
       searchValue={props.searchQuery}
       searchPlaceholder="Search group name"
       onSearchChange={props.onSearchChange}
@@ -451,22 +444,24 @@ function PersonGroupsSection(props: {
                 placeholder="Group name"
                 onChange={(value) => props.onChangeRow(row.id, "name", value)}
               />
-              <ReadonlyCell>{row.memberCount} persisted members</ReadonlyCell>
-              <div className="flex min-h-[2.75rem] items-center">
+              <div className="flex min-h-[1.75rem] items-center px-1 text-sm text-slate-600">
+                {row.memberCount} persisted members
+              </div>
+              <div className="flex min-h-[1.75rem] items-center">
                 <button
                   type="button"
                   onClick={() => props.onOpenMembershipEditor(row.id)}
                   disabled={toPersistedIdentifier(row.id) === undefined || props.dirty}
-                  className="rounded-full border border-[color:rgba(15,23,42,0.12)] bg-white px-3 py-2 text-sm font-medium text-slate-800 transition hover:bg-slate-50"
+                  className="rounded-full border border-[color:rgba(15,23,42,0.12)] bg-white px-2 py-0.5 text-sm font-medium text-slate-800 transition hover:bg-slate-50"
                 >
                   Manage members
                 </button>
               </div>
-              <div className="flex min-h-[2.75rem] items-center">
+              <div className="flex min-h-[1.75rem] items-center">
                 <button
                   type="button"
                   onClick={() => props.onDeleteRow(row.id)}
-                  className="rounded-full border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-800 transition hover:bg-rose-100"
+                  className="rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-sm font-medium text-rose-800 transition hover:bg-rose-100"
                 >
                   Delete group
                 </button>
@@ -1194,13 +1189,7 @@ export function ManageDataOverlay(props: {
           <aside className="border-b border-[color:var(--pp-border)] bg-[color:rgba(255,250,244,0.92)] px-5 py-5 lg:border-b-0 lg:border-r lg:px-6">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="panel-title">Workspace</p>
-                <h1 className="mt-2 text-2xl font-semibold text-slate-950">
-                  Manage Data
-                </h1>
-                <p className="mt-2 text-sm leading-6 text-slate-600">
-                  Temporary canonical catalog editing above the exploration view.
-                </p>
+                <h1 className="text-2xl font-semibold text-slate-950">Manage Data</h1>
               </div>
               <button
                 type="button"
@@ -1227,22 +1216,12 @@ export function ManageDataOverlay(props: {
                   ].join(" ")}
                 >
                   <div className="text-sm font-semibold">{section.label}</div>
-                  <div
-                    className={[
-                      "mt-1 text-xs leading-5",
-                      sectionState.activeSectionId === section.id
-                        ? "text-slate-200"
-                        : "text-slate-500",
-                    ].join(" ")}
-                  >
-                    {section.description}
-                  </div>
                 </button>
               ))}
             </nav>
           </aside>
-          <section className="flex min-h-0 flex-col">
-            <div className="min-h-0 flex-1 px-4 py-4 lg:px-5 lg:py-5">
+          <section className="flex min-h-0 flex-col overflow-hidden">
+            <div className="min-h-0 flex flex-1 flex-col overflow-hidden px-2 py-2 lg:px-3 lg:py-3">
               {sectionState.status === "loading" ? (
                 <CatalogLoadingState
                   label={`Loading ${sectionState.activeSectionId === "persons" ? "persons" : "person groups"} section`}
@@ -1269,7 +1248,7 @@ export function ManageDataOverlay(props: {
               ) : null}
               {sectionState.status === "ready" &&
               sectionState.activeSectionId === "person_groups" &&
-              sectionState.activePersonGroupMembershipRowId !== null ? (
+              (sectionState.activePersonGroupMembershipRowId !== null ? (
                 sectionState.membership.status === "loading" ? (
                   <CatalogLoadingState label="Loading person-group membership" />
                 ) : sectionState.membership.status === "error" ? (
@@ -1312,7 +1291,7 @@ export function ManageDataOverlay(props: {
                   onDeleteRow={requestDeletePersonGroup}
                   onOpenMembershipEditor={openPersonGroupMembershipEditor}
                 />
-              ) : null}
+              ) : null)}
             </div>
             <footer className="border-t border-[color:var(--pp-border)] bg-[color:rgba(255,250,244,0.94)] px-4 py-4 lg:px-5">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
