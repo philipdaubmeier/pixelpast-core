@@ -95,8 +95,16 @@ class LightroomCatalogIngestionPersistenceScope:
 class LightroomCatalogStagedIngestionStrategy:
     """Bind the Lightroom connector to the generic staged runner contract."""
 
-    def __init__(self, *, connector: LightroomCatalogConnector) -> None:
+    def __init__(
+        self,
+        *,
+        connector: LightroomCatalogConnector,
+        start_index: int | None = None,
+        end_index: int | None = None,
+    ) -> None:
         self._connector = connector
+        self._start_index = start_index
+        self._end_index = end_index
 
     def discover_units(
         self,
@@ -133,7 +141,9 @@ class LightroomCatalogStagedIngestionStrategy:
     ) -> LightroomCatalogCandidate:
         del root
         return self._connector.build_catalog_candidate(
-            catalog=fetched_payloads[unit]
+            catalog=fetched_payloads[unit],
+            start_index=self._start_index,
+            end_index=self._end_index,
         )
 
     def build_transform_error(

@@ -57,6 +57,9 @@ class LightroomCatalogTransformer:
     def build_catalog_candidate(
         self,
         catalog: LoadedLightroomCatalog,
+        *,
+        start_index: int | None = None,
+        end_index: int | None = None,
     ) -> LightroomCatalogCandidate:
         """Transform one loaded Lightroom catalog into canonical asset candidates."""
 
@@ -70,17 +73,22 @@ class LightroomCatalogTransformer:
         for row in catalog.collection_rows:
             collection_rows_by_image[row.image_id].append(row)
 
+        selected_image_rows = _slice_image_rows(
+            image_rows=catalog.chosen_images,
+            start_index=start_index,
+            end_index=end_index,
+        )
         assets = tuple(
             self.build_asset_candidate(
                 image_row=image_row,
                 face_rows=face_rows_by_image.get(image_row.image_id, ()),
                 collection_rows=collection_rows_by_image.get(image_row.image_id, ()),
             )
-            for image_row in catalog.chosen_images
+            for image_row in selected_image_rows
         )
         return LightroomCatalogCandidate(
             catalog=catalog.descriptor,
-            chosen_images=catalog.chosen_images,
+            chosen_images=selected_image_rows,
             assets=assets,
         )
 
@@ -295,6 +303,27 @@ def _normalize_optional_text(value: str | None) -> str | None:
     if normalized == "":
         return None
     return normalized
+
+
+def _slice_image_rows(
+    *,
+    image_rows: tuple[LightroomChosenImageRow, ...],
+    start_index: int | None,
+    end_index: int | None,
+) -> tuple[LightroomChosenImageRow, ...]:
+    if start_index is None and end_index is None:
+        return image_rows
+
+    normalized_start = 1 if start_index is None else start_index
+    normalized_end = len(image_rows) if end_index is None else end_index
+    if normalized_start > normalized_end:
+        raise ValueError(
+            "Lightroom asset range start index must be less than or equal to the end index."
+        )
+
+    start_offset = max(normalized_start - 1, 0)
+    end_offset = max(normalized_end, 0)
+    return image_rows[start_offset:end_offset]
 
 
 __all__ = ["LightroomCatalogTransformer"]

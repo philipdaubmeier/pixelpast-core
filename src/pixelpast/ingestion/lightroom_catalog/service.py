@@ -44,17 +44,14 @@ class LightroomCatalogIngestionService:
         self._heartbeat_interval_seconds = heartbeat_interval_seconds
         self._now_factory = now_factory
         self._monotonic_factory = monotonic_factory or monotonic
-        self._runner = StagedIngestionRunner(
-            strategy=LightroomCatalogStagedIngestionStrategy(
-                connector=self._connector
-            )
-        )
 
     def ingest(
         self,
         *,
         runtime: RuntimeContext,
         root: Path | None = None,
+        start_index: int | None = None,
+        end_index: int | None = None,
         progress_callback: JobProgressCallback | None = None,
     ) -> LightroomIngestionResult:
         """Run staged Lightroom catalog ingestion and return the public result."""
@@ -67,6 +64,11 @@ class LightroomCatalogIngestionService:
             )
 
         resolved_root = configured_root.expanduser().resolve()
+        if start_index is not None and end_index is not None and start_index > end_index:
+            raise ValueError(
+                "Lightroom asset range start index must be less than or equal to the end index."
+            )
+
         run_id = self._lifecycle.create_run(
             runtime=runtime,
             resolved_root=resolved_root,
@@ -83,7 +85,14 @@ class LightroomCatalogIngestionService:
             runtime=runtime,
             lifecycle=self._lifecycle,
         )
-        return self._runner.run(
+        runner = StagedIngestionRunner(
+            strategy=LightroomCatalogStagedIngestionStrategy(
+                connector=self._connector,
+                start_index=start_index,
+                end_index=end_index,
+            )
+        )
+        return runner.run(
             resolved_root=resolved_root,
             run_id=run_id,
             progress=progress,

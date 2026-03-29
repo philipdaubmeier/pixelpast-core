@@ -339,6 +339,54 @@ def test_lightroom_catalog_ingestion_reads_runtime_catalog_path_and_emits_progre
         shutil.rmtree(workspace_root, ignore_errors=True)
 
 
+def test_lightroom_catalog_ingestion_can_limit_import_to_deterministic_asset_range() -> (
+    None
+):
+    runtime = _create_runtime()
+    workspace_root = _create_workspace_root()
+    try:
+        catalog_path = _copy_fixture_catalog(workspace_root)
+
+        result = LightroomCatalogIngestionService().ingest(
+            runtime=runtime,
+            root=catalog_path,
+            start_index=2,
+            end_index=3,
+        )
+
+        with runtime.session_factory() as session:
+            assets = list(
+                session.execute(select(Asset).order_by(Asset.external_id)).scalars()
+            )
+            latest_job_run = session.execute(
+                select(JobRun).order_by(JobRun.id.desc())
+            ).scalars().first()
+
+        assert result.status == "completed"
+        assert result.processed_catalog_count == 1
+        assert result.processed_asset_count == 2
+        assert result.persisted_asset_count == 2
+        assert [asset.external_id for asset in assets] == [
+            "0B2B664356B0F811D277461F8953ABE4",
+            _SECOND_ASSET_EXTERNAL_ID,
+        ]
+        assert latest_job_run is not None
+        assert latest_job_run.progress_json == {
+            "total": 1,
+            "completed": 1,
+            "inserted": 2,
+            "updated": 0,
+            "unchanged": 0,
+            "skipped": 0,
+            "failed": 0,
+            "missing_from_source": 0,
+            "persisted_asset_count": 2,
+        }
+    finally:
+        runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
 def test_lightroom_catalog_ingestion_requires_configured_catalog_path() -> None:
     runtime = _create_runtime()
     try:
@@ -349,6 +397,27 @@ def test_lightroom_catalog_ingestion_requires_configured_catalog_path() -> None:
             LightroomCatalogIngestionService().ingest(runtime=runtime)
     finally:
         runtime.engine.dispose()
+
+
+def test_lightroom_catalog_ingestion_rejects_invalid_asset_range() -> None:
+    runtime = _create_runtime()
+    workspace_root = _create_workspace_root()
+    try:
+        catalog_path = _copy_fixture_catalog(workspace_root)
+
+        with pytest.raises(
+            ValueError,
+            match="start index must be less than or equal to the end index",
+        ):
+            LightroomCatalogIngestionService().ingest(
+                runtime=runtime,
+                root=catalog_path,
+                start_index=3,
+                end_index=2,
+            )
+    finally:
+        runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
 
 
 def test_lightroom_catalog_ingestion_rejects_unsupported_configured_file_type() -> None:

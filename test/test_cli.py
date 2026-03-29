@@ -475,6 +475,52 @@ def test_cli_ingest_lightroom_catalog_persists_assets_from_fixture(monkeypatch) 
         shutil.rmtree(workspace_root, ignore_errors=True)
 
 
+def test_cli_ingest_lightroom_catalog_can_limit_asset_range(monkeypatch) -> None:
+    database_path = _build_test_database_path("cli-lightroom-range")
+    workspace_root = Path("var") / f"cli-lightroom-range-{uuid4().hex}"
+    fixture_path = (
+        Path("test") / "assets" / "lightroom-classic-catalog-test-fixture.lrcat"
+    )
+    workspace_root.mkdir(parents=True, exist_ok=False)
+    catalog_path = workspace_root / fixture_path.name
+    shutil.copy2(fixture_path, catalog_path)
+    monkeypatch.setenv(
+        "PIXELPAST_DATABASE_URL", f"sqlite:///{database_path.as_posix()}"
+    )
+    monkeypatch.setenv(
+        "PIXELPAST_LIGHTROOM_CATALOG_PATH",
+        str(catalog_path.resolve()),
+    )
+    get_settings.cache_clear()
+
+    try:
+        result = runner.invoke(
+            app,
+            ["ingest", "lightroom_catalog", "--start-index", "2", "--end-index", "2"],
+        )
+        assert result.exit_code == 0
+        assert "[lightroom_catalog] completed" in result.stdout
+        assert "inserted: 1" in result.stdout
+
+        engine = create_engine(f"sqlite:///{database_path.as_posix()}")
+        try:
+            with Session(engine) as session:
+                assets = list(
+                    session.execute(select(Asset).order_by(Asset.external_id)).scalars()
+                )
+        finally:
+            engine.dispose()
+
+        assert [asset.external_id for asset in assets] == [
+            "4E7C6031A061CE51AF186FE5022D4BFB"
+        ]
+    finally:
+        get_settings.cache_clear()
+        if database_path.exists():
+            database_path.unlink()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
 def test_cli_ingest_spotify_persists_events_from_fixture(monkeypatch) -> None:
     database_path = _build_test_database_path("cli-spotify-ingest")
     workspace_root = Path("var") / f"cli-spotify-{uuid4().hex}"
@@ -1532,6 +1578,58 @@ def test_cli_returns_invalid_argument_exit_code_when_lightroom_catalog_path_is_m
         result = runner.invoke(app, ["ingest", "lightroom_catalog"])
         assert result.exit_code == 2
         assert "error: Lightroom catalog ingestion requires" in result.stderr
+    finally:
+        get_settings.cache_clear()
+        if database_path.exists():
+            database_path.unlink()
+
+
+def test_cli_returns_invalid_argument_exit_code_for_lightroom_invalid_range(
+    monkeypatch,
+) -> None:
+    database_path = _build_test_database_path("cli-lightroom-invalid-range")
+    monkeypatch.setenv(
+        "PIXELPAST_DATABASE_URL", f"sqlite:///{database_path.as_posix()}"
+    )
+    get_settings.cache_clear()
+
+    try:
+        result = runner.invoke(
+            app,
+            ["ingest", "lightroom_catalog", "--start-index", "3", "--end-index", "2"],
+        )
+        assert result.exit_code == 2
+        assert "--start-index must be less than or equal to --end-index." in result.stderr
+    finally:
+        get_settings.cache_clear()
+        if database_path.exists():
+            database_path.unlink()
+
+
+def test_cli_rejects_lightroom_range_options_for_other_sources(monkeypatch) -> None:
+    database_path = _build_test_database_path("cli-lightroom-range-wrong-source")
+    monkeypatch.setenv(
+        "PIXELPAST_DATABASE_URL", f"sqlite:///{database_path.as_posix()}"
+    )
+    monkeypatch.setenv(
+        "PIXELPAST_SPOTIFY_ROOT",
+        str(
+            (
+                Path("test")
+                / "assets"
+                / "spotify_streaming_history_audio_test_fixture.json"
+            ).resolve()
+        ),
+    )
+    get_settings.cache_clear()
+
+    try:
+        result = runner.invoke(
+            app,
+            ["ingest", "spotify", "--start-index", "1", "--end-index", "10"],
+        )
+        assert result.exit_code == 2
+        assert "only supported for `pixelpast ingest lightroom_catalog`" in result.stderr
     finally:
         get_settings.cache_clear()
         if database_path.exists():

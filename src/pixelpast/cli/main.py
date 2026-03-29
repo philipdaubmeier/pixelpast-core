@@ -312,8 +312,40 @@ def ingest_command(
             ),
         ),
     ],
+    start_index: Annotated[
+        int | None,
+        typer.Option(
+            "--start-index",
+            min=1,
+            help=(
+                "1-based inclusive asset start index for Lightroom catalog ingest. "
+                "Only supported for `lightroom_catalog`."
+            ),
+        ),
+    ] = None,
+    end_index: Annotated[
+        int | None,
+        typer.Option(
+            "--end-index",
+            min=1,
+            help=(
+                "1-based inclusive asset end index for Lightroom catalog ingest. "
+                "Only supported for `lightroom_catalog`."
+            ),
+        ),
+    ] = None,
 ) -> None:
     """Run an ingestion source entrypoint."""
+
+    try:
+        lightroom_start_index, lightroom_end_index = _validate_lightroom_ingest_range(
+            source=source,
+            start_index=start_index,
+            end_index=end_index,
+        )
+    except ValueError as error:
+        typer.secho(f"error: {error}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=ExitCode.INVALID_ARGUMENT) from error
 
     progress_reporter = CliProgressReporter()
     try:
@@ -323,6 +355,8 @@ def ingest_command(
             runner=lambda runtime: run_ingest_source(
                 source=source,
                 runtime=runtime,
+                lightroom_start_index=lightroom_start_index,
+                lightroom_end_index=lightroom_end_index,
                 progress_callback=progress_reporter,
             ),
         )
@@ -695,6 +729,24 @@ def _parse_cli_date_option(*, option_name: str, raw_value: str | None) -> date |
         raise ValueError(
             f"Invalid --{option_name} value '{raw_value}'. Expected YYYY-MM-DD."
         ) from error
+
+
+def _validate_lightroom_ingest_range(
+    *,
+    source: str,
+    start_index: int | None,
+    end_index: int | None,
+) -> tuple[int | None, int | None]:
+    if start_index is None and end_index is None:
+        return None, None
+    if source != "lightroom_catalog":
+        raise ValueError(
+            "--start-index and --end-index are only supported for "
+            "`pixelpast ingest lightroom_catalog`."
+        )
+    if start_index is not None and end_index is not None and start_index > end_index:
+        raise ValueError("--start-index must be less than or equal to --end-index.")
+    return start_index, end_index
 
 
 def _format_total_value(total: float | None) -> str:

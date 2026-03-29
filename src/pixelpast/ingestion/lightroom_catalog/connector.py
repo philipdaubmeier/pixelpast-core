@@ -79,10 +79,16 @@ class LightroomCatalogConnector:
         self,
         *,
         catalog: LoadedLightroomCatalog,
+        start_index: int | None = None,
+        end_index: int | None = None,
     ) -> LightroomCatalogCandidate:
         """Transform one loaded Lightroom catalog into canonical asset candidates."""
 
-        return self._catalog_transformer.build_catalog_candidate(catalog)
+        return self._catalog_transformer.build_catalog_candidate(
+            catalog,
+            start_index=start_index,
+            end_index=end_index,
+        )
 
     def build_transform_error(
         self,

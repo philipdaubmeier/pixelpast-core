@@ -54,6 +54,8 @@ def run_ingest_source(
     *,
     source: str,
     runtime: RuntimeContext,
+    lightroom_start_index: int | None = None,
+    lightroom_end_index: int | None = None,
     progress_callback: Callable[[JobProgressSnapshot], None] | None = None,
 ) -> (
     PhotoIngestionResult
@@ -164,6 +166,8 @@ def run_ingest_source(
     if source == "lightroom_catalog":
         result = LightroomCatalogIngestionService().ingest(
             runtime=runtime,
+            start_index=lightroom_start_index,
+            end_index=lightroom_end_index,
             progress_callback=progress_callback,
         )
         logger.info(
