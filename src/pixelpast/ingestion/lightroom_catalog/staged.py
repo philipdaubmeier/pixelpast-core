@@ -20,6 +20,7 @@ from pixelpast.ingestion.lightroom_catalog.persist import (
     LightroomCatalogAssetPersister,
     summarize_lightroom_catalog_persistence_outcome,
 )
+from pixelpast.ingestion.persistence_base import SessionBoundPersistenceScopeBase
 from pixelpast.ingestion.lightroom_catalog.progress import (
     LightroomCatalogIngestionProgressTracker,
 )
@@ -31,7 +32,7 @@ from pixelpast.persistence.repositories import (
 from pixelpast.shared.runtime import RuntimeContext
 
 
-class LightroomCatalogIngestionPersistenceScope:
+class LightroomCatalogIngestionPersistenceScope(SessionBoundPersistenceScopeBase):
     """Wrap the Lightroom catalog persistence transaction boundary."""
 
     def __init__(
@@ -41,8 +42,7 @@ class LightroomCatalogIngestionPersistenceScope:
         lifecycle: LightroomCatalogIngestionRunCoordinator,
         resolved_root: Path,
     ) -> None:
-        session = runtime.session_factory()
-        self._session = session
+        super().__init__(runtime=runtime)
         self._lifecycle = lifecycle
         source_id = self._lifecycle.get_source_id(
             runtime=runtime,
@@ -50,9 +50,9 @@ class LightroomCatalogIngestionPersistenceScope:
         )
         self._persister = LightroomCatalogAssetPersister(
             source_id=source_id,
-            asset_repository=AssetRepository(session),
-            tag_repository=TagRepository(session),
-            person_repository=PersonRepository(session),
+            asset_repository=AssetRepository(self._session),
+            tag_repository=TagRepository(self._session),
+            person_repository=PersonRepository(self._session),
         )
         self.persisted_catalog_count = 0
 
@@ -87,15 +87,6 @@ class LightroomCatalogIngestionPersistenceScope:
             asset_outcomes=asset_outcomes,
             missing_from_source_count=0,
         )
-
-    def commit(self) -> None:
-        self._session.commit()
-
-    def rollback(self) -> None:
-        self._session.rollback()
-
-    def close(self) -> None:
-        self._session.close()
 
 
 class LightroomCatalogStagedIngestionStrategy:

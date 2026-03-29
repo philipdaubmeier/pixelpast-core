@@ -15,11 +15,12 @@ from pixelpast.ingestion.calendar.contracts import (
 from pixelpast.ingestion.calendar.lifecycle import CalendarIngestionRunCoordinator
 from pixelpast.ingestion.calendar.persist import CalendarDocumentPersister
 from pixelpast.ingestion.calendar.progress import CalendarIngestionProgressTracker
+from pixelpast.ingestion.persistence_base import SessionBoundPersistenceScopeBase
 from pixelpast.persistence.repositories import EventRepository, SourceRepository
 from pixelpast.shared.runtime import RuntimeContext
 
 
-class CalendarIngestionPersistenceScope:
+class CalendarIngestionPersistenceScope(SessionBoundPersistenceScopeBase):
     """Wrap the calendar persistence transaction boundary for the staged runner."""
 
     def __init__(
@@ -28,12 +29,11 @@ class CalendarIngestionPersistenceScope:
         runtime: RuntimeContext,
         lifecycle: CalendarIngestionRunCoordinator,
     ) -> None:
-        session = runtime.session_factory()
-        self._session = session
+        super().__init__(runtime=runtime)
         self._lifecycle = lifecycle
         self._persister = CalendarDocumentPersister(
-            source_repository=SourceRepository(session),
-            event_repository=EventRepository(session),
+            source_repository=SourceRepository(self._session),
+            event_repository=EventRepository(self._session),
         )
 
     @property
@@ -59,15 +59,6 @@ class CalendarIngestionPersistenceScope:
 
     def persist(self, *, candidate: CalendarDocumentCandidate) -> str:
         return self._persister.persist(candidate=candidate)
-
-    def commit(self) -> None:
-        self._session.commit()
-
-    def rollback(self) -> None:
-        self._session.rollback()
-
-    def close(self) -> None:
-        self._session.close()
 
 
 class CalendarStagedIngestionStrategy:

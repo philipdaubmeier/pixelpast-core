@@ -18,6 +18,7 @@ from pixelpast.ingestion.workdays_vacation.lifecycle import (
 from pixelpast.ingestion.workdays_vacation.persist import (
     WorkdaysVacationWorkbookPersister,
 )
+from pixelpast.ingestion.persistence_base import SessionBoundPersistenceScopeBase
 from pixelpast.ingestion.workdays_vacation.progress import (
     WorkdaysVacationIngestionProgressTracker,
 )
@@ -25,7 +26,7 @@ from pixelpast.persistence.repositories import EventRepository, SourceRepository
 from pixelpast.shared.runtime import RuntimeContext
 
 
-class WorkdaysVacationIngestionPersistenceScope:
+class WorkdaysVacationIngestionPersistenceScope(SessionBoundPersistenceScopeBase):
     """Wrap the workdays-vacation persistence transaction boundary."""
 
     def __init__(
@@ -35,11 +36,10 @@ class WorkdaysVacationIngestionPersistenceScope:
         lifecycle: WorkdaysVacationIngestionRunCoordinator,
     ) -> None:
         del lifecycle
-        session = runtime.session_factory()
-        self._session = session
+        super().__init__(runtime=runtime)
         self._persister = WorkdaysVacationWorkbookPersister(
-            source_repository=SourceRepository(session),
-            event_repository=EventRepository(session),
+            source_repository=SourceRepository(self._session),
+            event_repository=EventRepository(self._session),
         )
 
     @property
@@ -65,15 +65,6 @@ class WorkdaysVacationIngestionPersistenceScope:
 
     def persist(self, *, candidate: WorkdaysVacationWorkbookCandidate) -> str:
         return self._persister.persist(candidate=candidate)
-
-    def commit(self) -> None:
-        self._session.commit()
-
-    def rollback(self) -> None:
-        self._session.rollback()
-
-    def close(self) -> None:
-        self._session.close()
 
 
 class WorkdaysVacationStagedIngestionStrategy:

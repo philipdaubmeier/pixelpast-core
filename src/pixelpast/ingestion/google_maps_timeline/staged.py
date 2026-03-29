@@ -18,6 +18,7 @@ from pixelpast.ingestion.google_maps_timeline.contracts import (
 from pixelpast.ingestion.google_maps_timeline.lifecycle import (
     GoogleMapsTimelineIngestionRunCoordinator,
 )
+from pixelpast.ingestion.persistence_base import SessionBoundPersistenceScopeBase
 from pixelpast.ingestion.google_maps_timeline.persist import (
     GoogleMapsTimelineDocumentPersister,
 )
@@ -25,7 +26,7 @@ from pixelpast.persistence.repositories import EventRepository, SourceRepository
 from pixelpast.shared.runtime import RuntimeContext
 
 
-class GoogleMapsTimelineIngestionPersistenceScope:
+class GoogleMapsTimelineIngestionPersistenceScope(SessionBoundPersistenceScopeBase):
     """Wrap the Google Maps Timeline persistence transaction boundary."""
 
     def __init__(
@@ -34,11 +35,10 @@ class GoogleMapsTimelineIngestionPersistenceScope:
         runtime: RuntimeContext,
         lifecycle: GoogleMapsTimelineIngestionRunCoordinator,
     ) -> None:
-        session = runtime.session_factory()
-        self._session = session
+        super().__init__(runtime=runtime)
         self._lifecycle = lifecycle
-        self._source_repository = SourceRepository(session)
-        self._event_repository = EventRepository(session)
+        self._source_repository = SourceRepository(self._session)
+        self._event_repository = EventRepository(self._session)
         self._persister = GoogleMapsTimelineDocumentPersister(
             source_repository=self._source_repository,
             event_repository=self._event_repository,
@@ -68,15 +68,6 @@ class GoogleMapsTimelineIngestionPersistenceScope:
 
     def persist(self, *, candidate: GoogleMapsTimelineDocumentCandidate) -> str:
         return self._persister.persist(candidate=candidate)
-
-    def commit(self) -> None:
-        self._session.commit()
-
-    def rollback(self) -> None:
-        self._session.rollback()
-
-    def close(self) -> None:
-        self._session.close()
 
 
 class GoogleMapsTimelineStagedIngestionStrategy:

@@ -17,11 +17,12 @@ from pixelpast.ingestion.spotify.discovery import group_spotify_documents_by_acc
 from pixelpast.ingestion.spotify.lifecycle import SpotifyIngestionRunCoordinator
 from pixelpast.ingestion.spotify.persist import SpotifyAccountPersister
 from pixelpast.ingestion.spotify.progress import SpotifyIngestionProgressTracker
+from pixelpast.ingestion.persistence_base import SessionBoundPersistenceScopeBase
 from pixelpast.persistence.repositories import EventRepository, SourceRepository
 from pixelpast.shared.runtime import RuntimeContext
 
 
-class SpotifyIngestionPersistenceScope:
+class SpotifyIngestionPersistenceScope(SessionBoundPersistenceScopeBase):
     """Wrap the Spotify persistence transaction boundary for the staged runner."""
 
     def __init__(
@@ -30,11 +31,10 @@ class SpotifyIngestionPersistenceScope:
         runtime: RuntimeContext,
         lifecycle: SpotifyIngestionRunCoordinator,
     ) -> None:
-        session = runtime.session_factory()
-        self._session = session
+        super().__init__(runtime=runtime)
         self._lifecycle = lifecycle
-        self._source_repository = SourceRepository(session)
-        self._event_repository = EventRepository(session)
+        self._source_repository = SourceRepository(self._session)
+        self._event_repository = EventRepository(self._session)
         self._persister = SpotifyAccountPersister(
             source_repository=self._source_repository,
             event_repository=self._event_repository,
@@ -56,15 +56,6 @@ class SpotifyIngestionPersistenceScope:
 
     def persist(self, *, candidate: SpotifyAccountCandidate) -> str:
         return self._persister.persist(candidate=candidate)
-
-    def commit(self) -> None:
-        self._session.commit()
-
-    def rollback(self) -> None:
-        self._session.rollback()
-
-    def close(self) -> None:
-        self._session.close()
 
 
 class SpotifyStagedIngestionStrategy:

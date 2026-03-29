@@ -15,6 +15,7 @@ from pixelpast.ingestion.photos.contracts import (
 from pixelpast.ingestion.photos.lifecycle import PhotoIngestionRunCoordinator
 from pixelpast.ingestion.photos.persist import PhotoAssetPersister
 from pixelpast.ingestion.photos.progress import PhotoIngestionProgressTracker
+from pixelpast.ingestion.persistence_base import SessionBoundPersistenceScopeBase
 from pixelpast.persistence.repositories import (
     AssetRepository,
     PersonRepository,
@@ -23,7 +24,7 @@ from pixelpast.persistence.repositories import (
 from pixelpast.shared.runtime import RuntimeContext
 
 
-class PhotoIngestionPersistenceScope:
+class PhotoIngestionPersistenceScope(SessionBoundPersistenceScopeBase):
     """Wrap the photo persistence transaction boundary for the staged runner."""
 
     def __init__(
@@ -33,20 +34,19 @@ class PhotoIngestionPersistenceScope:
         lifecycle: PhotoIngestionRunCoordinator,
         resolved_root: Path,
     ) -> None:
-        session = runtime.session_factory()
-        self._session = session
+        super().__init__(runtime=runtime)
         self._lifecycle = lifecycle
         source_id = self._lifecycle.get_source_id(
             runtime=runtime,
             resolved_root=resolved_root,
         )
         self._source_id = source_id
-        self._asset_repository = AssetRepository(session)
+        self._asset_repository = AssetRepository(self._session)
         self._persister = PhotoAssetPersister(
             source_id=source_id,
             asset_repository=self._asset_repository,
-            tag_repository=TagRepository(session),
-            person_repository=PersonRepository(session),
+            tag_repository=TagRepository(self._session),
+            person_repository=PersonRepository(self._session),
         )
 
     def count_missing_from_source(
@@ -70,21 +70,6 @@ class PhotoIngestionPersistenceScope:
         """Persist one canonical photo asset candidate."""
 
         return self._persister.persist(asset=candidate)
-
-    def commit(self) -> None:
-        """Commit the open photo ingestion transaction."""
-
-        self._session.commit()
-
-    def rollback(self) -> None:
-        """Rollback the open photo ingestion transaction."""
-
-        self._session.rollback()
-
-    def close(self) -> None:
-        """Close the open photo ingestion session."""
-
-        self._session.close()
 
 
 class PhotoStagedIngestionStrategy:
