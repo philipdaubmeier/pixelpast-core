@@ -496,6 +496,30 @@ class AssetRepository:
         self._session.flush()
         return True
 
+    def replace_person_links(
+        self,
+        *,
+        asset_id: int,
+        person_ids: Iterable[int],
+    ) -> bool:
+        """Replace all asset-person links with the provided deterministic set."""
+
+        unique_person_ids = sorted(set(person_ids))
+        if self.get_person_ids(asset_id=asset_id) == unique_person_ids:
+            return False
+
+        self._session.execute(
+            delete(AssetPerson).where(AssetPerson.asset_id == asset_id)
+        )
+        self._session.add_all(
+            [
+                AssetPerson(asset_id=asset_id, person_id=person_id)
+                for person_id in unique_person_ids
+            ]
+        )
+        self._session.flush()
+        return True
+
 
 class AssetMediaRepository:
     """Read repository for canonical asset media derivation workloads."""
@@ -606,31 +630,6 @@ class AssetMediaRepository:
             source_type=row[5],
             source_config=source_config if isinstance(source_config, dict) else {},
         )
-
-    def replace_person_links(
-        self,
-        *,
-        asset_id: int,
-        person_ids: Iterable[int],
-    ) -> bool:
-        """Replace all asset-person links with the provided deterministic set."""
-
-        unique_person_ids = sorted(set(person_ids))
-        if self.get_person_ids(asset_id=asset_id) == unique_person_ids:
-            return False
-
-        self._session.execute(
-            delete(AssetPerson).where(AssetPerson.asset_id == asset_id)
-        )
-        self._session.add_all(
-            [
-                AssetPerson(asset_id=asset_id, person_id=person_id)
-                for person_id in unique_person_ids
-            ]
-        )
-        self._session.flush()
-        return True
-
 
 class EventReplaceResult:
     """Represents the source-scoped replacement outcome for one event set."""
