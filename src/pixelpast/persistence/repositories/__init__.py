@@ -1,7 +1,9 @@
 """Persistence repositories for canonical write access."""
 
 from pixelpast.persistence.repositories.canonical import (
+    AssetMediaRepository,
     AssetRepository,
+    AssetThumbnailCandidate,
     AssetUpsertResult,
     EventReplaceResult,
     EventRepository,
@@ -55,6 +57,8 @@ from pixelpast.persistence.repositories.timeline_read import (
 
 __all__ = [
     "AssetRepository",
+    "AssetMediaRepository",
+    "AssetThumbnailCandidate",
     "AssetUpsertResult",
     "CanonicalTimelineRepository",
     "DayActivityItemSnapshot",

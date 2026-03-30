@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
@@ -270,6 +271,18 @@ class AssetUpsertResult:
         self.status = status
 
 
+@dataclass(slots=True, frozen=True)
+class AssetThumbnailCandidate:
+    """One canonical asset row enriched with source context for media work."""
+
+    asset_id: int
+    short_id: str
+    external_id: str
+    media_type: str
+    metadata_json: dict[str, Any] | None
+    source_type: str
+
+
 class AssetRepository:
     """Repository for canonical asset upserts."""
 
@@ -470,6 +483,48 @@ class AssetRepository:
         self._session.flush()
         return True
 
+
+class AssetMediaRepository:
+    """Read repository for canonical asset media derivation workloads."""
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def list_thumbnail_candidates(self) -> tuple[AssetThumbnailCandidate, ...]:
+        """Return deterministic photo assets together with their source type."""
+
+        statement = (
+            select(
+                Asset.id,
+                Asset.short_id,
+                Asset.external_id,
+                Asset.media_type,
+                Asset.metadata_json,
+                Source.type,
+            )
+            .join(Source, Source.id == Asset.source_id)
+            .where(Asset.media_type == "photo")
+            .order_by(Asset.short_id, Asset.id)
+        )
+        return tuple(
+            AssetThumbnailCandidate(
+                asset_id=asset_id,
+                short_id=short_id,
+                external_id=external_id,
+                media_type=media_type,
+                metadata_json=metadata_json,
+                source_type=source_type,
+            )
+            for (
+                asset_id,
+                short_id,
+                external_id,
+                media_type,
+                metadata_json,
+                source_type,
+            ) in self._session.execute(statement)
+        )
+
     def replace_person_links(
         self,
         *,
@@ -589,7 +644,10 @@ class EventRepository:
 
         for identity in sorted(next_identities - existing_identities):
             self._session.add(
-                _build_event_model(source_id=source_id, event=next_by_identity[identity])
+                _build_event_model(
+                    source_id=source_id,
+                    event=next_by_identity[identity],
+                )
             )
             inserted_event_count += 1
 

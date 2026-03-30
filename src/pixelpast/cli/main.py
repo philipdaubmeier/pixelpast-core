@@ -399,6 +399,23 @@ def derive_command(
             ),
         ),
     ] = None,
+    renditions: Annotated[
+        list[str],
+        typer.Option(
+            "--rendition",
+            help=(
+                "Target one or more fixed thumbnail renditions for "
+                "`asset-thumbnails`."
+            ),
+        ),
+    ] = [],
+    force: Annotated[
+        bool,
+        typer.Option(
+            "--force",
+            help="Force rebuilding existing outputs when supported by the derive job.",
+        ),
+    ] = False,
 ) -> None:
     """Run a derived-data job entrypoint."""
 
@@ -422,6 +439,8 @@ def derive_command(
                 start_date=parsed_start_date,
                 end_date=parsed_end_date,
                 max_place_ids=top_place_ids,
+                renditions=tuple(renditions),
+                force=force,
                 progress_callback=progress_reporter,
             ),
         )

@@ -4,6 +4,11 @@ import logging
 from collections.abc import Callable
 from datetime import date
 
+from pixelpast.analytics.asset_thumbnails import (
+    ASSET_THUMBNAILS_JOB_NAME,
+    AssetThumbnailJob,
+    AssetThumbnailJobResult,
+)
 from pixelpast.analytics.daily_aggregate import DailyAggregateJob
 from pixelpast.analytics.daily_aggregate.job import DailyAggregateJobResult
 from pixelpast.analytics.google_places import GooglePlacesJob, GooglePlacesJobResult
@@ -12,7 +17,9 @@ from pixelpast.shared.runtime import RuntimeContext
 
 logger = logging.getLogger(__name__)
 
-_SUPPORTED_JOBS = frozenset({"daily-aggregate", "google_places"})
+_SUPPORTED_JOBS = frozenset(
+    {ASSET_THUMBNAILS_JOB_NAME, "daily-aggregate", "google_places"}
+)
 
 
 def list_supported_derive_jobs() -> tuple[str, ...]:
@@ -28,8 +35,10 @@ def run_derive_job(
     start_date: date | None = None,
     end_date: date | None = None,
     max_place_ids: int | None = None,
+    renditions: tuple[str, ...] = (),
+    force: bool = False,
     progress_callback: Callable[[JobProgressSnapshot], None] | None = None,
-) -> DailyAggregateJobResult | GooglePlacesJobResult:
+) -> DailyAggregateJobResult | GooglePlacesJobResult | AssetThumbnailJobResult:
     """Run a derived-data job entrypoint."""
 
     if job not in _SUPPORTED_JOBS:
@@ -38,7 +47,48 @@ def run_derive_job(
             f"Unsupported job '{job}'. Available jobs: {available_jobs}."
         )
 
+    if job == ASSET_THUMBNAILS_JOB_NAME:
+        if start_date is not None or end_date is not None:
+            raise ValueError(
+                "Asset thumbnail derivation does not support --start-date/--end-date."
+            )
+        if max_place_ids is not None:
+            raise ValueError(
+                "Asset thumbnail derivation does not support --top-place-ids."
+            )
+
+        result = AssetThumbnailJob().run(
+            runtime=runtime,
+            renditions=renditions,
+            force=force,
+            progress_callback=progress_callback,
+        )
+        logger.info(
+            "derive completed",
+            extra={
+                "job": job,
+                "database_url": runtime.settings.database_url,
+                "run_id": result.run_id,
+                "mode": result.mode,
+                "status": result.status,
+                "asset_count": result.asset_count,
+                "rendition_count": result.rendition_count,
+                "generated_count": result.generated_count,
+                "overwritten_count": result.overwritten_count,
+                "unchanged_count": result.unchanged_count,
+                "skipped_count": result.skipped_count,
+                "failed_count": result.failed_count,
+            },
+        )
+        return result
+
     if job == "daily-aggregate":
+        if renditions:
+            raise ValueError(
+                "Daily aggregate derivation does not support --rendition."
+            )
+        if force:
+            raise ValueError("Daily aggregate derivation does not support --force.")
         result = DailyAggregateJob().run(
             runtime=runtime,
             start_date=start_date,
@@ -66,6 +116,10 @@ def run_derive_job(
         return result
 
     if job == "google_places":
+        if renditions:
+            raise ValueError("Google Places derivation does not support --rendition.")
+        if force:
+            raise ValueError("Google Places derivation does not support --force.")
         result = GooglePlacesJob().run(
             runtime=runtime,
             start_date=start_date,
