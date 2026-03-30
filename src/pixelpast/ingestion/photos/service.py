@@ -16,6 +16,7 @@ from pixelpast.ingestion.photos.staged import (
     PhotoStagedIngestionStrategy,
 )
 from pixelpast.ingestion.service_base import SharedStagedIngestionServiceBase
+from pixelpast.shared.media_storage import require_media_thumb_root
 from pixelpast.shared.progress import JobProgressCallback
 from pixelpast.shared.runtime import RuntimeContext
 
@@ -61,6 +62,16 @@ class PhotoIngestionService(
     ) -> PhotoStagedIngestionStrategy:
         del runtime, resolved_root, kwargs
         return PhotoStagedIngestionStrategy(connector=self._connector)
+
+    def _validate_request(
+        self,
+        *,
+        runtime: RuntimeContext,
+        resolved_root: Path,
+        **kwargs: object,
+    ) -> None:
+        del resolved_root, kwargs
+        require_media_thumb_root(settings=runtime.settings)
 
     def _build_progress_tracker(
         self,

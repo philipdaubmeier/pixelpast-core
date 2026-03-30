@@ -356,8 +356,8 @@ class AssetRepository:
             external_id=external_id,
         )
         if asset is None:
-            asset = Asset(
-                short_id=short_id or self._allocate_short_id(),
+            return self._insert_asset_with_short_id_retries(
+                short_id=short_id,
                 source_id=source_id,
                 external_id=external_id,
                 media_type=media_type,
@@ -366,13 +366,8 @@ class AssetRepository:
                 latitude=latitude,
                 longitude=longitude,
                 creator_person_id=creator_person_id,
-                metadata_json=(
-                    dict(metadata_json) if metadata_json is not None else None
-                ),
+                metadata_json=metadata_json,
             )
-            self._session.add(asset)
-            self._session.flush()
-            return AssetUpsertResult(asset=asset, status="inserted")
 
         next_metadata = dict(metadata_json) if metadata_json is not None else None
         changed = any(
@@ -416,6 +411,48 @@ class AssetRepository:
             )
             if self.get_by_short_id(short_id=candidate) is None:
                 return candidate
+
+        raise RuntimeError("Could not allocate a unique asset short id.")
+
+    def _insert_asset_with_short_id_retries(
+        self,
+        *,
+        short_id: str | None,
+        source_id: int,
+        external_id: str,
+        media_type: str,
+        timestamp: datetime,
+        summary: str | None,
+        latitude: float | None,
+        longitude: float | None,
+        creator_person_id: int | None,
+        metadata_json: dict[str, Any] | None,
+    ) -> AssetUpsertResult:
+        next_metadata = dict(metadata_json) if metadata_json is not None else None
+
+        for _ in range(32):
+            candidate_short_id = short_id or self._allocate_short_id()
+            if (
+                short_id is None
+                and self.get_by_short_id(short_id=candidate_short_id) is not None
+            ):
+                continue
+
+            asset = Asset(
+                short_id=candidate_short_id,
+                source_id=source_id,
+                external_id=external_id,
+                media_type=media_type,
+                timestamp=timestamp,
+                summary=summary,
+                latitude=latitude,
+                longitude=longitude,
+                creator_person_id=creator_person_id,
+                metadata_json=next_metadata,
+            )
+            self._session.add(asset)
+            self._session.flush()
+            return AssetUpsertResult(asset=asset, status="inserted")
 
         raise RuntimeError("Could not allocate a unique asset short id.")
 

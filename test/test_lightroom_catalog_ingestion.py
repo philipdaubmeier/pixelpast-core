@@ -399,6 +399,34 @@ def test_lightroom_catalog_ingestion_requires_configured_catalog_path() -> None:
         runtime.engine.dispose()
 
 
+def test_lightroom_catalog_ingestion_requires_media_thumb_root_before_run_creation() -> (
+    None
+):
+    runtime = create_runtime_context(
+        settings=Settings(
+            database_url="sqlite://",
+            lightroom_catalog_path=_FIXTURE_PATH,
+            media_thumb_root=None,
+        )
+    )
+    initialize_database(runtime)
+    try:
+        with pytest.raises(
+            ValueError,
+            match="PIXELPAST_MEDIA_THUMB_ROOT",
+        ):
+            LightroomCatalogIngestionService().ingest(runtime=runtime)
+
+        with runtime.session_factory() as session:
+            assets = list(session.execute(select(Asset)).scalars())
+            job_runs = list(session.execute(select(JobRun)).scalars())
+
+        assert assets == []
+        assert job_runs == []
+    finally:
+        runtime.engine.dispose()
+
+
 def test_lightroom_catalog_ingestion_rejects_invalid_asset_range() -> None:
     runtime = _create_runtime()
     workspace_root = _create_workspace_root()
@@ -519,6 +547,7 @@ def _create_runtime(*, lightroom_catalog_path: Path | None = None):
         settings=Settings(
             database_url="sqlite://",
             lightroom_catalog_path=lightroom_catalog_path,
+            media_thumb_root=Path("var") / f"lightroom-thumbs-{uuid4().hex}",
         )
     )
     initialize_database(runtime)

@@ -18,6 +18,7 @@ from pixelpast.ingestion.lightroom_catalog.staged import (
     LightroomCatalogStagedIngestionStrategy,
 )
 from pixelpast.ingestion.service_base import SharedStagedIngestionServiceBase
+from pixelpast.shared.media_storage import require_media_thumb_root
 from pixelpast.shared.progress import JobProgressCallback
 from pixelpast.shared.runtime import RuntimeContext
 
@@ -61,7 +62,8 @@ class LightroomCatalogIngestionService(
         resolved_root: Path,
         **kwargs: object,
     ) -> None:
-        del runtime, resolved_root
+        del resolved_root
+        require_media_thumb_root(settings=runtime.settings)
         start_index = kwargs.get("start_index")
         end_index = kwargs.get("end_index")
         if (

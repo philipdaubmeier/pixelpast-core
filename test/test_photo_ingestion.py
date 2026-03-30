@@ -428,6 +428,40 @@ def test_photo_ingestion_fails_fast_when_exiftool_is_missing(
         shutil.rmtree(workspace_root, ignore_errors=True)
 
 
+def test_photo_ingestion_requires_media_thumb_root_before_run_creation() -> None:
+    workspace_root = _create_workspace_dir(prefix="photo-missing-thumb-root")
+    runtime = None
+    try:
+        photos_root = workspace_root / "photos"
+        photos_root.mkdir()
+        (photos_root / "image.jpg").write_bytes(b"photo")
+        runtime = create_runtime_context(
+            settings=Settings(
+                database_url=f"sqlite:///{(workspace_root / 'pixelpast.db').as_posix()}",
+                photos_root=photos_root,
+                media_thumb_root=None,
+            )
+        )
+        initialize_database(runtime)
+
+        with pytest.raises(
+            ValueError,
+            match="PIXELPAST_MEDIA_THUMB_ROOT",
+        ):
+            PhotoIngestionService().ingest(runtime=runtime)
+
+        with runtime.session_factory() as session:
+            assets = list(session.execute(select(Asset)).scalars())
+            job_runs = list(session.execute(select(JobRun)).scalars())
+
+        assert assets == []
+        assert job_runs == []
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
 def test_photo_connector_splits_timed_out_metadata_batches_until_single_files(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -924,6 +958,66 @@ def test_asset_repository_generates_and_preserves_short_id() -> None:
         assert updated.asset.short_id == inserted_short_id
         assert fetched is not None
         assert fetched.external_id == "photo-1"
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_asset_repository_retries_when_generated_short_id_collides(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = _create_workspace_dir(prefix="photo-short-id-collision")
+    runtime = None
+    try:
+        photos_root = workspace_root / "photos"
+        photos_root.mkdir()
+        runtime = _create_runtime(
+            workspace_root=workspace_root,
+            photos_root=photos_root,
+        )
+        source_id = PhotoIngestionRunCoordinator().get_source_id(
+            runtime=runtime,
+            resolved_root=photos_root.resolve(),
+        )
+
+        generated_ids = iter(("AAAAAAAA", "BBBBBBBB"))
+        monkeypatch.setattr(
+            "pixelpast.persistence.repositories.canonical.AssetRepository._allocate_short_id",
+            lambda self: next(generated_ids),
+        )
+
+        with runtime.session_factory() as session:
+            repository = AssetRepository(session)
+            session.add(
+                Asset(
+                    short_id="AAAAAAAA",
+                    source_id=source_id,
+                    external_id="existing-photo",
+                    media_type="photo",
+                    timestamp=datetime(2024, 1, 1, tzinfo=UTC),
+                    latitude=None,
+                    longitude=None,
+                    metadata_json={},
+                )
+            )
+            session.flush()
+
+            inserted = repository.upsert(
+                source_id=source_id,
+                external_id="photo-2",
+                media_type="photo",
+                timestamp=datetime(2024, 1, 2, tzinfo=UTC),
+                summary="second",
+                latitude=None,
+                longitude=None,
+                creator_person_id=None,
+                metadata_json={},
+            )
+            session.commit()
+
+        assert inserted.status == "inserted"
+        assert inserted.asset.short_id == "BBBBBBBB"
     finally:
         if runtime is not None:
             runtime.engine.dispose()
@@ -1448,9 +1542,11 @@ class _FakeClock:
 
 def _create_runtime(*, workspace_root: Path, photos_root: Path):
     database_path = workspace_root / "pixelpast.db"
+    media_thumb_root = workspace_root / "thumbs"
     settings = Settings(
         database_url=f"sqlite:///{database_path.as_posix()}",
         photos_root=photos_root,
+        media_thumb_root=media_thumb_root,
     )
     runtime = create_runtime_context(settings=settings)
     initialize_database(runtime)

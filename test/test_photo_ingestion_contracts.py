@@ -274,6 +274,7 @@ def _create_runtime(*, workspace_root: Path, photos_root: Path):
     settings = Settings(
         database_url=f"sqlite:///{database_path.as_posix()}",
         photos_root=photos_root,
+        media_thumb_root=workspace_root / "thumbs",
     )
     runtime = create_runtime_context(settings=settings)
     initialize_database(runtime)

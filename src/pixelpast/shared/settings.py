@@ -47,6 +47,10 @@ class Settings(BaseSettings):
         default=None,
         description="Root path for the Spotify ingestion connector.",
     )
+    media_thumb_root: Path | None = Field(
+        default=None,
+        description="Root directory for globally stored derived media thumbnails.",
+    )
     lightroom_catalog_path: Path | None = Field(
         default=None,
         description="Catalog file path for the Lightroom catalog ingestion connector.",

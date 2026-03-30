@@ -230,12 +230,14 @@ def test_build_dev_process_specs_returns_api_and_ui_commands(monkeypatch) -> Non
 def test_cli_ingest_photos_persists_assets(monkeypatch) -> None:
     database_path = _build_test_database_path("cli-ingest")
     photos_root = Path("var") / f"cli-photos-{uuid4().hex}"
+    media_thumb_root = Path("var") / f"cli-photo-thumbs-{uuid4().hex}"
     photos_root.mkdir(parents=True, exist_ok=False)
     (photos_root / "IMG_20240102_030405.jpg").write_bytes(b"not-a-real-image")
     monkeypatch.setenv(
         "PIXELPAST_DATABASE_URL", f"sqlite:///{database_path.as_posix()}"
     )
     monkeypatch.setenv("PIXELPAST_PHOTOS_ROOT", str(photos_root))
+    monkeypatch.setenv("PIXELPAST_MEDIA_THUMB_ROOT", str(media_thumb_root))
     get_settings.cache_clear()
 
     try:
@@ -269,16 +271,19 @@ def test_cli_ingest_photos_persists_assets(monkeypatch) -> None:
         if database_path.exists():
             database_path.unlink()
         shutil.rmtree(photos_root, ignore_errors=True)
+        shutil.rmtree(media_thumb_root, ignore_errors=True)
 
 
 def test_cli_ingest_photos_subprocess_completes_with_fixture_assets() -> None:
     database_path = _build_test_database_path("cli-ingest-fixtures")
     photos_root = Path("test") / "assets"
+    media_thumb_root = Path("var") / f"cli-photo-subprocess-thumbs-{uuid4().hex}"
     environment = os.environ.copy()
     environment["PIXELPAST_DATABASE_URL"] = (
         f"sqlite:///{database_path.resolve().as_posix()}"
     )
     environment["PIXELPAST_PHOTOS_ROOT"] = str(photos_root.resolve())
+    environment["PIXELPAST_MEDIA_THUMB_ROOT"] = str(media_thumb_root.resolve())
 
     try:
         result = subprocess.run(
@@ -329,6 +334,7 @@ def test_cli_ingest_photos_subprocess_completes_with_fixture_assets() -> None:
     finally:
         if database_path.exists():
             database_path.unlink()
+        shutil.rmtree(media_thumb_root, ignore_errors=True)
 
 
 def test_cli_ingest_calendar_persists_events_from_fixture(monkeypatch) -> None:
@@ -419,6 +425,7 @@ def test_cli_ingest_calendar_subprocess_completes_with_zip_fixture() -> None:
 def test_cli_ingest_lightroom_catalog_persists_assets_from_fixture(monkeypatch) -> None:
     database_path = _build_test_database_path("cli-lightroom-ingest")
     workspace_root = Path("var") / f"cli-lightroom-{uuid4().hex}"
+    media_thumb_root = workspace_root / "thumbs"
     fixture_path = (
         Path("test") / "assets" / "lightroom-classic-catalog-test-fixture.lrcat"
     )
@@ -432,6 +439,7 @@ def test_cli_ingest_lightroom_catalog_persists_assets_from_fixture(monkeypatch) 
         "PIXELPAST_LIGHTROOM_CATALOG_PATH",
         str(catalog_path.resolve()),
     )
+    monkeypatch.setenv("PIXELPAST_MEDIA_THUMB_ROOT", str(media_thumb_root.resolve()))
     get_settings.cache_clear()
 
     try:
@@ -478,6 +486,7 @@ def test_cli_ingest_lightroom_catalog_persists_assets_from_fixture(monkeypatch) 
 def test_cli_ingest_lightroom_catalog_can_limit_asset_range(monkeypatch) -> None:
     database_path = _build_test_database_path("cli-lightroom-range")
     workspace_root = Path("var") / f"cli-lightroom-range-{uuid4().hex}"
+    media_thumb_root = workspace_root / "thumbs"
     fixture_path = (
         Path("test") / "assets" / "lightroom-classic-catalog-test-fixture.lrcat"
     )
@@ -491,6 +500,7 @@ def test_cli_ingest_lightroom_catalog_can_limit_asset_range(monkeypatch) -> None
         "PIXELPAST_LIGHTROOM_CATALOG_PATH",
         str(catalog_path.resolve()),
     )
+    monkeypatch.setenv("PIXELPAST_MEDIA_THUMB_ROOT", str(media_thumb_root.resolve()))
     get_settings.cache_clear()
 
     try:
@@ -1588,6 +1598,31 @@ def test_cli_returns_invalid_argument_exit_code_when_lightroom_catalog_path_is_m
         get_settings.cache_clear()
         if database_path.exists():
             database_path.unlink()
+
+
+def test_cli_returns_invalid_argument_exit_code_when_media_thumb_root_is_missing_for_photos(
+    monkeypatch,
+) -> None:
+    database_path = _build_test_database_path("cli-photo-missing-thumb-root")
+    photos_root = Path("var") / f"cli-photos-missing-thumb-{uuid4().hex}"
+    photos_root.mkdir(parents=True, exist_ok=False)
+    (photos_root / "IMG_20240102_030405.jpg").write_bytes(b"not-a-real-image")
+    monkeypatch.setenv(
+        "PIXELPAST_DATABASE_URL", f"sqlite:///{database_path.as_posix()}"
+    )
+    monkeypatch.setenv("PIXELPAST_PHOTOS_ROOT", str(photos_root.resolve()))
+    monkeypatch.delenv("PIXELPAST_MEDIA_THUMB_ROOT", raising=False)
+    get_settings.cache_clear()
+
+    try:
+        result = runner.invoke(app, ["ingest", "photos"])
+        assert result.exit_code == 2
+        assert "error: Asset ingestion requires PIXELPAST_MEDIA_THUMB_ROOT" in result.stderr
+    finally:
+        get_settings.cache_clear()
+        if database_path.exists():
+            database_path.unlink()
+        shutil.rmtree(photos_root, ignore_errors=True)
 
 
 def test_cli_returns_invalid_argument_exit_code_for_lightroom_invalid_range(
