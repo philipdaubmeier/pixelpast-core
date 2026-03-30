@@ -1564,6 +1564,186 @@
                         "input": "2026/07/14"
               "schema":
                 "$ref": "#/components/schemas/ApiValidationErrorResponse"
+  "/media/h120/{short_id}.webp":
+    "get":
+      "tags":
+        - "media"
+      "summary": "Get h120 WebP thumbnail"
+      "description": "Return the fixed `h120` WebP thumbnail for one asset short id. Existing thumbnail files are served directly from the configured thumbnail root without a canonical database lookup. On cache miss, the API resolves the asset by short id and lazily generates the missing rendition."
+      "operationId": "get_h120_thumbnail_media_h120__short_id__webp_get"
+      "parameters":
+        -
+          "name": "short_id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "string"
+            "title": "Short Id"
+      "responses":
+        "200":
+          "description": "Fixed WebP thumbnail for the requested asset short id."
+          "content":
+            "image/webp":
+              "examples":
+                "cached_h120":
+                  "summary": "Cached fixed-height thumbnail hit"
+                  "value": "<<binary image/webp body>>"
+        "404":
+          "description": "No matching asset exists for the short id, or the original file required for lazy generation is missing."
+          "content":
+            "application/json":
+              "examples":
+                "unknown_short_id":
+                  "summary": "Unknown asset short id"
+                  "value":
+                    "detail": "asset short id 'MISS0001' does not exist"
+                "missing_original":
+                  "summary": "Original file missing during lazy generation"
+                  "value":
+                    "detail": "original file for asset 'PHOTO001' is missing"
+              "schema":
+                "$ref": "#/components/schemas/ApiErrorResponse"
+        "415":
+          "description": "The resolved asset does not support image-thumbnail generation or its source image cannot be rendered."
+          "content":
+            "application/json":
+              "examples":
+                "unsupported_asset":
+                  "summary": "Asset cannot produce an image thumbnail"
+                  "value":
+                    "detail": "asset 'TRACK001' does not support image thumbnails"
+                "render_failed":
+                  "summary": "Stored source cannot be rendered as an image"
+                  "value":
+                    "detail": "asset 'BROKEN01' could not be rendered as a thumbnail"
+              "schema":
+                "$ref": "#/components/schemas/ApiErrorResponse"
+        "422":
+          "description": "Validation Error"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/HTTPValidationError"
+  "/media/h240/{short_id}.webp":
+    "get":
+      "tags":
+        - "media"
+      "summary": "Get h240 WebP thumbnail"
+      "description": "Return the fixed `h240` WebP thumbnail for one asset short id. Existing thumbnail files are served directly from the configured thumbnail root without a canonical database lookup. On cache miss, the API resolves the asset by short id and lazily generates the missing rendition."
+      "operationId": "get_h240_thumbnail_media_h240__short_id__webp_get"
+      "parameters":
+        -
+          "name": "short_id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "string"
+            "title": "Short Id"
+      "responses":
+        "200":
+          "description": "Fixed WebP thumbnail for the requested asset short id."
+          "content":
+            "image/webp":
+              "examples":
+                "cached_h120":
+                  "summary": "Cached fixed-height thumbnail hit"
+                  "value": "<<binary image/webp body>>"
+        "404":
+          "description": "No matching asset exists for the short id, or the original file required for lazy generation is missing."
+          "content":
+            "application/json":
+              "examples":
+                "unknown_short_id":
+                  "summary": "Unknown asset short id"
+                  "value":
+                    "detail": "asset short id 'MISS0001' does not exist"
+                "missing_original":
+                  "summary": "Original file missing during lazy generation"
+                  "value":
+                    "detail": "original file for asset 'PHOTO001' is missing"
+              "schema":
+                "$ref": "#/components/schemas/ApiErrorResponse"
+        "415":
+          "description": "The resolved asset does not support image-thumbnail generation or its source image cannot be rendered."
+          "content":
+            "application/json":
+              "examples":
+                "unsupported_asset":
+                  "summary": "Asset cannot produce an image thumbnail"
+                  "value":
+                    "detail": "asset 'TRACK001' does not support image thumbnails"
+                "render_failed":
+                  "summary": "Stored source cannot be rendered as an image"
+                  "value":
+                    "detail": "asset 'BROKEN01' could not be rendered as a thumbnail"
+              "schema":
+                "$ref": "#/components/schemas/ApiErrorResponse"
+        "422":
+          "description": "Validation Error"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/HTTPValidationError"
+  "/media/q200/{short_id}.webp":
+    "get":
+      "tags":
+        - "media"
+      "summary": "Get q200 WebP thumbnail"
+      "description": "Return the fixed `q200` WebP thumbnail for one asset short id. Existing thumbnail files are served directly from the configured thumbnail root without a canonical database lookup. On cache miss, the API resolves the asset by short id and lazily generates the missing rendition."
+      "operationId": "get_q200_thumbnail_media_q200__short_id__webp_get"
+      "parameters":
+        -
+          "name": "short_id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "string"
+            "title": "Short Id"
+      "responses":
+        "200":
+          "description": "Fixed WebP thumbnail for the requested asset short id."
+          "content":
+            "image/webp":
+              "examples":
+                "cached_h120":
+                  "summary": "Cached fixed-height thumbnail hit"
+                  "value": "<<binary image/webp body>>"
+        "404":
+          "description": "No matching asset exists for the short id, or the original file required for lazy generation is missing."
+          "content":
+            "application/json":
+              "examples":
+                "unknown_short_id":
+                  "summary": "Unknown asset short id"
+                  "value":
+                    "detail": "asset short id 'MISS0001' does not exist"
+                "missing_original":
+                  "summary": "Original file missing during lazy generation"
+                  "value":
+                    "detail": "original file for asset 'PHOTO001' is missing"
+              "schema":
+                "$ref": "#/components/schemas/ApiErrorResponse"
+        "415":
+          "description": "The resolved asset does not support image-thumbnail generation or its source image cannot be rendered."
+          "content":
+            "application/json":
+              "examples":
+                "unsupported_asset":
+                  "summary": "Asset cannot produce an image thumbnail"
+                  "value":
+                    "detail": "asset 'TRACK001' does not support image thumbnails"
+                "render_failed":
+                  "summary": "Stored source cannot be rendered as an image"
+                  "value":
+                    "detail": "asset 'BROKEN01' could not be rendered as a thumbnail"
+              "schema":
+                "$ref": "#/components/schemas/ApiErrorResponse"
+        "422":
+          "description": "Validation Error"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/HTTPValidationError"
 "components":
   "schemas":
     "ApiErrorResponse":
@@ -1949,6 +2129,15 @@
         - "description"
       "title": "ExplorationViewMode"
       "description": "Backend-defined exploration view mode metadata."
+    "HTTPValidationError":
+      "properties":
+        "detail":
+          "items":
+            "$ref": "#/components/schemas/ValidationError"
+          "type": "array"
+          "title": "Detail"
+      "type": "object"
+      "title": "HTTPValidationError"
     "PersonCatalogEntry":
       "properties":
         "id":
@@ -2228,6 +2417,34 @@
         - "links"
       "title": "SocialGraphResponse"
       "description": "Canonical social-graph projection response."
+    "ValidationError":
+      "properties":
+        "loc":
+          "items":
+            "anyOf":
+              -
+                "type": "string"
+              -
+                "type": "integer"
+          "type": "array"
+          "title": "Location"
+        "msg":
+          "type": "string"
+          "title": "Message"
+        "type":
+          "type": "string"
+          "title": "Error Type"
+        "input":
+          "title": "Input"
+        "ctx":
+          "type": "object"
+          "title": "Context"
+      "type": "object"
+      "required":
+        - "loc"
+        - "msg"
+        - "type"
+      "title": "ValidationError"
 "tags":
   -
     "name": "health"
@@ -2241,3 +2458,6 @@
   -
     "name": "manage-data"
     "description": "Manual catalog maintenance for canonical persons and groups."
+  -
+    "name": "media"
+    "description": "Short-id-based thumbnail delivery for canonical media assets."

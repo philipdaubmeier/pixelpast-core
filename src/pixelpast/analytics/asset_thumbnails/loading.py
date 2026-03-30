@@ -37,6 +37,27 @@ class AssetThumbnailCanonicalLoader:
             for candidate in repository.list_thumbnail_candidates()
         )
 
+    def load_asset_by_short_id(
+        self,
+        *,
+        repository: AssetMediaRepository,
+        short_id: str,
+    ) -> ResolvedThumbnailAsset | None:
+        """Resolve one canonical asset by its public short id when available."""
+
+        candidate = repository.get_thumbnail_candidate_by_short_id(short_id=short_id)
+        if candidate is None:
+            return None
+        return self.resolve_asset(candidate)
+
+    def resolve_asset(
+        self,
+        candidate: AssetThumbnailCandidate,
+    ) -> ResolvedThumbnailAsset:
+        """Resolve one thumbnail candidate to a concrete original path."""
+
+        return self._resolve_asset(candidate)
+
     def _resolve_asset(
         self,
         candidate: AssetThumbnailCandidate,

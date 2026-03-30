@@ -525,6 +525,39 @@ class AssetMediaRepository:
             ) in self._session.execute(statement)
         )
 
+    def get_thumbnail_candidate_by_short_id(
+        self,
+        *,
+        short_id: str,
+    ) -> AssetThumbnailCandidate | None:
+        """Return one thumbnail candidate resolved by the public asset short id."""
+
+        statement = (
+            select(
+                Asset.id,
+                Asset.short_id,
+                Asset.external_id,
+                Asset.media_type,
+                Asset.metadata_json,
+                Source.type,
+            )
+            .join(Source, Source.id == Asset.source_id)
+            .where(Asset.short_id == short_id)
+            .order_by(Asset.id)
+        )
+        row = self._session.execute(statement).first()
+        if row is None:
+            return None
+
+        return AssetThumbnailCandidate(
+            asset_id=row[0],
+            short_id=row[1],
+            external_id=row[2],
+            media_type=row[3],
+            metadata_json=row[4],
+            source_type=row[5],
+        )
+
     def replace_person_links(
         self,
         *,

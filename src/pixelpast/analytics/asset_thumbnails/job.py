@@ -9,15 +9,15 @@ from pixelpast.analytics.asset_thumbnails.loading import (
     AssetThumbnailCanonicalLoader,
     ResolvedThumbnailAsset,
 )
+from pixelpast.analytics.asset_thumbnails.materialization import (
+    AssetThumbnailMaterializer,
+)
 from pixelpast.analytics.asset_thumbnails.progress import (
     ASSET_THUMBNAILS_JOB_NAME,
     AssetThumbnailProgressTracker,
 )
 from pixelpast.analytics.asset_thumbnails.rendering import (
     THUMBNAIL_RENDITIONS,
-    ThumbnailRenderError,
-    build_thumbnail_output_path,
-    render_thumbnail,
 )
 from pixelpast.analytics.lifecycle import DeriveRunCoordinator
 from pixelpast.persistence.repositories import AssetMediaRepository
@@ -51,9 +51,11 @@ class AssetThumbnailJob:
         *,
         loader: AssetThumbnailCanonicalLoader | None = None,
         lifecycle: DeriveRunCoordinator | None = None,
+        materializer: AssetThumbnailMaterializer | None = None,
     ) -> None:
         self._loader = loader or AssetThumbnailCanonicalLoader()
         self._lifecycle = lifecycle or DeriveRunCoordinator()
+        self._materializer = materializer or AssetThumbnailMaterializer()
 
     def run(
         self,
@@ -98,6 +100,7 @@ class AssetThumbnailJob:
                         rendition=rendition,
                         thumb_root=thumb_root,
                         force=force,
+                        materializer=self._materializer,
                     )
                     if warning_message is not None:
                         warning_messages.append(warning_message)
@@ -135,43 +138,15 @@ def _materialize_thumbnail(
     rendition: str,
     thumb_root: Path,
     force: bool,
+    materializer: AssetThumbnailMaterializer,
 ) -> tuple[str, str | None]:
-    output_path = build_thumbnail_output_path(
-        thumb_root=thumb_root,
+    result = materializer.materialize(
+        asset=asset,
         rendition=rendition,
-        short_id=asset.short_id,
+        thumb_root=thumb_root,
+        force=force,
     )
-    output_exists = output_path.exists()
-    if not force and output_exists:
-        return "unchanged", None
-
-    original_path = asset.original_path
-    if original_path is None:
-        return (
-            "skipped",
-            "Skipping thumbnail generation for asset "
-            f"{asset.short_id} because source type {asset.source_type!r} "
-            "does not expose a resolvable original image path.",
-        )
-
-    if not original_path.exists():
-        return (
-            "skipped",
-            "Skipping thumbnail generation for asset "
-            f"{asset.short_id} because the original file is missing: "
-            f"{original_path.as_posix()}",
-        )
-
-    try:
-        render_thumbnail(
-            source_path=original_path,
-            output_path=output_path,
-            rendition=rendition,
-        )
-    except ThumbnailRenderError as error:
-        return "failed", str(error)
-
-    return ("overwritten" if output_exists else "generated"), None
+    return result.status, result.detail
 
 
 def _normalize_renditions(

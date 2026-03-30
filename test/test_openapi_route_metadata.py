@@ -20,15 +20,27 @@ def test_public_routes_expose_stable_openapi_tags() -> None:
         },
         {
             "name": "timeline",
-            "description": "Timeline exploration, day context preload, and day detail reads.",
+            "description": (
+                "Timeline exploration, day context preload, and day detail reads."
+            ),
         },
         {
             "name": "social",
-            "description": "Person relationship projections derived from canonical assets.",
+            "description": (
+                "Person relationship projections derived from canonical assets."
+            ),
         },
         {
             "name": "manage-data",
-            "description": "Manual catalog maintenance for canonical persons and groups.",
+            "description": (
+                "Manual catalog maintenance for canonical persons and groups."
+            ),
+        },
+        {
+            "name": "media",
+            "description": (
+                "Short-id-based thumbnail delivery for canonical media assets."
+            ),
         },
     ]
 
@@ -84,7 +96,9 @@ def test_exploration_routes_document_contract_metadata_and_errors() -> None:
     assert _non_null_schema(grid_parameters["distance_radius_meters"])["minimum"] == 1
     assert _non_null_schema(grid_parameters["filename_query"])["minLength"] == 1
     assert "daily view identifier" in grid_parameters["view_mode"]["description"]
-    assert "Repeatable person identifiers" in grid_parameters["person_ids"]["description"]
+    assert "Repeatable person identifiers" in (
+        grid_parameters["person_ids"]["description"]
+    )
     assert "filtered_travel_grid" in _response_examples(grid_operation, 200)
     assert "trip_window_start" in _parameter_examples(grid_parameters["start"])
     assert "anna" in _parameter_examples(grid_parameters["person_ids"])
@@ -138,7 +152,9 @@ def test_social_graph_route_documents_supported_and_rejected_filters() -> None:
     assert parameters["max_people_per_asset"]["schema"]["maximum"] == 30
     assert "seed person identifiers" in parameters["person_ids"]["description"]
     assert "rejects tag-based filtering" in parameters["tag_paths"]["description"]
-    assert "rejects filename-based filtering" in parameters["filename_query"]["description"]
+    assert "rejects filename-based filtering" in (
+        parameters["filename_query"]["description"]
+    )
     assert "trip_companions" in _response_examples(operation, 200)
     assert "unsupported_filters" in _response_examples(operation, 400)
     assert "anna" in _parameter_examples(parameters["person_ids"])
@@ -151,12 +167,12 @@ def test_manage_data_routes_document_catalog_contracts() -> None:
     persons_put = schema["paths"]["/api/manage-data/persons"]["put"]
     groups_get = schema["paths"]["/api/manage-data/person-groups"]["get"]
     groups_put = schema["paths"]["/api/manage-data/person-groups"]["put"]
-    membership_get = schema["paths"]["/api/manage-data/person-groups/{group_id}/members"][
-        "get"
-    ]
-    membership_put = schema["paths"]["/api/manage-data/person-groups/{group_id}/members"][
-        "put"
-    ]
+    membership_get = schema["paths"][
+        "/api/manage-data/person-groups/{group_id}/members"
+    ]["get"]
+    membership_put = schema["paths"][
+        "/api/manage-data/person-groups/{group_id}/members"
+    ]["put"]
 
     assert persons_get["tags"] == ["manage-data"]
     assert persons_get["summary"] == "Get persons catalog"
@@ -189,6 +205,29 @@ def test_manage_data_routes_document_catalog_contracts() -> None:
     assert membership_put["responses"]["200"]["description"] == (
         "Reloaded person-group membership state after persistence."
     )
+
+
+def test_media_routes_document_fixed_thumbnail_contract() -> None:
+    schema = _build_openapi_schema()
+    h120_operation = schema["paths"]["/media/h120/{short_id}.webp"]["get"]
+    h240_operation = schema["paths"]["/media/h240/{short_id}.webp"]["get"]
+    q200_operation = schema["paths"]["/media/q200/{short_id}.webp"]["get"]
+
+    assert h120_operation["tags"] == ["media"]
+    assert h120_operation["summary"] == "Get h120 WebP thumbnail"
+    assert h120_operation["responses"]["200"]["description"] == (
+        "Fixed WebP thumbnail for the requested asset short id."
+    )
+    assert "image/webp" in h120_operation["responses"]["200"]["content"]
+    assert "cached_h120" in h120_operation["responses"]["200"]["content"]["image/webp"][
+        "examples"
+    ]
+    assert "unknown_short_id" in _response_examples(h120_operation, 404)
+    assert "unsupported_asset" in _response_examples(h120_operation, 415)
+    assert "canonical database lookup" in h120_operation["description"]
+
+    assert h240_operation["summary"] == "Get h240 WebP thumbnail"
+    assert q200_operation["summary"] == "Get q200 WebP thumbnail"
 
 
 def _build_openapi_schema() -> dict[str, object]:

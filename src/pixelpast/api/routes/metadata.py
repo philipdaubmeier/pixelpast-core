@@ -16,7 +16,9 @@ OPENAPI_TAGS = [
     },
     {
         "name": "timeline",
-        "description": "Timeline exploration, day context preload, and day detail reads.",
+        "description": (
+            "Timeline exploration, day context preload, and day detail reads."
+        ),
     },
     {
         "name": "social",
@@ -25,6 +27,10 @@ OPENAPI_TAGS = [
     {
         "name": "manage-data",
         "description": "Manual catalog maintenance for canonical persons and groups.",
+    },
+    {
+        "name": "media",
+        "description": "Short-id-based thumbnail delivery for canonical media assets.",
     },
 ]
 
@@ -47,7 +53,10 @@ VALIDATION_ERROR_EXAMPLES = {
                 {
                     "type": "date_from_datetime_parsing",
                     "loc": ["query", "start"],
-                    "msg": "Input should be a valid date or datetime, input is too short",
+                    "msg": (
+                        "Input should be a valid date or datetime, input is too "
+                        "short"
+                    ),
                     "input": "2026-02",
                 }
             ]
@@ -60,7 +69,10 @@ VALIDATION_ERROR_EXAMPLES = {
                 {
                     "type": "date_from_datetime_parsing",
                     "loc": ["path", "day"],
-                    "msg": "Input should be a valid date or datetime, invalid date separator",
+                    "msg": (
+                        "Input should be a valid date or datetime, invalid date "
+                        "separator"
+                    ),
                     "input": "2026/07/14",
                 }
             ]
