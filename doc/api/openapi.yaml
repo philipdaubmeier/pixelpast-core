@@ -1744,6 +1744,66 @@
             "application/json":
               "schema":
                 "$ref": "#/components/schemas/HTTPValidationError"
+  "/media/orig/{short_id}":
+    "get":
+      "tags":
+        - "media"
+      "summary": "Get original media file"
+      "description": "Resolve one canonical asset through the database by public short id and serve its original media file from persisted source-aware provenance. Unlike thumbnail routes, this endpoint is allowed to pay the canonical lookup cost and preserves the original filename through `Content-Disposition`."
+      "operationId": "get_original_media_media_orig__short_id__get"
+      "parameters":
+        -
+          "name": "short_id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "string"
+            "title": "Short Id"
+      "responses":
+        "200":
+          "description": "Original media file resolved from canonical asset provenance for the requested asset short id."
+          "content":
+            "image/*":
+              "examples":
+                "jpeg_inline":
+                  "summary": "Original image with preserved filename"
+                  "value": "<<binary original image body>>"
+            "application/octet-stream":
+              "examples":
+                "jpeg_inline":
+                  "summary": "Original image with preserved filename"
+                  "value": "<<binary original image body>>"
+          "headers":
+            "Content-Disposition":
+              "description": "Inline disposition header preserving the original filename for browser open and download behavior."
+              "schema":
+                "type": "string"
+              "example": "inline; filename=\"IMG_1042.JPG\""
+        "404":
+          "description": "No matching asset exists for the short id, the canonical asset cannot resolve to an original file path, or the resolved file is missing on disk."
+          "content":
+            "application/json":
+              "examples":
+                "unknown_short_id":
+                  "summary": "Unknown asset short id"
+                  "value":
+                    "detail": "asset short id 'MISS0001' does not exist"
+                "unresolved_original_path":
+                  "summary": "Canonical asset cannot resolve to an original file path"
+                  "value":
+                    "detail": "original file path for asset 'BROKEN01' could not be resolved"
+                "missing_original":
+                  "summary": "Resolved original file no longer exists on disk"
+                  "value":
+                    "detail": "original file for asset 'PHOTO404' is missing"
+              "schema":
+                "$ref": "#/components/schemas/ApiErrorResponse"
+        "422":
+          "description": "Validation Error"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/HTTPValidationError"
 "components":
   "schemas":
     "ApiErrorResponse":
@@ -2460,4 +2520,4 @@
     "description": "Manual catalog maintenance for canonical persons and groups."
   -
     "name": "media"
-    "description": "Short-id-based thumbnail delivery for canonical media assets."
+    "description": "Short-id-based thumbnail and original-file delivery for canonical media assets."

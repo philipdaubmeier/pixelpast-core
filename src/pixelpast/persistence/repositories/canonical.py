@@ -283,6 +283,19 @@ class AssetThumbnailCandidate:
     source_type: str
 
 
+@dataclass(slots=True, frozen=True)
+class AssetOriginalCandidate:
+    """One canonical asset row enriched for original-media file resolution."""
+
+    asset_id: int
+    short_id: str
+    external_id: str
+    media_type: str
+    metadata_json: dict[str, Any] | None
+    source_type: str
+    source_config: dict[str, Any]
+
+
 class AssetRepository:
     """Repository for canonical asset upserts."""
 
@@ -556,6 +569,42 @@ class AssetMediaRepository:
             media_type=row[3],
             metadata_json=row[4],
             source_type=row[5],
+        )
+
+    def get_original_candidate_by_short_id(
+        self,
+        *,
+        short_id: str,
+    ) -> AssetOriginalCandidate | None:
+        """Return one original-media candidate resolved by public short id."""
+
+        statement = (
+            select(
+                Asset.id,
+                Asset.short_id,
+                Asset.external_id,
+                Asset.media_type,
+                Asset.metadata_json,
+                Source.type,
+                Source.config,
+            )
+            .join(Source, Source.id == Asset.source_id)
+            .where(Asset.short_id == short_id)
+            .order_by(Asset.id)
+        )
+        row = self._session.execute(statement).first()
+        if row is None:
+            return None
+
+        source_config = row[6]
+        return AssetOriginalCandidate(
+            asset_id=row[0],
+            short_id=row[1],
+            external_id=row[2],
+            media_type=row[3],
+            metadata_json=row[4],
+            source_type=row[5],
+            source_config=source_config if isinstance(source_config, dict) else {},
         )
 
     def replace_person_links(

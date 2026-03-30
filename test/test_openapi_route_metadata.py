@@ -39,7 +39,8 @@ def test_public_routes_expose_stable_openapi_tags() -> None:
         {
             "name": "media",
             "description": (
-                "Short-id-based thumbnail delivery for canonical media assets."
+                "Short-id-based thumbnail and original-file delivery for canonical "
+                "media assets."
             ),
         },
     ]
@@ -207,11 +208,12 @@ def test_manage_data_routes_document_catalog_contracts() -> None:
     )
 
 
-def test_media_routes_document_fixed_thumbnail_contract() -> None:
+def test_media_routes_document_media_delivery_contract() -> None:
     schema = _build_openapi_schema()
     h120_operation = schema["paths"]["/media/h120/{short_id}.webp"]["get"]
     h240_operation = schema["paths"]["/media/h240/{short_id}.webp"]["get"]
     q200_operation = schema["paths"]["/media/q200/{short_id}.webp"]["get"]
+    original_operation = schema["paths"]["/media/orig/{short_id}"]["get"]
 
     assert h120_operation["tags"] == ["media"]
     assert h120_operation["summary"] == "Get h120 WebP thumbnail"
@@ -228,6 +230,19 @@ def test_media_routes_document_fixed_thumbnail_contract() -> None:
 
     assert h240_operation["summary"] == "Get h240 WebP thumbnail"
     assert q200_operation["summary"] == "Get q200 WebP thumbnail"
+    assert original_operation["summary"] == "Get original media file"
+    assert original_operation["tags"] == ["media"]
+    assert original_operation["responses"]["200"]["description"] == (
+        "Original media file resolved from canonical asset provenance for the "
+        "requested asset short id."
+    )
+    assert "Content-Disposition" in original_operation["responses"]["200"]["headers"]
+    assert "jpeg_inline" in (
+        original_operation["responses"]["200"]["content"]["image/*"]["examples"]
+    )
+    assert "unknown_short_id" in _response_examples(original_operation, 404)
+    assert "unresolved_original_path" in _response_examples(original_operation, 404)
+    assert "canonical asset through the database" in original_operation["description"]
 
 
 def _build_openapi_schema() -> dict[str, object]:

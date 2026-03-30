@@ -2,6 +2,7 @@
 
 from pixelpast.persistence.repositories.canonical import (
     AssetMediaRepository,
+    AssetOriginalCandidate,
     AssetRepository,
     AssetThumbnailCandidate,
     AssetUpsertResult,
@@ -58,6 +59,7 @@ from pixelpast.persistence.repositories.timeline_read import (
 __all__ = [
     "AssetRepository",
     "AssetMediaRepository",
+    "AssetOriginalCandidate",
     "AssetThumbnailCandidate",
     "AssetUpsertResult",
     "CanonicalTimelineRepository",

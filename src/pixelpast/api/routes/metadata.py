@@ -30,7 +30,10 @@ OPENAPI_TAGS = [
     },
     {
         "name": "media",
-        "description": "Short-id-based thumbnail delivery for canonical media assets.",
+        "description": (
+            "Short-id-based thumbnail and original-file delivery for canonical "
+            "media assets."
+        ),
     },
 ]
 

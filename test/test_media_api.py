@@ -1,4 +1,4 @@
-"""Integration tests for thumbnail media delivery routes."""
+"""Integration tests for media delivery routes."""
 
 from __future__ import annotations
 
@@ -145,6 +145,149 @@ def test_thumbnail_media_reports_missing_original_files() -> None:
         assert response.status_code == 404
         assert response.json() == {
             "detail": "original file for asset 'PHOTO404' is missing"
+        }
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_original_media_serves_photo_with_inline_content_disposition() -> None:
+    workspace_root = _create_workspace_dir(prefix="media-api-original-photo")
+    runtime = None
+    try:
+        runtime = _create_runtime(workspace_root=workspace_root)
+        fixture_path = _copy_fixture_image(
+            workspace_root=workspace_root,
+            fixture_name="monalisa-1.jpg",
+        )
+        _insert_photo_asset(
+            runtime=runtime,
+            short_id="ORIG0001",
+            source_type="photos",
+            external_id=fixture_path.as_posix(),
+            metadata_json={"source_path": fixture_path.as_posix()},
+        )
+        app = create_app(settings=runtime.settings)
+
+        with TestClient(app) as client:
+            response = client.get("/media/orig/ORIG0001")
+
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "image/jpeg"
+        assert (
+            response.headers["content-disposition"]
+            == 'inline; filename="monalisa-1.jpg"'
+        )
+        assert response.content == fixture_path.read_bytes()
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_original_media_prefers_preserved_lightroom_filename() -> None:
+    workspace_root = _create_workspace_dir(prefix="media-api-original-lightroom")
+    runtime = None
+    try:
+        runtime = _create_runtime(workspace_root=workspace_root)
+        fixture_path = _copy_fixture_image(
+            workspace_root=workspace_root,
+            fixture_name="monalisa-2.jpg",
+        )
+        _insert_photo_asset(
+            runtime=runtime,
+            short_id="LRCAT001",
+            source_type="lightroom_catalog",
+            external_id="xmp:document:id",
+            metadata_json={
+                "file_path": fixture_path.as_posix(),
+                "file_name": "renamed-monalisa-2.jpg",
+                "preserved_file_name": "monalisa-2.jpg",
+            },
+        )
+        app = create_app(settings=runtime.settings)
+
+        with TestClient(app) as client:
+            response = client.get("/media/orig/LRCAT001")
+
+        assert response.status_code == 200
+        assert (
+            response.headers["content-disposition"]
+            == 'inline; filename="monalisa-2.jpg"'
+        )
+        assert response.content == fixture_path.read_bytes()
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_original_media_rejects_unknown_short_ids() -> None:
+    workspace_root = _create_workspace_dir(prefix="media-api-original-unknown")
+    runtime = None
+    try:
+        runtime = _create_runtime(workspace_root=workspace_root)
+        app = create_app(settings=runtime.settings)
+
+        with TestClient(app) as client:
+            response = client.get("/media/orig/MISS0001")
+
+        assert response.status_code == 404
+        assert response.json() == {"detail": "asset short id 'MISS0001' does not exist"}
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_original_media_rejects_assets_without_resolvable_original_path() -> None:
+    workspace_root = _create_workspace_dir(prefix="media-api-original-unresolved")
+    runtime = None
+    try:
+        runtime = _create_runtime(workspace_root=workspace_root)
+        _insert_photo_asset(
+            runtime=runtime,
+            short_id="BROKEN01",
+            source_type="spotify",
+            external_id="spotify:track:1",
+        )
+        app = create_app(settings=runtime.settings)
+
+        with TestClient(app) as client:
+            response = client.get("/media/orig/BROKEN01")
+
+        assert response.status_code == 404
+        assert response.json() == {
+            "detail": "original file path for asset 'BROKEN01' could not be resolved"
+        }
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_original_media_reports_missing_original_files() -> None:
+    workspace_root = _create_workspace_dir(prefix="media-api-original-missing")
+    runtime = None
+    try:
+        runtime = _create_runtime(workspace_root=workspace_root)
+        missing_path = workspace_root / "photos" / "missing.jpg"
+        _insert_photo_asset(
+            runtime=runtime,
+            short_id="ORIG4040",
+            source_type="photos",
+            external_id=missing_path.as_posix(),
+            metadata_json={"source_path": missing_path.as_posix()},
+        )
+        app = create_app(settings=runtime.settings)
+
+        with TestClient(app) as client:
+            response = client.get("/media/orig/ORIG4040")
+
+        assert response.status_code == 404
+        assert response.json() == {
+            "detail": "original file for asset 'ORIG4040' is missing"
         }
     finally:
         if runtime is not None:
