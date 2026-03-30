@@ -10,6 +10,10 @@ from typing import Any
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from pixelpast.persistence.asset_short_ids import (
+    build_asset_short_id_candidate,
+    generate_random_asset_short_id,
+)
 from pixelpast.persistence.models import (
     Asset,
     AssetPerson,
@@ -286,6 +290,12 @@ class AssetRepository:
         )
         return self._session.execute(statement).scalar_one_or_none()
 
+    def get_by_short_id(self, *, short_id: str) -> Asset | None:
+        """Return an asset by its stable public short identifier."""
+
+        statement = select(Asset).where(Asset.short_id == short_id)
+        return self._session.execute(statement).scalar_one_or_none()
+
     def list_external_ids_under_prefix(
         self,
         *,
@@ -328,6 +338,7 @@ class AssetRepository:
     def upsert(
         self,
         *,
+        short_id: str | None = None,
         source_id: int,
         external_id: str,
         media_type: str,
@@ -346,6 +357,7 @@ class AssetRepository:
         )
         if asset is None:
             asset = Asset(
+                short_id=short_id or self._allocate_short_id(),
                 source_id=source_id,
                 external_id=external_id,
                 media_type=media_type,
@@ -375,6 +387,7 @@ class AssetRepository:
                 asset.metadata_json != next_metadata,
             ]
         )
+        short_id_backfilled = False
         if changed:
             asset.source_id = source_id
             asset.media_type = media_type
@@ -384,11 +397,27 @@ class AssetRepository:
             asset.longitude = longitude
             asset.creator_person_id = creator_person_id
             asset.metadata_json = next_metadata
+        elif asset.short_id is None:
+            asset.short_id = short_id or self._allocate_short_id()
+            short_id_backfilled = True
         self._session.flush()
         return AssetUpsertResult(
             asset=asset,
-            status="updated" if changed else "unchanged",
+            status="updated" if changed or short_id_backfilled else "unchanged",
         )
+
+    def _allocate_short_id(self) -> str:
+        """Allocate a unique public short id for a new canonical asset."""
+
+        for attempt in range(32):
+            candidate = build_asset_short_id_candidate(
+                seed=generate_random_asset_short_id(),
+                attempt=attempt,
+            )
+            if self.get_by_short_id(short_id=candidate) is None:
+                return candidate
+
+        raise RuntimeError("Could not allocate a unique asset short id.")
 
     def replace_tag_links(self, *, asset_id: int, tag_ids: Iterable[int]) -> bool:
         """Replace all asset-tag links with the provided deterministic set."""

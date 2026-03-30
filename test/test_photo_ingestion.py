@@ -875,6 +875,61 @@ def test_photo_connector_builds_filename_and_mtime_fallbacks() -> None:
         shutil.rmtree(workspace_root, ignore_errors=True)
 
 
+def test_asset_repository_generates_and_preserves_short_id() -> None:
+    workspace_root = _create_workspace_dir(prefix="photo-short-id-upsert")
+    runtime = None
+    try:
+        photos_root = workspace_root / "photos"
+        photos_root.mkdir()
+        runtime = _create_runtime(
+            workspace_root=workspace_root,
+            photos_root=photos_root,
+        )
+        source_id = PhotoIngestionRunCoordinator().get_source_id(
+            runtime=runtime,
+            resolved_root=photos_root.resolve(),
+        )
+
+        with runtime.session_factory() as session:
+            repository = AssetRepository(session)
+            inserted = repository.upsert(
+                source_id=source_id,
+                external_id="photo-1",
+                media_type="photo",
+                timestamp=datetime(2024, 1, 1, tzinfo=UTC),
+                summary="first",
+                latitude=None,
+                longitude=None,
+                creator_person_id=None,
+                metadata_json={},
+            )
+            inserted_short_id = inserted.asset.short_id
+            updated = repository.upsert(
+                source_id=source_id,
+                external_id="photo-1",
+                media_type="photo",
+                timestamp=datetime(2024, 1, 1, tzinfo=UTC),
+                summary="renamed",
+                latitude=None,
+                longitude=None,
+                creator_person_id=None,
+                metadata_json={"updated": True},
+            )
+            fetched = repository.get_by_short_id(short_id=inserted_short_id)
+            session.commit()
+
+        assert inserted.status == "inserted"
+        assert len(inserted_short_id) == 8
+        assert updated.status == "updated"
+        assert updated.asset.short_id == inserted_short_id
+        assert fetched is not None
+        assert fetched.external_id == "photo-1"
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
 def test_asset_external_id_is_unique_at_database_level() -> None:
     workspace_root = _create_workspace_dir(prefix="photo-asset-unique")
     runtime = None

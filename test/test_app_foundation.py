@@ -104,6 +104,7 @@ def test_alembic_upgrade_head_runs() -> None:
             }
             asset_unique_constraints = inspector.get_unique_constraints("asset")
             assert {constraint["name"] for constraint in asset_unique_constraints} == {
+                "uq_asset_short_id",
                 "uq_asset_source_external_id",
             }
             source_unique_constraints = inspector.get_unique_constraints("source")
@@ -152,6 +153,7 @@ def test_alembic_upgrade_head_runs() -> None:
             } <= import_run_columns
             assert asset_columns == [
                 "id",
+                "short_id",
                 "source_id",
                 "external_id",
                 "media_type",
@@ -333,6 +335,96 @@ def test_source_external_id_upgrade_keeps_existing_rows_nullable() -> None:
             assert source.name == "Photos"
             assert source.type == "photos"
             assert source.external_id is None
+        finally:
+            upgraded_engine.dispose()
+    finally:
+        if database_path.exists():
+            database_path.unlink()
+
+
+def test_asset_short_id_upgrade_backfills_existing_rows() -> None:
+    database_dir = Path("var")
+    database_dir.mkdir(exist_ok=True)
+    database_path = database_dir / f"test-asset-short-id-{uuid4().hex}.db"
+    config = Config("alembic.ini")
+    config.attributes["database_url"] = f"sqlite:///{database_path.as_posix()}"
+
+    try:
+        command.upgrade(config, "20260329_0016")
+        engine = create_engine(f"sqlite:///{database_path.as_posix()}")
+        try:
+            with engine.begin() as connection:
+                connection.execute(
+                    text(
+                        """
+                        INSERT INTO source (id, name, type, external_id, config, created_at)
+                        VALUES (
+                            1,
+                            'Photos',
+                            'photos',
+                            'photos-root',
+                            '{}',
+                            '2026-03-30 10:00:00'
+                        )
+                        """
+                    )
+                )
+                connection.execute(
+                    text(
+                        """
+                        INSERT INTO asset (
+                            id,
+                            source_id,
+                            external_id,
+                            media_type,
+                            timestamp,
+                            summary,
+                            latitude,
+                            longitude,
+                            creator_person_id,
+                            metadata
+                        )
+                        VALUES
+                            (
+                                1,
+                                1,
+                                'photo-1',
+                                'photo',
+                                '2026-03-30 10:00:00',
+                                NULL,
+                                NULL,
+                                NULL,
+                                NULL,
+                                '{}'
+                            ),
+                            (
+                                2,
+                                1,
+                                'photo-2',
+                                'photo',
+                                '2026-03-30 10:01:00',
+                                NULL,
+                                NULL,
+                                NULL,
+                                NULL,
+                                '{}'
+                            )
+                        """
+                    )
+                )
+        finally:
+            engine.dispose()
+
+        command.upgrade(config, "head")
+        upgraded_engine = create_engine(f"sqlite:///{database_path.as_posix()}")
+        try:
+            with Session(upgraded_engine) as session:
+                assets = list(session.query(Asset).order_by(Asset.id))
+
+            assert len(assets) == 2
+            assert all(asset.short_id is not None for asset in assets)
+            assert all(len(asset.short_id) == 8 for asset in assets)
+            assert len({asset.short_id for asset in assets}) == 2
         finally:
             upgraded_engine.dispose()
     finally:

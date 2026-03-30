@@ -20,6 +20,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.orm import relationship
 
+from pixelpast.persistence.asset_short_ids import generate_random_asset_short_id
 from pixelpast.persistence.base import Base
 from pixelpast.persistence.types import UTCDateTime
 
@@ -151,12 +152,19 @@ class Asset(Base):
 
     __tablename__ = "asset"
     __table_args__ = (
+        CheckConstraint("length(short_id) = 8", name="ck_asset_short_id_length"),
         Index("ix_asset_timestamp", "timestamp"),
         Index("ix_asset_source_id", "source_id"),
+        UniqueConstraint("short_id", name="uq_asset_short_id"),
         UniqueConstraint("source_id", "external_id", name="uq_asset_source_external_id"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    short_id: Mapped[str] = mapped_column(
+        String(8),
+        nullable=False,
+        default=generate_random_asset_short_id,
+    )
     source_id: Mapped[int] = mapped_column(ForeignKey("source.id"), nullable=False)
     external_id: Mapped[str] = mapped_column(String(512), nullable=False)
     media_type: Mapped[str] = mapped_column(String(100), nullable=False)
