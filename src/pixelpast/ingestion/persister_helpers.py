@@ -57,6 +57,7 @@ def persist_asset_candidate(
     tag_repository: TagRepository,
     person_repository: PersonRepository,
     asset: AssetCandidateLike,
+    folder_id: int | None = None,
 ) -> str:
     """Persist one asset candidate with shared link replacement mechanics."""
 
@@ -72,6 +73,7 @@ def persist_asset_candidate(
         summary=asset.summary,
         latitude=asset.latitude,
         longitude=asset.longitude,
+        folder_id=folder_id,
         creator_person_id=creator_person_id,
         metadata_json=asset.metadata_json,
     )

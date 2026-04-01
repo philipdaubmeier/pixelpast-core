@@ -26,6 +26,7 @@ from pixelpast.ingestion.photos import (
 from pixelpast.ingestion.photos.discovery import PhotoFileDiscoverer
 from pixelpast.persistence.models import (
     Asset,
+    AssetFolder,
     AssetPerson,
     AssetTag,
     JobRun,
@@ -674,6 +675,139 @@ def test_photo_ingestion_surfaces_missing_from_source_without_deleting_assets() 
             )
 
         assert len(assets) == 2
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_photo_ingestion_persists_folder_hierarchy_and_keeps_reruns_idempotent() -> None:
+    workspace_root = _create_workspace_dir(prefix="photo-folder-hierarchy")
+    runtime = None
+    try:
+        photos_root = workspace_root / "photos"
+        (photos_root / "2024" / "Trip A").mkdir(parents=True)
+        (photos_root / "2024" / "Trip B").mkdir(parents=True)
+        first_path = photos_root / "2024" / "Trip A" / "first.jpg"
+        second_path = photos_root / "2024" / "Trip B" / "second.jpg"
+        first_path.write_bytes(b"photo")
+        second_path.write_bytes(b"photo")
+
+        runtime = _create_runtime(
+            workspace_root=workspace_root,
+            photos_root=photos_root,
+        )
+        connector = _DirectoryBackedConnector()
+
+        first_result = PhotoIngestionService(connector=connector).ingest(runtime=runtime)
+        second_result = PhotoIngestionService(connector=connector).ingest(runtime=runtime)
+
+        assert first_result.inserted_asset_count == 2
+        assert second_result.inserted_asset_count == 0
+        assert second_result.updated_asset_count == 0
+        assert second_result.unchanged_asset_count == 2
+
+        with runtime.session_factory() as session:
+            folders = list(
+                session.execute(
+                    select(AssetFolder).order_by(AssetFolder.path, AssetFolder.id)
+                ).scalars()
+            )
+            assets = list(
+                session.execute(select(Asset).order_by(Asset.external_id)).scalars()
+            )
+
+        folders_by_path = {folder.path: folder for folder in folders}
+        assets_by_name = {Path(asset.external_id).name: asset for asset in assets}
+
+        assert [folder.path for folder in folders] == [
+            "photos",
+            "photos/2024",
+            "photos/2024/Trip A",
+            "photos/2024/Trip B",
+        ]
+        assert folders_by_path["photos"].parent_id is None
+        assert (
+            folders_by_path["photos/2024"].parent_id
+            == folders_by_path["photos"].id
+        )
+        assert (
+            folders_by_path["photos/2024/Trip A"].parent_id
+            == folders_by_path["photos/2024"].id
+        )
+        assert (
+            folders_by_path["photos/2024/Trip B"].parent_id
+            == folders_by_path["photos/2024"].id
+        )
+        assert (
+            assets_by_name["first.jpg"].folder_id
+            == folders_by_path["photos/2024/Trip A"].id
+        )
+        assert (
+            assets_by_name["second.jpg"].folder_id
+            == folders_by_path["photos/2024/Trip B"].id
+        )
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_photo_ingestion_rerun_assigns_folder_id_to_legacy_asset_without_it() -> None:
+    workspace_root = _create_workspace_dir(prefix="photo-folder-rerun")
+    runtime = None
+    try:
+        photos_root = workspace_root / "photos"
+        (photos_root / "2025" / "Trip").mkdir(parents=True)
+        photo_path = photos_root / "2025" / "Trip" / "legacy.jpg"
+        photo_path.write_bytes(b"photo")
+
+        runtime = _create_runtime(
+            workspace_root=workspace_root,
+            photos_root=photos_root,
+        )
+        source_id = PhotoIngestionRunCoordinator().get_source_id(
+            runtime=runtime,
+            resolved_root=photos_root.resolve(),
+        )
+
+        with runtime.session_factory() as session:
+            AssetRepository(session).upsert(
+                source_id=source_id,
+                external_id=photo_path.resolve().as_posix(),
+                media_type="photo",
+                timestamp=datetime(2024, 1, 1, tzinfo=UTC),
+                summary="legacy",
+                latitude=None,
+                longitude=None,
+                folder_id=None,
+                creator_person_id=None,
+                metadata_json={"source_path": photo_path.resolve().as_posix()},
+            )
+            session.commit()
+
+        result = PhotoIngestionService(connector=_DirectoryBackedConnector()).ingest(
+            runtime=runtime
+        )
+
+        assert result.inserted_asset_count == 0
+        assert result.updated_asset_count == 1
+        assert result.unchanged_asset_count == 0
+
+        with runtime.session_factory() as session:
+            asset = session.execute(select(Asset)).scalar_one()
+            folders = list(
+                session.execute(
+                    select(AssetFolder).order_by(AssetFolder.path, AssetFolder.id)
+                ).scalars()
+            )
+
+        assert asset.folder_id is not None
+        assert [folder.path for folder in folders] == [
+            "photos",
+            "photos/2025",
+            "photos/2025/Trip",
+        ]
     finally:
         if runtime is not None:
             runtime.engine.dispose()
@@ -1388,8 +1522,9 @@ class _DirectoryBackedConnector(PhotoConnector):
         metadata=None,
     ) -> PhotoAssetCandidate:
         del root, metadata
+        resolved_path = path.resolve()
         return PhotoAssetCandidate(
-            external_id=path.resolve().as_posix(),
+            external_id=resolved_path.as_posix(),
             media_type="photo",
             timestamp=datetime(2024, 1, 1, 0, 0, tzinfo=UTC),
             summary=path.stem,
@@ -1399,7 +1534,10 @@ class _DirectoryBackedConnector(PhotoConnector):
             tag_paths=(),
             asset_tag_paths=(),
             persons=(),
-            metadata_json={"name": path.name},
+            metadata_json={
+                "name": path.name,
+                "source_path": resolved_path.as_posix(),
+            },
         )
 
 

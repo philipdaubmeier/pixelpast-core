@@ -17,6 +17,7 @@ from pixelpast.ingestion.photos.persist import PhotoAssetPersister
 from pixelpast.ingestion.photos.progress import PhotoIngestionProgressTracker
 from pixelpast.ingestion.persistence_base import SessionBoundPersistenceScopeBase
 from pixelpast.persistence.repositories import (
+    AssetFolderRepository,
     AssetRepository,
     PersonRepository,
     TagRepository,
@@ -44,7 +45,9 @@ class PhotoIngestionPersistenceScope(SessionBoundPersistenceScopeBase):
         self._asset_repository = AssetRepository(self._session)
         self._persister = PhotoAssetPersister(
             source_id=source_id,
+            root_path=resolved_root.as_posix(),
             asset_repository=self._asset_repository,
+            asset_folder_repository=AssetFolderRepository(self._session),
             tag_repository=TagRepository(self._session),
             person_repository=PersonRepository(self._session),
         )
