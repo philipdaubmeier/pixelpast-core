@@ -163,7 +163,7 @@ function buildAlbumTags(
   );
   const contextTags = (context?.tags ?? []).map((tag) => ({
     path: tag.path,
-    label: tag.assetCount > 1 ? `${tag.label} / ${tag.assetCount}` : tag.label,
+    label: tag.label,
   }));
 
   return buildVisibleTags(
@@ -243,14 +243,14 @@ function TreeSection({
       return [
         <div
           key={node.id}
-          className="flex items-center gap-2 rounded-2xl px-2 py-1.5"
-          style={{ paddingLeft: `${depth * 0.9 + 0.5}rem` }}
+          className="flex items-center gap-1 px-1 py-0.5"
+          style={{ paddingLeft: `${depth * 0.65 + 0.1}rem` }}
         >
           <button
             type="button"
             onClick={() => (hasChildren ? onToggleExpanded(node.id) : undefined)}
             disabled={!hasChildren}
-            className="flex h-6 w-6 items-center justify-center rounded-full text-xs text-slate-500 transition hover:bg-white disabled:cursor-default disabled:opacity-35"
+            className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-white text-[10px] text-slate-500 transition hover:text-slate-800 disabled:cursor-default disabled:opacity-55"
             aria-label={hasChildren ? `Toggle ${node.name}` : `${node.name} has no children`}
           >
             {hasChildren ? (isExpanded ? "-" : "+") : "."}
@@ -259,26 +259,20 @@ function TreeSection({
             type="button"
             onClick={() => onSelectNode(node.id)}
             className={[
-              "flex min-w-0 flex-1 items-center justify-between gap-3 rounded-2xl border px-3 py-2 text-left transition",
+              "flex min-w-0 flex-1 items-center justify-between gap-2 rounded-xl border px-2 py-1 text-left transition",
               isSelected
                 ? "border-slate-900 bg-slate-900 text-white shadow-[0_10px_30px_rgba(15,23,42,0.12)]"
                 : "border-[color:var(--pp-border)] bg-white/65 text-slate-700 hover:bg-white",
             ].join(" ")}
           >
             <span className="min-w-0">
-              <span className="block truncate text-sm font-medium">{node.name}</span>
-              <span
-                className={[
-                  "block truncate text-[11px]",
-                  isSelected ? "text-slate-200" : "text-slate-500",
-                ].join(" ")}
-              >
-                {node.path}
+              <span className="block truncate text-[11px] font-medium leading-4">
+                {node.name}
               </span>
             </span>
             <span
               className={[
-                "shrink-0 rounded-full px-2 py-1 text-[11px] font-semibold",
+                "shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
                 isSelected ? "bg-white/15 text-white" : "bg-stone-100 text-slate-600",
               ].join(" ")}
             >
@@ -294,19 +288,19 @@ function TreeSection({
   return (
     <PanelCard title={title}>
       {state === "loading" ? (
-        <div className="flex h-full min-h-28 items-center justify-center rounded-[22px] border border-dashed border-[color:var(--pp-border)] bg-white/35 px-4 text-center text-sm text-slate-500">
+        <div className="flex h-full min-h-20 items-center justify-center rounded-[16px] border border-dashed border-[color:var(--pp-border)] bg-white/35 px-2 text-center text-xs text-slate-500">
           Loading {title.toLowerCase()}.
         </div>
       ) : state === "error" ? (
-        <div className="flex h-full min-h-28 items-center justify-center rounded-[22px] border border-rose-200 bg-rose-50 px-4 text-center text-sm text-rose-700">
+        <div className="flex h-full min-h-20 items-center justify-center rounded-[16px] border border-rose-200 bg-rose-50 px-2 text-center text-xs text-rose-700">
           {error ?? `Unable to load ${title.toLowerCase()}.`}
         </div>
       ) : nodes.length === 0 ? (
-        <div className="flex h-full min-h-28 items-center justify-center rounded-[22px] border border-dashed border-[color:var(--pp-border)] bg-white/35 px-4 text-center text-sm text-slate-500">
+        <div className="flex h-full min-h-20 items-center justify-center rounded-[16px] border border-dashed border-[color:var(--pp-border)] bg-white/35 px-2 text-center text-xs text-slate-500">
           No {title.toLowerCase()} are available.
         </div>
       ) : (
-        <div className="thin-scrollbar -mx-1 h-full overflow-y-auto px-1">
+        <div className="thin-scrollbar h-full overflow-y-auto">
           {renderBranch(null, 0)}
         </div>
       )}
@@ -843,7 +837,7 @@ export function PhotoAlbumView({
 
   return (
     <div className="grid h-full min-h-0 gap-2 xl:grid-cols-[19rem_minmax(0,1fr)_23rem]">
-      <aside className="grid min-h-0 gap-2 xl:grid-rows-[minmax(0,1fr)_minmax(0,1fr)]">
+      <aside className="grid min-h-0 overflow-hidden gap-1 xl:grid-rows-[minmax(0,1fr)_minmax(0,1fr)]">
         <TreeSection
           title="Folders"
           nodes={folderNodes}
@@ -878,47 +872,38 @@ export function PhotoAlbumView({
         />
       </aside>
 
-      <section className="panel-surface flex min-h-0 flex-col overflow-hidden p-3 lg:p-3.5">
-        <div className="flex items-start justify-between gap-4 border-b border-[color:rgba(98,80,46,0.12)] pb-3">
-          <div>
-            <h2 className="text-xl font-semibold text-slate-950">
-              {listing?.selection.name ?? "Photo Album"}
-            </h2>
-            <p className="mt-1 text-sm text-slate-500">
-              {listing?.selection.path ??
-                "Browse source folders and Lightroom collections without leaving the shared exploration shell."}
-            </p>
-          </div>
+      <section className="panel-surface flex min-h-0 flex-col overflow-hidden p-1.5 lg:p-2">
+        <div className="flex items-center justify-end pb-1">
           {selectedAssetId !== null ? (
             <button
               type="button"
               onClick={() => onSelectedAssetChange(null)}
-              className="rounded-full border border-[color:var(--pp-border)] bg-white/75 px-3 py-1.5 text-sm text-slate-700 transition hover:bg-white"
+              className="rounded-full border border-[color:var(--pp-border)] bg-white/75 px-2 py-1 text-xs text-slate-700 transition hover:bg-white"
             >
               Back to grid
             </button>
           ) : null}
         </div>
-        <div className="mt-3 min-h-0 flex-1">
+        <div className="min-h-0 flex-1">
           {listingState === "loading" ? (
-            <div className="flex h-full min-h-[18rem] items-center justify-center rounded-[28px] border border-dashed border-[color:var(--pp-border)] bg-white/35 px-6 text-center text-sm text-slate-500">
+            <div className="flex h-full min-h-[18rem] items-center justify-center rounded-[18px] border border-dashed border-[color:var(--pp-border)] bg-white/35 px-4 text-center text-sm text-slate-500">
               Loading album assets for the current selection.
             </div>
           ) : listingState === "error" ? (
-            <div className="flex h-full min-h-[18rem] items-center justify-center rounded-[28px] border border-rose-200 bg-rose-50 px-6 text-center text-sm text-rose-700">
+            <div className="flex h-full min-h-[18rem] items-center justify-center rounded-[18px] border border-rose-200 bg-rose-50 px-4 text-center text-sm text-rose-700">
               {listingError ?? "Album assets could not be loaded."}
             </div>
           ) : listing === null ? (
-            <div className="flex h-full min-h-[18rem] items-center justify-center rounded-[28px] border border-dashed border-[color:var(--pp-border)] bg-white/35 px-6 text-center text-sm text-slate-500">
+            <div className="flex h-full min-h-[18rem] items-center justify-center rounded-[18px] border border-dashed border-[color:var(--pp-border)] bg-white/35 px-4 text-center text-sm text-slate-500">
               Select a folder or collection to open the album surface.
             </div>
           ) : listing.items.length === 0 ? (
-            <div className="flex h-full min-h-[18rem] items-center justify-center rounded-[28px] border border-dashed border-[color:var(--pp-border)] bg-white/35 px-6 text-center text-sm text-slate-500">
+            <div className="flex h-full min-h-[18rem] items-center justify-center rounded-[18px] border border-dashed border-[color:var(--pp-border)] bg-white/35 px-4 text-center text-sm text-slate-500">
               No assets matched the current global filters in this selection.
             </div>
           ) : selectedAssetId !== null && detail !== null ? (
-            <div className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] gap-3">
-              <div className="min-h-0 overflow-auto pr-1">
+            <div className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] gap-1">
+              <div className="min-h-0 overflow-auto">
                 <FocusImage
                   detail={detail}
                   hoveredFaceName={
@@ -931,7 +916,7 @@ export function PhotoAlbumView({
                   }
                 />
               </div>
-              <div className="thin-scrollbar flex gap-3 overflow-x-auto pb-1">
+              <div className="thin-scrollbar flex gap-1 overflow-x-auto pb-1">
                 {listing.items.map((item) => (
                   <button
                     key={item.id}
@@ -940,27 +925,24 @@ export function PhotoAlbumView({
                     onMouseLeave={() => setHoveredAssetId(null)}
                     onClick={() => onSelectedAssetChange(item.id)}
                     className={[
-                      "group w-28 shrink-0 rounded-[24px] border p-2 text-left transition",
+                      "group w-24 shrink-0 p-0 text-left transition",
                       item.id === selectedAssetId
-                        ? "border-slate-900 bg-slate-900 text-white"
-                        : "border-[color:var(--pp-border)] bg-white/70 text-slate-700 hover:bg-white",
+                        ? "opacity-100"
+                        : "opacity-85 hover:opacity-100",
                     ].join(" ")}
                   >
                     <img
                       src={item.thumbnailUrl}
                       alt={item.title}
-                      className="h-20 w-full rounded-[18px] object-cover"
+                      className="h-20 w-full object-cover"
                     />
-                    <div className="mt-2 truncate text-xs font-medium">
-                      {item.title}
-                    </div>
                   </button>
                 ))}
               </div>
             </div>
           ) : (
-            <div className="thin-scrollbar h-full overflow-y-auto pr-1">
-              <div className="grid grid-cols-[repeat(auto-fill,minmax(10rem,1fr))] gap-3">
+            <div className="thin-scrollbar h-full overflow-y-auto">
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(8rem,1fr))] gap-1">
                 {listing.items.map((item) => (
                   <button
                     key={item.id}
@@ -968,21 +950,13 @@ export function PhotoAlbumView({
                     onMouseEnter={() => setHoveredAssetId(item.id)}
                     onMouseLeave={() => setHoveredAssetId(null)}
                     onClick={() => onSelectedAssetChange(item.id)}
-                    className="group overflow-hidden rounded-[24px] border border-[color:var(--pp-border)] bg-white/72 p-2 text-left shadow-[0_14px_30px_rgba(61,44,15,0.06)] transition hover:-translate-y-0.5 hover:bg-white"
+                    className="group overflow-hidden p-0 text-left transition hover:opacity-95"
                   >
                     <img
                       src={item.thumbnailUrl}
                       alt={item.title}
-                      className="h-40 w-full rounded-[18px] object-cover"
+                      className="h-32 w-full object-cover"
                     />
-                    <div className="px-1 pb-1 pt-3">
-                      <div className="truncate text-sm font-medium text-slate-900">
-                        {item.title}
-                      </div>
-                      <div className="mt-1 text-xs text-slate-500">
-                        {formatTimestamp(item.timestamp)}
-                      </div>
-                    </div>
                   </button>
                 ))}
               </div>
