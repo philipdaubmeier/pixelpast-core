@@ -411,30 +411,32 @@ function FocusImage({
   hoveredFaceName: string | null;
 }) {
   return (
-    <div className="relative overflow-hidden rounded-[30px] border border-[color:var(--pp-border)] bg-stone-950/90 shadow-[0_24px_60px_rgba(15,23,42,0.2)]">
-      <img
-        src={detail.originalUrl}
-        alt={detail.title}
-        className="max-h-[34rem] w-full object-contain"
-      />
-      {detail.faceRegions.map((region) => (
-        <div
-          key={`${region.name}-${region.left}-${region.top}`}
-          className="pointer-events-none absolute border-2 border-amber-400 bg-amber-200/10 shadow-[0_0_0_1px_rgba(255,255,255,0.25)]"
-          style={{
-            left: `${region.left * 100}%`,
-            top: `${region.top * 100}%`,
-            width: `${(region.right - region.left) * 100}%`,
-            height: `${(region.bottom - region.top) * 100}%`,
-            opacity:
-              hoveredFaceName === null || hoveredFaceName === region.name ? 1 : 0.32,
-          }}
-        >
-          <span className="absolute left-1 top-1 rounded-full bg-amber-400 px-2 py-0.5 text-[10px] font-semibold text-slate-950">
-            {region.name}
-          </span>
-        </div>
-      ))}
+    <div className="flex min-h-full items-center justify-center overflow-auto rounded-[30px] border border-[color:var(--pp-border)] bg-stone-950/90 p-3 shadow-[0_24px_60px_rgba(15,23,42,0.2)]">
+      <div className="relative inline-block">
+        <img
+          src={detail.originalUrl}
+          alt={detail.title}
+          className="block max-h-[34rem] max-w-full"
+        />
+        {detail.faceRegions.map((region) => (
+          <div
+            key={`${region.name}-${region.left}-${region.top}`}
+            className="pointer-events-none absolute border-2 border-amber-400 bg-amber-200/10 shadow-[0_0_0_1px_rgba(255,255,255,0.25)]"
+            style={{
+              left: `${region.left * 100}%`,
+              top: `${region.top * 100}%`,
+              width: `${(region.right - region.left) * 100}%`,
+              height: `${(region.bottom - region.top) * 100}%`,
+              opacity:
+                hoveredFaceName === null || hoveredFaceName === region.name ? 1 : 0.32,
+            }}
+          >
+            <span className="absolute left-1 top-1 rounded-full bg-amber-400 px-2 py-0.5 text-[10px] font-semibold text-slate-950">
+              {region.name}
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
