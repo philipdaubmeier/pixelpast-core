@@ -18,93 +18,123 @@ def upgrade() -> None:
     """Create album-navigation tables and hydrate them from existing assets."""
 
     connection = op.get_bind()
+    inspector = sa.inspect(connection)
+    _drop_leftover_batch_table(connection=connection, table_name="_alembic_tmp_asset")
 
-    op.create_table(
-        "asset_folder",
-        sa.Column("id", sa.Integer(), primary_key=True),
-        sa.Column("source_id", sa.Integer(), sa.ForeignKey("source.id"), nullable=False),
-        sa.Column(
-            "parent_id",
-            sa.Integer(),
-            sa.ForeignKey("asset_folder.id"),
-            nullable=True,
-        ),
-        sa.Column("name", sa.String(length=255), nullable=False),
-        sa.Column("path", sa.String(length=2048), nullable=False),
-        sa.UniqueConstraint("source_id", "path", name="uq_asset_folder_source_path"),
-    )
-    op.create_index(
-        "ix_asset_folder_source_parent",
-        "asset_folder",
-        ["source_id", "parent_id"],
-    )
-
-    op.create_table(
-        "asset_collection",
-        sa.Column("id", sa.Integer(), primary_key=True),
-        sa.Column("source_id", sa.Integer(), sa.ForeignKey("source.id"), nullable=False),
-        sa.Column(
-            "parent_id",
-            sa.Integer(),
-            sa.ForeignKey("asset_collection.id"),
-            nullable=True,
-        ),
-        sa.Column("name", sa.String(length=255), nullable=False),
-        sa.Column("path", sa.String(length=2048), nullable=False),
-        sa.Column("external_id", sa.String(length=512), nullable=False),
-        sa.Column("collection_type", sa.String(length=100), nullable=False),
-        sa.Column("metadata", sa.JSON(), nullable=True),
-        sa.UniqueConstraint(
-            "source_id",
-            "external_id",
-            name="uq_asset_collection_source_external_id",
-        ),
-        sa.UniqueConstraint(
-            "source_id",
-            "path",
-            name="uq_asset_collection_source_path",
-        ),
-    )
-    op.create_index(
-        "ix_asset_collection_source_parent",
-        "asset_collection",
-        ["source_id", "parent_id"],
-    )
-
-    op.create_table(
-        "asset_collection_item",
-        sa.Column(
-            "collection_id",
-            sa.Integer(),
-            sa.ForeignKey("asset_collection.id"),
-            nullable=False,
-        ),
-        sa.Column("asset_id", sa.Integer(), sa.ForeignKey("asset.id"), nullable=False),
-        sa.PrimaryKeyConstraint("collection_id", "asset_id"),
-        sa.UniqueConstraint(
-            "collection_id",
-            "asset_id",
-            name="uq_asset_collection_item_collection_asset",
-        ),
-    )
-    op.create_index(
-        "ix_asset_collection_item_asset_id",
-        "asset_collection_item",
-        ["asset_id"],
-    )
-
-    with op.batch_alter_table("asset") as batch_op:
-        batch_op.add_column(sa.Column("folder_id", sa.Integer(), nullable=True))
-        batch_op.create_foreign_key(
-            "fk_asset_folder_id_asset_folder",
+    if not inspector.has_table("asset_folder"):
+        op.create_table(
             "asset_folder",
-            ["folder_id"],
-            ["id"],
+            sa.Column("id", sa.Integer(), primary_key=True),
+            sa.Column(
+                "source_id",
+                sa.Integer(),
+                sa.ForeignKey("source.id"),
+                nullable=False,
+            ),
+            sa.Column(
+                "parent_id",
+                sa.Integer(),
+                sa.ForeignKey("asset_folder.id"),
+                nullable=True,
+            ),
+            sa.Column("name", sa.String(length=255), nullable=False),
+            sa.Column("path", sa.String(length=2048), nullable=False),
+            sa.UniqueConstraint("source_id", "path", name="uq_asset_folder_source_path"),
         )
-        batch_op.create_index("ix_asset_folder_id", ["folder_id"])
+    if not _has_index(inspector=inspector, table_name="asset_folder", index_name="ix_asset_folder_source_parent"):
+        op.create_index(
+            "ix_asset_folder_source_parent",
+            "asset_folder",
+            ["source_id", "parent_id"],
+        )
+
+    inspector = sa.inspect(connection)
+    if not inspector.has_table("asset_collection"):
+        op.create_table(
+            "asset_collection",
+            sa.Column("id", sa.Integer(), primary_key=True),
+            sa.Column(
+                "source_id",
+                sa.Integer(),
+                sa.ForeignKey("source.id"),
+                nullable=False,
+            ),
+            sa.Column(
+                "parent_id",
+                sa.Integer(),
+                sa.ForeignKey("asset_collection.id"),
+                nullable=True,
+            ),
+            sa.Column("name", sa.String(length=255), nullable=False),
+            sa.Column("path", sa.String(length=2048), nullable=False),
+            sa.Column("external_id", sa.String(length=512), nullable=False),
+            sa.Column("collection_type", sa.String(length=100), nullable=False),
+            sa.Column("metadata", sa.JSON(), nullable=True),
+            sa.UniqueConstraint(
+                "source_id",
+                "external_id",
+                name="uq_asset_collection_source_external_id",
+            ),
+            sa.UniqueConstraint(
+                "source_id",
+                "path",
+                name="uq_asset_collection_source_path",
+            ),
+        )
+    if not _has_index(inspector=inspector, table_name="asset_collection", index_name="ix_asset_collection_source_parent"):
+        op.create_index(
+            "ix_asset_collection_source_parent",
+            "asset_collection",
+            ["source_id", "parent_id"],
+        )
+
+    inspector = sa.inspect(connection)
+    if not inspector.has_table("asset_collection_item"):
+        op.create_table(
+            "asset_collection_item",
+            sa.Column(
+                "collection_id",
+                sa.Integer(),
+                sa.ForeignKey("asset_collection.id"),
+                nullable=False,
+            ),
+            sa.Column("asset_id", sa.Integer(), sa.ForeignKey("asset.id"), nullable=False),
+            sa.PrimaryKeyConstraint("collection_id", "asset_id"),
+            sa.UniqueConstraint(
+                "collection_id",
+                "asset_id",
+                name="uq_asset_collection_item_collection_asset",
+            ),
+        )
+    if not _has_index(inspector=inspector, table_name="asset_collection_item", index_name="ix_asset_collection_item_asset_id"):
+        op.create_index(
+            "ix_asset_collection_item_asset_id",
+            "asset_collection_item",
+            ["asset_id"],
+        )
+
+    inspector = sa.inspect(connection)
+    asset_columns = {column["name"] for column in inspector.get_columns("asset")}
+    asset_indexes = {index["name"] for index in inspector.get_indexes("asset")}
+    if "folder_id" not in asset_columns:
+        _drop_leftover_batch_table(connection=connection, table_name="_alembic_tmp_asset")
+        with op.batch_alter_table("asset") as batch_op:
+            batch_op.add_column(sa.Column("folder_id", sa.Integer(), nullable=True))
+            batch_op.create_foreign_key(
+                "fk_asset_folder_id_asset_folder",
+                "asset_folder",
+                ["folder_id"],
+                ["id"],
+            )
+            batch_op.create_index("ix_asset_folder_id", ["folder_id"])
+    elif "ix_asset_folder_id" not in asset_indexes:
+        _drop_leftover_batch_table(connection=connection, table_name="_alembic_tmp_asset")
+        with op.batch_alter_table("asset") as batch_op:
+            batch_op.create_index("ix_asset_folder_id", ["folder_id"])
 
     _backfill_album_navigation(connection)
 
+    _drop_leftover_batch_table(connection=connection, table_name="_alembic_tmp_asset")
     with op.batch_alter_table(
         "asset",
         recreate="always",
@@ -130,6 +160,9 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """Drop album-navigation storage structures."""
+
+    connection = op.get_bind()
+    _drop_leftover_batch_table(connection=connection, table_name="_alembic_tmp_asset")
 
     with op.batch_alter_table("asset") as batch_op:
         batch_op.drop_index("ix_asset_folder_id")
@@ -306,7 +339,7 @@ def _get_or_create_folder_tree(
         cache_key = (source_id, current_path)
         folder_id = folder_cache.get(cache_key)
         if folder_id is None:
-            result = connection.execute(
+            connection.execute(
                 sa.insert(asset_folder_table).values(
                     source_id=source_id,
                     parent_id=parent_id,
@@ -314,7 +347,12 @@ def _get_or_create_folder_tree(
                     path=current_path,
                 )
             )
-            folder_id = int(result.inserted_primary_key[0])
+            folder_id = _load_folder_id(
+                connection=connection,
+                asset_folder_table=asset_folder_table,
+                source_id=source_id,
+                path=current_path,
+            )
             folder_cache[cache_key] = folder_id
         parent_id = folder_id
 
@@ -335,7 +373,7 @@ def _get_or_create_collection(
     if cached is not None:
         return int(cached["id"])
 
-    result = connection.execute(
+    connection.execute(
         sa.insert(asset_collection_table).values(
             source_id=source_id,
             parent_id=None,
@@ -346,7 +384,12 @@ def _get_or_create_collection(
             metadata=collection_spec["metadata"],
         )
     )
-    collection_id = int(result.inserted_primary_key[0])
+    collection_id = _load_collection_id(
+        connection=connection,
+        asset_collection_table=asset_collection_table,
+        source_id=source_id,
+        external_id=str(collection_spec["external_id"]),
+    )
     collection_cache[cache_key] = {
         "id": collection_id,
         "source_id": source_id,
@@ -377,6 +420,36 @@ def _extract_folder_path(
     if isinstance(file_path, str):
         return _normalize_filesystem_folder_path(file_path)
     return None
+
+
+def _load_folder_id(
+    *,
+    connection,
+    asset_folder_table,
+    source_id: int,
+    path: str,
+) -> int:
+    folder_id = connection.execute(
+        sa.select(asset_folder_table.c.id)
+        .where(asset_folder_table.c.source_id == source_id)
+        .where(asset_folder_table.c.path == path)
+    ).scalar_one()
+    return int(folder_id)
+
+
+def _load_collection_id(
+    *,
+    connection,
+    asset_collection_table,
+    source_id: int,
+    external_id: str,
+) -> int:
+    collection_id = connection.execute(
+        sa.select(asset_collection_table.c.id)
+        .where(asset_collection_table.c.source_id == source_id)
+        .where(asset_collection_table.c.external_id == external_id)
+    ).scalar_one()
+    return int(collection_id)
 
 
 def _build_photo_folder_path(
@@ -473,3 +546,16 @@ def _parent_navigation_path(path: str) -> str | None:
         return None
     parent_path = path.rsplit("/", 1)[0]
     return parent_path or None
+
+
+def _has_index(*, inspector, table_name: str, index_name: str) -> bool:
+    return any(
+        index.get("name") == index_name
+        for index in inspector.get_indexes(table_name)
+    )
+
+
+def _drop_leftover_batch_table(*, connection, table_name: str) -> None:
+    inspector = sa.inspect(connection)
+    if inspector.has_table(table_name):
+        connection.execute(sa.text(f"DROP TABLE {table_name}"))
