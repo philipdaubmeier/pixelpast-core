@@ -708,6 +708,228 @@
                         "input": "2026/07/14"
               "schema":
                 "$ref": "#/components/schemas/ApiValidationErrorResponse"
+  "/api/albums/folders/{folder_id}/context":
+    "get":
+      "tags":
+        - "album"
+      "summary": "Get album folder context"
+      "description": "Return the stable right-column context for one selected physical folder. The response includes aggregate people, tags, and map points plus per-asset lightweight highlight links so thumbnail hover stays local."
+      "operationId": "get_album_folder_context_api_albums_folders__folder_id__context_get"
+      "parameters":
+        -
+          "name": "folder_id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "integer"
+            "title": "Folder Id"
+        -
+          "name": "person_ids"
+          "in": "query"
+          "required": false
+          "schema":
+            "type": "array"
+            "items":
+              "type": "integer"
+            "default": []
+            "title": "Person Ids"
+        -
+          "name": "tag_paths"
+          "in": "query"
+          "required": false
+          "schema":
+            "type": "array"
+            "items":
+              "type": "string"
+            "default": []
+            "title": "Tag Paths"
+        -
+          "name": "location_geometry"
+          "in": "query"
+          "required": false
+          "schema":
+            "anyOf":
+              -
+                "type": "string"
+              -
+                "type": "null"
+            "title": "Location Geometry"
+        -
+          "name": "distance_latitude"
+          "in": "query"
+          "required": false
+          "schema":
+            "anyOf":
+              -
+                "type": "number"
+                "maximum": 90
+                "minimum": -90
+              -
+                "type": "null"
+            "title": "Distance Latitude"
+        -
+          "name": "distance_longitude"
+          "in": "query"
+          "required": false
+          "schema":
+            "anyOf":
+              -
+                "type": "number"
+                "maximum": 180
+                "minimum": -180
+              -
+                "type": "null"
+            "title": "Distance Longitude"
+        -
+          "name": "distance_radius_meters"
+          "in": "query"
+          "required": false
+          "schema":
+            "anyOf":
+              -
+                "type": "integer"
+                "minimum": 1
+              -
+                "type": "null"
+            "title": "Distance Radius Meters"
+        -
+          "name": "filename_query"
+          "in": "query"
+          "required": false
+          "schema":
+            "anyOf":
+              -
+                "type": "string"
+                "minLength": 1
+              -
+                "type": "null"
+            "title": "Filename Query"
+      "responses":
+        "200":
+          "description": "Stable album context for one folder selection."
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/AlbumContextResponse"
+              "examples":
+                "folder_stable_context":
+                  "summary": "Stable album context with per-asset hover highlights"
+                  "value":
+                    "supported_filters":
+                      - "person_ids"
+                      - "tag_paths"
+                      - "filename_query"
+                    "applied_filters":
+                      "person_ids":
+                        - 1
+                      "tag_paths":
+                        - "travel/italy"
+                    "selection":
+                      "node_kind": "folder"
+                      "id": 3
+                      "source_id": 2
+                      "source_name": "Photos"
+                      "source_type": "photos"
+                      "parent_id": 1
+                      "name": "Italy"
+                      "path": "photos/Italy"
+                      "asset_count": 2
+                    "persons":
+                      -
+                        "id": 7
+                        "name": "Anna Becker"
+                        "path": "family/anna"
+                        "asset_count": 2
+                    "tags":
+                      -
+                        "id": 12
+                        "label": "Italy"
+                        "path": "travel/italy"
+                        "asset_count": 2
+                    "map_points":
+                      -
+                        "id": "asset:PHOTO041"
+                        "label": "Venice"
+                        "latitude": 45.4371
+                        "longitude": 12.3326
+                        "asset_count": 1
+                    "asset_contexts":
+                      -
+                        "asset_id": 41
+                        "person_ids":
+                          - 7
+                        "tag_paths":
+                          - "travel/italy"
+                        "map_point_ids":
+                          - "asset:PHOTO041"
+                    "summary_counts":
+                      "assets": 2
+                      "people": 1
+                      "tags": 1
+                      "places": 1
+        "400":
+          "description": "The request was syntactically valid but violated a documented PixelPast API contract constraint."
+          "content":
+            "application/json":
+              "examples":
+                "invalid_range":
+                  "summary": "Start date after end date"
+                  "value":
+                    "detail": "start must be less than or equal to end"
+                "partial_range":
+                  "summary": "Only one range boundary provided"
+                  "value":
+                    "detail": "start and end must both be provided together"
+                "unsupported_filters":
+                  "summary": "Album routes reject unsupported global filters"
+                  "value":
+                    "detail": "unsupported album filters: distance_latitude, location_geometry; supported filters: person_ids, tag_paths, filename_query"
+              "schema":
+                "$ref": "#/components/schemas/ApiErrorResponse"
+        "404":
+          "description": "The requested folder or collection node does not exist."
+          "content":
+            "application/json":
+              "examples":
+                "unknown_folder":
+                  "summary": "Unknown folder selection"
+                  "value":
+                    "detail": "album folder 999 does not exist"
+                "unknown_collection":
+                  "summary": "Unknown collection selection"
+                  "value":
+                    "detail": "album collection 999 does not exist"
+              "schema":
+                "$ref": "#/components/schemas/ApiErrorResponse"
+        "422":
+          "description": "The request could not be parsed or failed declared parameter validation."
+          "content":
+            "application/json":
+              "examples":
+                "invalid_date":
+                  "summary": "Unparseable ISO date"
+                  "value":
+                    "detail":
+                      -
+                        "type": "date_from_datetime_parsing"
+                        "loc":
+                          - "query"
+                          - "start"
+                        "msg": "Input should be a valid date or datetime, input is too short"
+                        "input": "2026-02"
+                "invalid_path_date":
+                  "summary": "Invalid path day format"
+                  "value":
+                    "detail":
+                      -
+                        "type": "date_from_datetime_parsing"
+                        "loc":
+                          - "path"
+                          - "day"
+                        "msg": "Input should be a valid date or datetime, invalid date separator"
+                        "input": "2026/07/14"
+              "schema":
+                "$ref": "#/components/schemas/ApiValidationErrorResponse"
   "/api/albums/collections/{collection_id}/assets":
     "get":
       "tags":
@@ -842,6 +1064,228 @@
                         "media_type": "photo"
                         "title": "IMG_1042.JPG"
                         "thumbnail_url": "/media/q200/PHOTO041.webp"
+        "400":
+          "description": "The request was syntactically valid but violated a documented PixelPast API contract constraint."
+          "content":
+            "application/json":
+              "examples":
+                "invalid_range":
+                  "summary": "Start date after end date"
+                  "value":
+                    "detail": "start must be less than or equal to end"
+                "partial_range":
+                  "summary": "Only one range boundary provided"
+                  "value":
+                    "detail": "start and end must both be provided together"
+                "unsupported_filters":
+                  "summary": "Album routes reject unsupported global filters"
+                  "value":
+                    "detail": "unsupported album filters: distance_latitude, location_geometry; supported filters: person_ids, tag_paths, filename_query"
+              "schema":
+                "$ref": "#/components/schemas/ApiErrorResponse"
+        "404":
+          "description": "The requested folder or collection node does not exist."
+          "content":
+            "application/json":
+              "examples":
+                "unknown_folder":
+                  "summary": "Unknown folder selection"
+                  "value":
+                    "detail": "album folder 999 does not exist"
+                "unknown_collection":
+                  "summary": "Unknown collection selection"
+                  "value":
+                    "detail": "album collection 999 does not exist"
+              "schema":
+                "$ref": "#/components/schemas/ApiErrorResponse"
+        "422":
+          "description": "The request could not be parsed or failed declared parameter validation."
+          "content":
+            "application/json":
+              "examples":
+                "invalid_date":
+                  "summary": "Unparseable ISO date"
+                  "value":
+                    "detail":
+                      -
+                        "type": "date_from_datetime_parsing"
+                        "loc":
+                          - "query"
+                          - "start"
+                        "msg": "Input should be a valid date or datetime, input is too short"
+                        "input": "2026-02"
+                "invalid_path_date":
+                  "summary": "Invalid path day format"
+                  "value":
+                    "detail":
+                      -
+                        "type": "date_from_datetime_parsing"
+                        "loc":
+                          - "path"
+                          - "day"
+                        "msg": "Input should be a valid date or datetime, invalid date separator"
+                        "input": "2026/07/14"
+              "schema":
+                "$ref": "#/components/schemas/ApiValidationErrorResponse"
+  "/api/albums/collections/{collection_id}/context":
+    "get":
+      "tags":
+        - "album"
+      "summary": "Get album collection context"
+      "description": "Return the stable right-column context for one selected semantic collection. Thumbnail hover remains client-side by using the per-asset lightweight highlight links returned with the aggregate context."
+      "operationId": "get_album_collection_context_api_albums_collections__collection_id__context_get"
+      "parameters":
+        -
+          "name": "collection_id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "integer"
+            "title": "Collection Id"
+        -
+          "name": "person_ids"
+          "in": "query"
+          "required": false
+          "schema":
+            "type": "array"
+            "items":
+              "type": "integer"
+            "default": []
+            "title": "Person Ids"
+        -
+          "name": "tag_paths"
+          "in": "query"
+          "required": false
+          "schema":
+            "type": "array"
+            "items":
+              "type": "string"
+            "default": []
+            "title": "Tag Paths"
+        -
+          "name": "location_geometry"
+          "in": "query"
+          "required": false
+          "schema":
+            "anyOf":
+              -
+                "type": "string"
+              -
+                "type": "null"
+            "title": "Location Geometry"
+        -
+          "name": "distance_latitude"
+          "in": "query"
+          "required": false
+          "schema":
+            "anyOf":
+              -
+                "type": "number"
+                "maximum": 90
+                "minimum": -90
+              -
+                "type": "null"
+            "title": "Distance Latitude"
+        -
+          "name": "distance_longitude"
+          "in": "query"
+          "required": false
+          "schema":
+            "anyOf":
+              -
+                "type": "number"
+                "maximum": 180
+                "minimum": -180
+              -
+                "type": "null"
+            "title": "Distance Longitude"
+        -
+          "name": "distance_radius_meters"
+          "in": "query"
+          "required": false
+          "schema":
+            "anyOf":
+              -
+                "type": "integer"
+                "minimum": 1
+              -
+                "type": "null"
+            "title": "Distance Radius Meters"
+        -
+          "name": "filename_query"
+          "in": "query"
+          "required": false
+          "schema":
+            "anyOf":
+              -
+                "type": "string"
+                "minLength": 1
+              -
+                "type": "null"
+            "title": "Filename Query"
+      "responses":
+        "200":
+          "description": "Stable album context for one collection selection."
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/AlbumContextResponse"
+              "examples":
+                "folder_stable_context":
+                  "summary": "Stable album context with per-asset hover highlights"
+                  "value":
+                    "supported_filters":
+                      - "person_ids"
+                      - "tag_paths"
+                      - "filename_query"
+                    "applied_filters":
+                      "person_ids":
+                        - 1
+                      "tag_paths":
+                        - "travel/italy"
+                    "selection":
+                      "node_kind": "folder"
+                      "id": 3
+                      "source_id": 2
+                      "source_name": "Photos"
+                      "source_type": "photos"
+                      "parent_id": 1
+                      "name": "Italy"
+                      "path": "photos/Italy"
+                      "asset_count": 2
+                    "persons":
+                      -
+                        "id": 7
+                        "name": "Anna Becker"
+                        "path": "family/anna"
+                        "asset_count": 2
+                    "tags":
+                      -
+                        "id": 12
+                        "label": "Italy"
+                        "path": "travel/italy"
+                        "asset_count": 2
+                    "map_points":
+                      -
+                        "id": "asset:PHOTO041"
+                        "label": "Venice"
+                        "latitude": 45.4371
+                        "longitude": 12.3326
+                        "asset_count": 1
+                    "asset_contexts":
+                      -
+                        "asset_id": 41
+                        "person_ids":
+                          - 7
+                        "tag_paths":
+                          - "travel/italy"
+                        "map_point_ids":
+                          - "asset:PHOTO041"
+                    "summary_counts":
+                      "assets": 2
+                      "people": 1
+                      "tags": 1
+                      "places": 1
         "400":
           "description": "The request was syntactically valid but violated a documented PixelPast API contract constraint."
           "content":
@@ -2989,6 +3433,175 @@
         - "nodes"
       "title": "AlbumCollectionsTreeResponse"
       "description": "Read response for the semantic album collection tree."
+    "AlbumContextAssetItem":
+      "properties":
+        "asset_id":
+          "type": "integer"
+          "title": "Asset Id"
+        "person_ids":
+          "items":
+            "type": "integer"
+          "type": "array"
+          "title": "Person Ids"
+        "tag_paths":
+          "items":
+            "type": "string"
+          "type": "array"
+          "title": "Tag Paths"
+        "map_point_ids":
+          "items":
+            "type": "string"
+          "type": "array"
+          "title": "Map Point Ids"
+      "type": "object"
+      "required":
+        - "asset_id"
+      "title": "AlbumContextAssetItem"
+      "description": "Per-asset lightweight context used for client-side hover highlighting."
+    "AlbumContextMapPoint":
+      "properties":
+        "id":
+          "type": "string"
+          "title": "Id"
+        "label":
+          "anyOf":
+            -
+              "type": "string"
+            -
+              "type": "null"
+          "title": "Label"
+        "latitude":
+          "type": "number"
+          "title": "Latitude"
+        "longitude":
+          "type": "number"
+          "title": "Longitude"
+        "asset_count":
+          "type": "integer"
+          "title": "Asset Count"
+      "type": "object"
+      "required":
+        - "id"
+        - "latitude"
+        - "longitude"
+        - "asset_count"
+      "title": "AlbumContextMapPoint"
+      "description": "Stable map point aggregate for one selected album subtree."
+    "AlbumContextPerson":
+      "properties":
+        "id":
+          "type": "integer"
+          "title": "Id"
+        "name":
+          "type": "string"
+          "title": "Name"
+        "path":
+          "anyOf":
+            -
+              "type": "string"
+            -
+              "type": "null"
+          "title": "Path"
+        "asset_count":
+          "type": "integer"
+          "title": "Asset Count"
+      "type": "object"
+      "required":
+        - "id"
+        - "name"
+        - "path"
+        - "asset_count"
+      "title": "AlbumContextPerson"
+      "description": "Stable person aggregate for one selected album subtree."
+    "AlbumContextResponse":
+      "properties":
+        "supported_filters":
+          "items":
+            "type": "string"
+          "type": "array"
+          "title": "Supported Filters"
+        "applied_filters":
+          "$ref": "#/components/schemas/AlbumAppliedFilters"
+        "selection":
+          "$ref": "#/components/schemas/AlbumSelection"
+        "persons":
+          "items":
+            "$ref": "#/components/schemas/AlbumContextPerson"
+          "type": "array"
+          "title": "Persons"
+        "tags":
+          "items":
+            "$ref": "#/components/schemas/AlbumContextTag"
+          "type": "array"
+          "title": "Tags"
+        "map_points":
+          "items":
+            "$ref": "#/components/schemas/AlbumContextMapPoint"
+          "type": "array"
+          "title": "Map Points"
+        "asset_contexts":
+          "items":
+            "$ref": "#/components/schemas/AlbumContextAssetItem"
+          "type": "array"
+          "title": "Asset Contexts"
+        "summary_counts":
+          "$ref": "#/components/schemas/AlbumContextSummaryCounts"
+      "type": "object"
+      "required":
+        - "supported_filters"
+        - "applied_filters"
+        - "selection"
+        - "summary_counts"
+      "title": "AlbumContextResponse"
+      "description": "Stable right-column context for one selected album subtree."
+    "AlbumContextSummaryCounts":
+      "properties":
+        "assets":
+          "type": "integer"
+          "title": "Assets"
+        "people":
+          "type": "integer"
+          "title": "People"
+        "tags":
+          "type": "integer"
+          "title": "Tags"
+        "places":
+          "type": "integer"
+          "title": "Places"
+      "type": "object"
+      "required":
+        - "assets"
+        - "people"
+        - "tags"
+        - "places"
+      "title": "AlbumContextSummaryCounts"
+      "description": "Summary counters for one selected album context response."
+    "AlbumContextTag":
+      "properties":
+        "id":
+          "type": "integer"
+          "title": "Id"
+        "label":
+          "type": "string"
+          "title": "Label"
+        "path":
+          "anyOf":
+            -
+              "type": "string"
+            -
+              "type": "null"
+          "title": "Path"
+        "asset_count":
+          "type": "integer"
+          "title": "Asset Count"
+      "type": "object"
+      "required":
+        - "id"
+        - "label"
+        - "path"
+        - "asset_count"
+      "title": "AlbumContextTag"
+      "description": "Stable tag aggregate for one selected album subtree."
     "AlbumFaceRegion":
       "properties":
         "name":
