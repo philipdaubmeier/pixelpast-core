@@ -1,9 +1,13 @@
 """Persistence repositories for canonical write access."""
 
 from pixelpast.persistence.repositories.album_navigation_read import (
+    AlbumAssetDetailSnapshot,
     AlbumAssetListingSnapshot,
     AlbumAssetListItemSnapshot,
+    AlbumAssetPersonSnapshot,
+    AlbumAssetTagSnapshot,
     AlbumCollectionTreeNodeSnapshot,
+    AlbumFaceRegionSnapshot,
     AlbumFolderTreeNodeSnapshot,
     AlbumNavigationReadRepository,
     AlbumQueryFilters,
@@ -73,9 +77,13 @@ __all__ = [
     "AssetMediaRepository",
     "AlbumNavigationRepository",
     "AlbumNavigationReadRepository",
+    "AlbumAssetDetailSnapshot",
     "AlbumAssetListingSnapshot",
     "AlbumAssetListItemSnapshot",
+    "AlbumAssetPersonSnapshot",
+    "AlbumAssetTagSnapshot",
     "AlbumCollectionTreeNodeSnapshot",
+    "AlbumFaceRegionSnapshot",
     "AlbumFolderTreeNodeSnapshot",
     "AlbumQueryFilters",
     "AlbumSelectionSnapshot",

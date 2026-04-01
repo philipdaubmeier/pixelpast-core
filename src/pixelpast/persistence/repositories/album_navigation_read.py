@@ -98,6 +98,62 @@ class AlbumAssetListingSnapshot:
 
 
 @dataclass(frozen=True, slots=True)
+class AlbumAssetPersonSnapshot:
+    """Serializable linked person summary for one asset detail payload."""
+
+    id: int
+    name: str
+    path: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class AlbumAssetTagSnapshot:
+    """Serializable linked tag summary for one asset detail payload."""
+
+    id: int
+    label: str
+    path: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class AlbumFaceRegionSnapshot:
+    """Serializable normalized named face region for one asset detail payload."""
+
+    name: str
+    left: float
+    top: float
+    right: float
+    bottom: float
+
+
+@dataclass(frozen=True, slots=True)
+class AlbumAssetDetailSnapshot:
+    """Serializable single-asset photo detail snapshot."""
+
+    id: int
+    short_id: str
+    source_id: int
+    source_name: str
+    source_type: str
+    media_type: str
+    title: str
+    caption: str | None
+    description: str | None
+    timestamp_iso: str
+    latitude: float | None
+    longitude: float | None
+    camera: str | None
+    lens: str | None
+    aperture_f_number: float | None
+    shutter_speed_seconds: float | None
+    focal_length_mm: float | None
+    iso: int | float | None
+    people: tuple[AlbumAssetPersonSnapshot, ...]
+    tags: tuple[AlbumAssetTagSnapshot, ...]
+    face_regions: tuple[AlbumFaceRegionSnapshot, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class _FolderNodeRow:
     id: int
     source_id: int
@@ -131,6 +187,22 @@ class _AssetRow:
     summary: str | None
     metadata_json: dict[str, Any] | None
     folder_id: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class _AssetDetailRow:
+    id: int
+    short_id: str
+    source_id: int
+    source_name: str
+    source_type: str
+    media_type: str
+    timestamp_iso: str
+    summary: str | None
+    latitude: float | None
+    longitude: float | None
+    external_id: str
+    metadata_json: dict[str, Any] | None
 
 
 class AlbumNavigationReadRepository:
@@ -296,6 +368,77 @@ class AlbumNavigationReadRepository:
                 collection_type=selected_node.collection_type,
             ),
             items=tuple(self._to_listing_item(asset) for asset in selected_assets),
+        )
+
+    def get_asset_detail(self, *, asset_id: int) -> AlbumAssetDetailSnapshot | None:
+        """Return one normalized single-photo detail snapshot by canonical asset id."""
+
+        row = self._session.execute(
+            select(
+                Asset.id,
+                Asset.short_id,
+                Asset.source_id,
+                Source.name,
+                Source.type,
+                Asset.media_type,
+                Asset.timestamp,
+                Asset.summary,
+                Asset.latitude,
+                Asset.longitude,
+                Asset.external_id,
+                Asset.metadata_json,
+            )
+            .join(Source, Source.id == Asset.source_id)
+            .where(Asset.id == asset_id)
+        ).one_or_none()
+        if row is None:
+            return None
+
+        detail_row = _AssetDetailRow(
+            id=row[0],
+            short_id=row[1],
+            source_id=row[2],
+            source_name=row[3],
+            source_type=row[4],
+            media_type=row[5],
+            timestamp_iso=row[6].isoformat(),
+            summary=row[7],
+            latitude=row[8],
+            longitude=row[9],
+            external_id=row[10],
+            metadata_json=row[11] if isinstance(row[11], dict) else None,
+        )
+        metadata = detail_row.metadata_json if isinstance(detail_row.metadata_json, dict) else {}
+
+        return AlbumAssetDetailSnapshot(
+            id=detail_row.id,
+            short_id=detail_row.short_id,
+            source_id=detail_row.source_id,
+            source_name=detail_row.source_name,
+            source_type=detail_row.source_type,
+            media_type=detail_row.media_type,
+            title=_resolve_asset_detail_title(detail_row),
+            caption=_resolve_metadata_text(metadata, "caption"),
+            description=_resolve_metadata_text(metadata, "description", "comment"),
+            timestamp_iso=detail_row.timestamp_iso,
+            latitude=detail_row.latitude,
+            longitude=detail_row.longitude,
+            camera=_resolve_metadata_text(metadata, "camera"),
+            lens=_resolve_metadata_text(metadata, "lens"),
+            aperture_f_number=_resolve_metadata_float(metadata, "aperture_f_number"),
+            shutter_speed_seconds=_resolve_metadata_float(
+                metadata,
+                "shutter_speed_seconds",
+            ),
+            focal_length_mm=_resolve_metadata_float(
+                metadata,
+                "focal_length_mm",
+                "focal_length",
+            ),
+            iso=_resolve_metadata_number(metadata, "iso"),
+            people=self._list_asset_people(asset_id=detail_row.id),
+            tags=self._list_asset_tags(asset_id=detail_row.id),
+            face_regions=_resolve_face_regions(metadata),
         )
 
     def _list_folder_nodes(self) -> list[_FolderNodeRow]:
@@ -553,6 +696,36 @@ class AlbumNavigationReadRepository:
             title=_resolve_asset_title(asset),
         )
 
+    def _list_asset_people(self, *, asset_id: int) -> tuple[AlbumAssetPersonSnapshot, ...]:
+        rows = self._session.execute(
+            select(Person.id, Person.name, Person.path)
+            .join(AssetPerson, AssetPerson.person_id == Person.id)
+            .where(AssetPerson.asset_id == asset_id)
+        )
+        ordered = sorted(
+            (
+                AlbumAssetPersonSnapshot(id=person_id, name=name, path=path)
+                for person_id, name, path in rows
+            ),
+            key=lambda item: (item.name.casefold(), item.path or "", item.id),
+        )
+        return tuple(ordered)
+
+    def _list_asset_tags(self, *, asset_id: int) -> tuple[AlbumAssetTagSnapshot, ...]:
+        rows = self._session.execute(
+            select(Tag.id, Tag.label, Tag.path)
+            .join(AssetTag, AssetTag.tag_id == Tag.id)
+            .where(AssetTag.asset_id == asset_id)
+        )
+        ordered = sorted(
+            (
+                AlbumAssetTagSnapshot(id=tag_id, label=label, path=path)
+                for tag_id, label, path in rows
+            ),
+            key=lambda item: (item.path or item.label.casefold(), item.label.casefold(), item.id),
+        )
+        return tuple(ordered)
+
 
 def _count_children_by_parent_id(parent_ids: Any) -> dict[int, int]:
     counts: dict[int, int] = {}
@@ -583,37 +756,165 @@ def _tag_path_matches_selection(
 
 
 def _resolve_asset_title(asset: _AssetRow) -> str:
-    if isinstance(asset.summary, str) and asset.summary.strip():
-        return asset.summary.strip()
+    return _resolve_title_value(
+        summary=asset.summary,
+        metadata=asset.metadata_json,
+        external_id=asset.external_id,
+        media_type=asset.media_type,
+    )
 
-    for candidate in _resolve_filename_candidates(asset):
+
+def _resolve_asset_detail_title(asset: _AssetDetailRow) -> str:
+    metadata = asset.metadata_json if isinstance(asset.metadata_json, dict) else {}
+    metadata_title = _resolve_metadata_text(metadata, "title", "headline")
+    if metadata_title is not None:
+        return metadata_title
+    return _resolve_title_value(
+        summary=asset.summary,
+        metadata=metadata,
+        external_id=asset.external_id,
+        media_type=asset.media_type,
+    )
+
+
+def _resolve_title_value(
+    *,
+    summary: str | None,
+    metadata: dict[str, Any] | None,
+    external_id: str,
+    media_type: str,
+) -> str:
+    if isinstance(summary, str) and summary.strip():
+        return summary.strip()
+
+    for candidate in _resolve_filename_candidates_from_metadata(
+        metadata=metadata,
+        external_id=external_id,
+    ):
         if candidate:
             return candidate
 
-    return asset.media_type
+    return media_type
 
 
 def _resolve_filename_candidates(asset: _AssetRow) -> tuple[str, ...]:
-    metadata = asset.metadata_json if isinstance(asset.metadata_json, dict) else {}
+    return _resolve_filename_candidates_from_metadata(
+        metadata=asset.metadata_json,
+        external_id=asset.external_id,
+    )
+
+
+def _resolve_filename_candidates_from_metadata(
+    *,
+    metadata: dict[str, Any] | None,
+    external_id: str,
+) -> tuple[str, ...]:
+    normalized_metadata = metadata if isinstance(metadata, dict) else {}
     candidates: list[str] = []
     for key in (
-        "preserved_file_name",
         "file_name",
+        "preserved_file_name",
         "filename",
         "original_filename",
         "source_path",
         "file_path",
     ):
-        value = metadata.get(key)
+        value = normalized_metadata.get(key)
         if isinstance(value, str) and value.strip():
             extracted = _extract_filename(value)
             if extracted not in candidates:
                 candidates.append(extracted)
 
-    external_name = _extract_filename(asset.external_id)
+    external_name = _extract_filename(external_id)
     if external_name not in candidates:
         candidates.append(external_name)
     return tuple(candidates)
+
+
+def _resolve_metadata_text(metadata: dict[str, Any], *keys: str) -> str | None:
+    for key in keys:
+        value = metadata.get(key)
+        if isinstance(value, str):
+            normalized = value.strip()
+            if normalized:
+                return normalized
+    return None
+
+
+def _resolve_metadata_float(metadata: dict[str, Any], *keys: str) -> float | None:
+    value = _resolve_metadata_number(metadata, *keys)
+    if value is None:
+        return None
+    return float(value)
+
+
+def _resolve_metadata_number(
+    metadata: dict[str, Any],
+    *keys: str,
+) -> int | float | None:
+    for key in keys:
+        value = metadata.get(key)
+        if isinstance(value, bool):
+            continue
+        if isinstance(value, int | float):
+            return value
+    return None
+
+
+def _resolve_face_regions(
+    metadata: dict[str, Any],
+) -> tuple[AlbumFaceRegionSnapshot, ...]:
+    raw_regions = metadata.get("face_regions")
+    if not isinstance(raw_regions, list):
+        return ()
+
+    normalized_regions: list[AlbumFaceRegionSnapshot] = []
+    for raw_region in raw_regions:
+        if not isinstance(raw_region, dict) or not _is_confirmed_named_face_region(raw_region):
+            continue
+
+        name = _resolve_metadata_text(raw_region, "name")
+        left = _resolve_metadata_float(raw_region, "left")
+        top = _resolve_metadata_float(raw_region, "top")
+        right = _resolve_metadata_float(raw_region, "right")
+        bottom = _resolve_metadata_float(raw_region, "bottom")
+        if name is None or None in {left, top, right, bottom}:
+            continue
+        normalized_regions.append(
+            AlbumFaceRegionSnapshot(
+                name=name,
+                left=left,
+                top=top,
+                right=right,
+                bottom=bottom,
+            )
+        )
+
+    return tuple(
+        sorted(
+            normalized_regions,
+            key=lambda item: (
+                item.name.casefold(),
+                item.left,
+                item.top,
+                item.right,
+                item.bottom,
+            ),
+        )
+    )
+
+
+def _is_confirmed_named_face_region(region: dict[str, Any]) -> bool:
+    if _resolve_metadata_text(region, "name") is None:
+        return False
+    for rejected_key in ("confirmed", "is_confirmed", "is_named"):
+        value = region.get(rejected_key)
+        if value is False:
+            return False
+    status = _resolve_metadata_text(region, "status")
+    if status is not None and status.casefold() in {"rejected", "unconfirmed", "unnamed"}:
+        return False
+    return True
 
 
 def _extract_filename(value: str) -> str:

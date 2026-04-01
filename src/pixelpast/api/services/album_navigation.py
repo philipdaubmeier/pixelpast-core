@@ -4,17 +4,25 @@ from __future__ import annotations
 
 from pixelpast.api.schemas import (
     AlbumAppliedFilters,
+    AlbumAssetDetailResponse,
     AlbumAssetItem,
     AlbumAssetListingResponse,
+    AlbumAssetPerson,
+    AlbumAssetTag,
     AlbumCollectionTreeNode,
     AlbumCollectionsTreeResponse,
+    AlbumFaceRegion,
     AlbumFolderTreeNode,
     AlbumFoldersTreeResponse,
     AlbumSelection,
 )
 from pixelpast.persistence.repositories.album_navigation_read import (
+    AlbumAssetDetailSnapshot,
     AlbumAssetListingSnapshot,
+    AlbumAssetPersonSnapshot,
+    AlbumAssetTagSnapshot,
     AlbumCollectionTreeNodeSnapshot,
+    AlbumFaceRegionSnapshot,
     AlbumFolderTreeNodeSnapshot,
     AlbumNavigationReadRepository,
     AlbumQueryFilters,
@@ -89,6 +97,14 @@ class AlbumNavigationQueryService:
             return None
         return _to_asset_listing_response(snapshot=snapshot, filters=filters)
 
+    def get_asset_detail(self, *, asset_id: int) -> AlbumAssetDetailResponse | None:
+        """Return one normalized single-photo detail payload."""
+
+        snapshot = self._repository.get_asset_detail(asset_id=asset_id)
+        if snapshot is None:
+            return None
+        return _to_asset_detail_response(snapshot)
+
 
 def _to_applied_filters(filters: AlbumQueryFilters) -> AlbumAppliedFilters:
     return AlbumAppliedFilters(
@@ -160,4 +176,52 @@ def _to_asset_listing_response(
             )
             for item in snapshot.items
         ],
+    )
+
+
+def _to_asset_detail_response(
+    snapshot: AlbumAssetDetailSnapshot,
+) -> AlbumAssetDetailResponse:
+    return AlbumAssetDetailResponse(
+        id=snapshot.id,
+        short_id=snapshot.short_id,
+        source_id=snapshot.source_id,
+        source_name=snapshot.source_name,
+        source_type=snapshot.source_type,
+        media_type=snapshot.media_type,
+        title=snapshot.title,
+        caption=snapshot.caption,
+        description=snapshot.description,
+        timestamp=snapshot.timestamp_iso,
+        latitude=snapshot.latitude,
+        longitude=snapshot.longitude,
+        camera=snapshot.camera,
+        lens=snapshot.lens,
+        aperture_f_number=snapshot.aperture_f_number,
+        shutter_speed_seconds=snapshot.shutter_speed_seconds,
+        focal_length_mm=snapshot.focal_length_mm,
+        iso=snapshot.iso,
+        thumbnail_url=f"/media/q200/{snapshot.short_id}.webp",
+        original_url=f"/media/orig/{snapshot.short_id}",
+        tags=[_to_asset_tag(tag) for tag in snapshot.tags],
+        people=[_to_asset_person(person) for person in snapshot.people],
+        face_regions=[_to_face_region(region) for region in snapshot.face_regions],
+    )
+
+
+def _to_asset_person(person: AlbumAssetPersonSnapshot) -> AlbumAssetPerson:
+    return AlbumAssetPerson(id=person.id, name=person.name, path=person.path)
+
+
+def _to_asset_tag(tag: AlbumAssetTagSnapshot) -> AlbumAssetTag:
+    return AlbumAssetTag(id=tag.id, label=tag.label, path=tag.path)
+
+
+def _to_face_region(region: AlbumFaceRegionSnapshot) -> AlbumFaceRegion:
+    return AlbumFaceRegion(
+        name=region.name,
+        left=region.left,
+        top=region.top,
+        right=region.right,
+        bottom=region.bottom,
     )

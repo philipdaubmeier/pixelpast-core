@@ -317,6 +317,147 @@ def test_album_routes_reject_unsupported_global_filters() -> None:
         shutil.rmtree(workspace_root, ignore_errors=True)
 
 
+def test_album_asset_detail_returns_normalized_metadata_and_named_face_regions() -> None:
+    workspace_root = _create_workspace_dir(prefix="album-asset-detail")
+    runtime = None
+    try:
+        runtime = _create_runtime(workspace_root=workspace_root)
+        _seed_album_navigation_data(runtime)
+
+        app = create_app(settings=runtime.settings)
+        with TestClient(app) as client:
+            response = client.get("/api/albums/assets/5")
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "id": 5,
+            "short_id": "LR000005",
+            "source_id": 2,
+            "source_name": "Lightroom",
+            "source_type": "lightroom_catalog",
+            "media_type": "photo",
+            "title": "italy-lake.jpg",
+            "caption": "Dolomites lakeside in morning light.",
+            "description": "A quiet stop before the next trail.",
+            "timestamp": "2024-08-02T11:00:00+00:00",
+            "latitude": 46.5833,
+            "longitude": 12.2,
+            "camera": "Canon EOS R5",
+            "lens": "RF24-70mm F2.8 L IS USM",
+            "aperture_f_number": 2.8,
+            "shutter_speed_seconds": 0.005,
+            "focal_length_mm": 35.0,
+            "iso": 400,
+            "thumbnail_url": "/media/q200/LR000005.webp",
+            "original_url": "/media/orig/LR000005",
+            "tags": [
+                {"id": 2, "label": "Italy", "path": "travel/italy"},
+            ],
+            "people": [
+                {"id": 1, "name": "Anna Becker", "path": "family/anna"},
+            ],
+            "face_regions": [
+                {
+                    "name": "Anna Becker",
+                    "left": 0.22,
+                    "top": 0.14,
+                    "right": 0.43,
+                    "bottom": 0.51,
+                }
+            ],
+        }
+        assert "metadata" not in response.json()
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_album_asset_detail_handles_missing_optional_camera_metadata() -> None:
+    workspace_root = _create_workspace_dir(prefix="album-asset-detail-empty-meta")
+    runtime = None
+    try:
+        runtime = _create_runtime(workspace_root=workspace_root)
+        _seed_album_navigation_data(runtime)
+
+        app = create_app(settings=runtime.settings)
+        with TestClient(app) as client:
+            response = client.get("/api/albums/assets/4")
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "id": 4,
+            "short_id": "LR000004",
+            "source_id": 2,
+            "source_name": "Lightroom",
+            "source_type": "lightroom_catalog",
+            "media_type": "photo",
+            "title": "portrait-anna.jpg",
+            "caption": None,
+            "description": None,
+            "timestamp": "2024-08-01T09:00:00+00:00",
+            "latitude": None,
+            "longitude": None,
+            "camera": None,
+            "lens": None,
+            "aperture_f_number": None,
+            "shutter_speed_seconds": None,
+            "focal_length_mm": None,
+            "iso": None,
+            "thumbnail_url": "/media/q200/LR000004.webp",
+            "original_url": "/media/orig/LR000004",
+            "tags": [
+                {"id": 3, "label": "Home", "path": "home"},
+            ],
+            "people": [
+                {"id": 1, "name": "Anna Becker", "path": "family/anna"},
+            ],
+            "face_regions": [],
+        }
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_album_asset_detail_returns_empty_face_regions_when_missing() -> None:
+    workspace_root = _create_workspace_dir(prefix="album-asset-detail-no-faces")
+    runtime = None
+    try:
+        runtime = _create_runtime(workspace_root=workspace_root)
+        _seed_album_navigation_data(runtime)
+
+        app = create_app(settings=runtime.settings)
+        with TestClient(app) as client:
+            response = client.get("/api/albums/assets/2")
+
+        assert response.status_code == 200
+        assert response.json()["face_regions"] == []
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_album_asset_detail_returns_404_for_unknown_asset() -> None:
+    workspace_root = _create_workspace_dir(prefix="album-asset-detail-missing")
+    runtime = None
+    try:
+        runtime = _create_runtime(workspace_root=workspace_root)
+        _seed_album_navigation_data(runtime)
+
+        app = create_app(settings=runtime.settings)
+        with TestClient(app) as client:
+            response = client.get("/api/albums/assets/999")
+
+        assert response.status_code == 404
+        assert response.json() == {"detail": "album asset 999 does not exist"}
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
 def _seed_album_navigation_data(runtime) -> None:
     with runtime.session_factory() as session:
         photos_source = Source(
@@ -453,7 +594,7 @@ def _seed_album_navigation_data(runtime) -> None:
                 latitude=None,
                 longitude=None,
                 folder_id=None,
-                metadata_json={"file_name": "portrait-anna.jpg"},
+                metadata_json={"file_name": "portrait-anna.jpg", "face_regions": []},
             ),
             Asset(
                 short_id="LR000005",
@@ -462,10 +603,45 @@ def _seed_album_navigation_data(runtime) -> None:
                 media_type="photo",
                 timestamp=_timestamp(2024, 8, 2, 11),
                 summary=None,
-                latitude=None,
-                longitude=None,
+                latitude=46.5833,
+                longitude=12.2,
                 folder_id=None,
-                metadata_json={"file_name": "italy-lake.jpg"},
+                metadata_json={
+                    "file_name": "italy-lake.jpg",
+                    "preserved_file_name": "italy-lake-original.jpg",
+                    "caption": "Dolomites lakeside in morning light.",
+                    "description": "A quiet stop before the next trail.",
+                    "camera": "Canon EOS R5",
+                    "lens": "RF24-70mm F2.8 L IS USM",
+                    "aperture_f_number": 2.8,
+                    "shutter_speed_seconds": 0.005,
+                    "focal_length_mm": 35.0,
+                    "iso": 400,
+                    "face_regions": [
+                        {
+                            "name": "Anna Becker",
+                            "left": 0.22,
+                            "top": 0.14,
+                            "right": 0.43,
+                            "bottom": 0.51,
+                        },
+                        {
+                            "name": "",
+                            "left": 0.6,
+                            "top": 0.2,
+                            "right": 0.75,
+                            "bottom": 0.42,
+                        },
+                        {
+                            "name": "Rejected Person",
+                            "left": 0.1,
+                            "top": 0.6,
+                            "right": 0.25,
+                            "bottom": 0.82,
+                            "confirmed": False,
+                        },
+                    ],
+                },
             ),
         ]
         session.add_all([*photo_assets, *lightroom_assets])

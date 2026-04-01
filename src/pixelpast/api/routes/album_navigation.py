@@ -12,6 +12,7 @@ from pixelpast.api.routes.metadata import (
     combine_responses,
 )
 from pixelpast.api.schemas import (
+    AlbumAssetDetailResponse,
     AlbumAssetListingResponse,
     AlbumCollectionsTreeResponse,
     AlbumFoldersTreeResponse,
@@ -127,6 +128,50 @@ ALBUM_ASSET_LISTING_EXAMPLES = {
     }
 }
 
+ALBUM_ASSET_DETAIL_EXAMPLES = {
+    "selected_photo_detail": {
+        "summary": "Lazy-loaded single-photo detail payload",
+        "value": {
+            "id": 41,
+            "short_id": "PHOTO041",
+            "source_id": 4,
+            "source_name": "Lightroom",
+            "source_type": "lightroom_catalog",
+            "media_type": "photo",
+            "title": "IMG_1042.JPG",
+            "caption": "Evening light over the canal.",
+            "description": None,
+            "timestamp": "2024-07-15T18:42:00+00:00",
+            "latitude": 45.4371,
+            "longitude": 12.3326,
+            "camera": "Canon EOS R5",
+            "lens": "RF24-70mm F2.8 L IS USM",
+            "aperture_f_number": 2.8,
+            "shutter_speed_seconds": 0.005,
+            "focal_length_mm": 35.0,
+            "iso": 400,
+            "thumbnail_url": "/media/q200/PHOTO041.webp",
+            "original_url": "/media/orig/PHOTO041",
+            "tags": [
+                {"id": 12, "label": "Italy", "path": "travel/italy"},
+                {"id": 20, "label": "Canal", "path": "places/venice/canal"},
+            ],
+            "people": [
+                {"id": 7, "name": "Anna Becker", "path": "family/anna"},
+            ],
+            "face_regions": [
+                {
+                    "name": "Anna Becker",
+                    "left": 0.24,
+                    "top": 0.18,
+                    "right": 0.41,
+                    "bottom": 0.46,
+                }
+            ],
+        },
+    }
+}
+
 ALBUM_BAD_REQUEST_EXAMPLES = {
     **BAD_REQUEST_RESPONSE[400]["content"]["application/json"]["examples"],
     "unsupported_filters": {
@@ -155,6 +200,23 @@ ALBUM_NOT_FOUND_RESPONSES = {
                         "summary": "Unknown collection selection",
                         "value": {"detail": "album collection 999 does not exist"},
                     },
+                }
+            }
+        },
+    }
+}
+
+ALBUM_ASSET_NOT_FOUND_RESPONSES = {
+    404: {
+        "model": ApiErrorResponse,
+        "description": "The requested asset does not exist.",
+        "content": {
+            "application/json": {
+                "examples": {
+                    "unknown_asset": {
+                        "summary": "Unknown selected asset",
+                        "value": {"detail": "album asset 999 does not exist"},
+                    }
                 }
             }
         },
@@ -443,6 +505,42 @@ def get_album_collection_asset_listing(
             status_code=404,
             detail=f"album collection {collection_id} does not exist",
         )
+    return response
+
+
+@router.get(
+    "/albums/assets/{asset_id}",
+    response_model=AlbumAssetDetailResponse,
+    summary="Get album asset detail",
+    description=(
+        "Return the lazy-loaded single-photo detail payload for one selected asset. "
+        "This contract keeps heavier metadata, linked tags and people, and named "
+        "face-region overlays off the thumbnail-grid hot path."
+    ),
+    response_description="Normalized detail payload for one selected album asset.",
+    responses=combine_responses(
+        {
+            200: {
+                "content": {
+                    "application/json": {
+                        "examples": ALBUM_ASSET_DETAIL_EXAMPLES,
+                    }
+                }
+            }
+        },
+        ALBUM_ASSET_NOT_FOUND_RESPONSES,
+        VALIDATION_ERROR_RESPONSE,
+    ),
+)
+def get_album_asset_detail(
+    asset_id: int,
+    session: Session = Depends(get_db_session),
+) -> AlbumAssetDetailResponse:
+    """Return one selected asset detail payload."""
+
+    response = _build_service(session).get_asset_detail(asset_id=asset_id)
+    if response is None:
+        raise HTTPException(status_code=404, detail=f"album asset {asset_id} does not exist")
     return response
 
 

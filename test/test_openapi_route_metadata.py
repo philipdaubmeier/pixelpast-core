@@ -62,6 +62,7 @@ def test_album_routes_document_navigation_and_listing_contracts() -> None:
     collection_assets_operation = schema["paths"][
         "/api/albums/collections/{collection_id}/assets"
     ]["get"]
+    asset_detail_operation = schema["paths"]["/api/albums/assets/{asset_id}"]["get"]
 
     assert folders_operation["tags"] == ["album"]
     assert folders_operation["summary"] == "Get album folder tree"
@@ -88,6 +89,17 @@ def test_album_routes_document_navigation_and_listing_contracts() -> None:
 
     assert collection_assets_operation["summary"] == "Get album collection asset listing"
     assert "deduplicate assets" in collection_assets_operation["description"]
+
+    asset_detail_parameters = _parameters_by_name(asset_detail_operation)
+    assert asset_detail_operation["summary"] == "Get album asset detail"
+    assert asset_detail_operation["responses"]["200"]["description"] == (
+        "Normalized detail payload for one selected album asset."
+    )
+    assert "selected_photo_detail" in _response_examples(asset_detail_operation, 200)
+    assert asset_detail_operation["responses"]["404"]["description"] == (
+        "The requested asset does not exist."
+    )
+    assert asset_detail_parameters["asset_id"]["required"] is True
 
 
 def test_health_route_exposes_meaningful_openapi_metadata() -> None:
