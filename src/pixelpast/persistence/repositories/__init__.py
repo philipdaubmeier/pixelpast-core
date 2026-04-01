@@ -1,8 +1,11 @@
 """Persistence repositories for canonical write access."""
 
 from pixelpast.persistence.repositories.canonical import (
+    AlbumNavigationRepository,
     AssetMediaRepository,
     AssetOriginalCandidate,
+    AssetCollectionRepository,
+    AssetFolderRepository,
     AssetRepository,
     AssetThumbnailCandidate,
     AssetUpsertResult,
@@ -59,6 +62,9 @@ from pixelpast.persistence.repositories.timeline_read import (
 __all__ = [
     "AssetRepository",
     "AssetMediaRepository",
+    "AlbumNavigationRepository",
+    "AssetCollectionRepository",
+    "AssetFolderRepository",
     "AssetOriginalCandidate",
     "AssetThumbnailCandidate",
     "AssetUpsertResult",

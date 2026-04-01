@@ -153,6 +153,7 @@ class Asset(Base):
     __tablename__ = "asset"
     __table_args__ = (
         CheckConstraint("length(short_id) = 8", name="ck_asset_short_id_length"),
+        Index("ix_asset_folder_id", "folder_id"),
         Index("ix_asset_timestamp", "timestamp"),
         Index("ix_asset_source_id", "source_id"),
         UniqueConstraint("short_id", name="uq_asset_short_id"),
@@ -172,6 +173,10 @@ class Asset(Base):
     summary: Mapped[str | None] = mapped_column(Text(), nullable=True)
     latitude: Mapped[float | None] = mapped_column(Float(), nullable=True)
     longitude: Mapped[float | None] = mapped_column(Float(), nullable=True)
+    folder_id: Mapped[int | None] = mapped_column(
+        ForeignKey("asset_folder.id"),
+        nullable=True,
+    )
     creator_person_id: Mapped[int | None] = mapped_column(
         ForeignKey("person.id"),
         nullable=True,
@@ -180,6 +185,79 @@ class Asset(Base):
         "metadata",
         JSON,
         nullable=True,
+    )
+
+
+class AssetFolder(Base):
+    """Represents one source-owned physical folder in the album tree."""
+
+    __tablename__ = "asset_folder"
+    __table_args__ = (
+        Index("ix_asset_folder_source_parent", "source_id", "parent_id"),
+        UniqueConstraint("source_id", "path", name="uq_asset_folder_source_path"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source_id: Mapped[int] = mapped_column(ForeignKey("source.id"), nullable=False)
+    parent_id: Mapped[int | None] = mapped_column(
+        ForeignKey("asset_folder.id"),
+        nullable=True,
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    path: Mapped[str] = mapped_column(String(2048), nullable=False)
+
+
+class AssetCollection(Base):
+    """Represents one source-owned semantic collection in the album tree."""
+
+    __tablename__ = "asset_collection"
+    __table_args__ = (
+        Index("ix_asset_collection_source_parent", "source_id", "parent_id"),
+        UniqueConstraint(
+            "source_id",
+            "external_id",
+            name="uq_asset_collection_source_external_id",
+        ),
+        UniqueConstraint("source_id", "path", name="uq_asset_collection_source_path"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source_id: Mapped[int] = mapped_column(ForeignKey("source.id"), nullable=False)
+    parent_id: Mapped[int | None] = mapped_column(
+        ForeignKey("asset_collection.id"),
+        nullable=True,
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    path: Mapped[str] = mapped_column(String(2048), nullable=False)
+    external_id: Mapped[str] = mapped_column(String(512), nullable=False)
+    collection_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    metadata_json: Mapped[dict[str, Any] | None] = mapped_column(
+        "metadata",
+        JSON,
+        nullable=True,
+    )
+
+
+class AssetCollectionItem(Base):
+    """Associates assets with semantic album collections."""
+
+    __tablename__ = "asset_collection_item"
+    __table_args__ = (
+        Index("ix_asset_collection_item_asset_id", "asset_id"),
+        UniqueConstraint(
+            "collection_id",
+            "asset_id",
+            name="uq_asset_collection_item_collection_asset",
+        ),
+    )
+
+    collection_id: Mapped[int] = mapped_column(
+        ForeignKey("asset_collection.id"),
+        primary_key=True,
+    )
+    asset_id: Mapped[int] = mapped_column(
+        ForeignKey("asset.id"),
+        primary_key=True,
     )
 
 

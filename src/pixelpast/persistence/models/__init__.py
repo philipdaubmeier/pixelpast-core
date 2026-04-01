@@ -7,6 +7,9 @@ from pixelpast.persistence.models.canonical import (
     JOB_RUN_TYPE_DERIVE,
     JOB_RUN_TYPE_INGEST,
     Asset,
+    AssetCollection,
+    AssetCollectionItem,
+    AssetFolder,
     AssetPerson,
     AssetTag,
     DailyAggregate,
@@ -27,6 +30,9 @@ from pixelpast.persistence.models.canonical import (
 
 __all__ = [
     "Asset",
+    "AssetCollection",
+    "AssetCollectionItem",
+    "AssetFolder",
     "AssetPerson",
     "AssetTag",
     "DAILY_AGGREGATE_OVERALL_SOURCE_TYPE",

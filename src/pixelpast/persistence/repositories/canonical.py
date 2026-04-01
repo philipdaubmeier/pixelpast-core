@@ -6,17 +6,27 @@ import json
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import PurePosixPath
 from typing import Any
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from pixelpast.domain.entities import (
+    AlbumNavigationFillInResult,
+    AssetCollectionItemRecord,
+    AssetCollectionRecord,
+    AssetFolderRecord,
+)
 from pixelpast.persistence.asset_short_ids import (
     build_asset_short_id_candidate,
     generate_random_asset_short_id,
 )
 from pixelpast.persistence.models import (
     Asset,
+    AssetCollection,
+    AssetCollectionItem,
+    AssetFolder,
     AssetPerson,
     AssetTag,
     Event,
@@ -372,6 +382,7 @@ class AssetRepository:
         summary: str | None,
         latitude: float | None,
         longitude: float | None,
+        folder_id: int | None = None,
         creator_person_id: int | None,
         metadata_json: dict[str, Any] | None,
     ) -> AssetUpsertResult:
@@ -391,6 +402,7 @@ class AssetRepository:
                 summary=summary,
                 latitude=latitude,
                 longitude=longitude,
+                folder_id=folder_id,
                 creator_person_id=creator_person_id,
                 metadata_json=metadata_json,
             )
@@ -404,6 +416,7 @@ class AssetRepository:
                 asset.summary != summary,
                 asset.latitude != latitude,
                 asset.longitude != longitude,
+                asset.folder_id != folder_id,
                 asset.creator_person_id != creator_person_id,
                 asset.metadata_json != next_metadata,
             ]
@@ -416,6 +429,7 @@ class AssetRepository:
             asset.summary = summary
             asset.latitude = latitude
             asset.longitude = longitude
+            asset.folder_id = folder_id
             asset.creator_person_id = creator_person_id
             asset.metadata_json = next_metadata
         elif asset.short_id is None:
@@ -451,6 +465,7 @@ class AssetRepository:
         summary: str | None,
         latitude: float | None,
         longitude: float | None,
+        folder_id: int | None = None,
         creator_person_id: int | None,
         metadata_json: dict[str, Any] | None,
     ) -> AssetUpsertResult:
@@ -473,6 +488,7 @@ class AssetRepository:
                 summary=summary,
                 latitude=latitude,
                 longitude=longitude,
+                folder_id=folder_id,
                 creator_person_id=creator_person_id,
                 metadata_json=next_metadata,
             )
@@ -629,6 +645,325 @@ class AssetMediaRepository:
             metadata_json=row[4],
             source_type=row[5],
             source_config=source_config if isinstance(source_config, dict) else {},
+        )
+
+
+class AssetFolderRepository:
+    """Repository for canonical physical album-folder storage."""
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def get_by_source_and_path(
+        self,
+        *,
+        source_id: int,
+        path: str,
+    ) -> AssetFolder | None:
+        statement = select(AssetFolder).where(
+            AssetFolder.source_id == source_id,
+            AssetFolder.path == path,
+        )
+        return self._session.execute(statement).scalar_one_or_none()
+
+    def list_by_source_id(self, *, source_id: int) -> tuple[AssetFolderRecord, ...]:
+        statement = (
+            select(AssetFolder)
+            .where(AssetFolder.source_id == source_id)
+            .order_by(AssetFolder.path, AssetFolder.id)
+        )
+        return tuple(
+            AssetFolderRecord(
+                id=folder.id,
+                source_id=folder.source_id,
+                parent_id=folder.parent_id,
+                name=folder.name,
+                path=folder.path,
+            )
+            for folder in self._session.execute(statement).scalars()
+        )
+
+    def get_or_create_tree(
+        self,
+        *,
+        source_id: int,
+        path: str,
+    ) -> tuple[AssetFolder, int]:
+        normalized_path = _normalize_navigation_path(path)
+        if normalized_path is None:
+            raise ValueError("Asset folder path must not be empty.")
+
+        created_count = 0
+        parent: AssetFolder | None = None
+        prefix_segments: list[str] = []
+
+        for segment in normalized_path.split("/"):
+            prefix_segments.append(segment)
+            segment_path = "/".join(prefix_segments)
+            folder = self.get_by_source_and_path(
+                source_id=source_id,
+                path=segment_path,
+            )
+            if folder is None:
+                folder = AssetFolder(
+                    source_id=source_id,
+                    parent_id=parent.id if parent is not None else None,
+                    name=segment,
+                    path=segment_path,
+                )
+                self._session.add(folder)
+                self._session.flush()
+                created_count += 1
+            elif folder.parent_id != (parent.id if parent is not None else None):
+                folder.parent_id = parent.id if parent is not None else None
+                folder.name = segment
+                self._session.flush()
+            parent = folder
+
+        if parent is None:
+            raise ValueError("Asset folder path must not be empty.")
+        return parent, created_count
+
+
+class AssetCollectionRepository:
+    """Repository for canonical semantic album-collection storage."""
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def get_by_source_and_external_id(
+        self,
+        *,
+        source_id: int,
+        external_id: str,
+    ) -> AssetCollection | None:
+        statement = select(AssetCollection).where(
+            AssetCollection.source_id == source_id,
+            AssetCollection.external_id == external_id,
+        )
+        return self._session.execute(statement).scalar_one_or_none()
+
+    def list_by_source_id(
+        self,
+        *,
+        source_id: int,
+    ) -> tuple[AssetCollectionRecord, ...]:
+        statement = (
+            select(AssetCollection)
+            .where(AssetCollection.source_id == source_id)
+            .order_by(AssetCollection.path, AssetCollection.id)
+        )
+        return tuple(
+            AssetCollectionRecord(
+                id=collection.id,
+                source_id=collection.source_id,
+                parent_id=collection.parent_id,
+                name=collection.name,
+                path=collection.path,
+                external_id=collection.external_id,
+                collection_type=collection.collection_type,
+                metadata_json=(
+                    dict(collection.metadata_json)
+                    if collection.metadata_json is not None
+                    else None
+                ),
+            )
+            for collection in self._session.execute(statement).scalars()
+        )
+
+    def list_items_by_source_id(
+        self,
+        *,
+        source_id: int,
+    ) -> tuple[AssetCollectionItemRecord, ...]:
+        statement = (
+            select(AssetCollectionItem)
+            .join(
+                AssetCollection,
+                AssetCollection.id == AssetCollectionItem.collection_id,
+            )
+            .where(AssetCollection.source_id == source_id)
+            .order_by(
+                AssetCollectionItem.collection_id,
+                AssetCollectionItem.asset_id,
+            )
+        )
+        return tuple(
+            AssetCollectionItemRecord(
+                collection_id=item.collection_id,
+                asset_id=item.asset_id,
+            )
+            for item in self._session.execute(statement).scalars()
+        )
+
+    def upsert(
+        self,
+        *,
+        source_id: int,
+        external_id: str,
+        name: str,
+        path: str,
+        collection_type: str,
+        metadata_json: dict[str, Any] | None = None,
+    ) -> tuple[AssetCollection, str]:
+        collection = self.get_by_source_and_external_id(
+            source_id=source_id,
+            external_id=external_id,
+        )
+        normalized_path = _normalize_navigation_path(path)
+        if normalized_path is None:
+            raise ValueError("Asset collection path must not be empty.")
+
+        next_metadata = dict(metadata_json) if metadata_json is not None else None
+        if collection is None:
+            collection = AssetCollection(
+                source_id=source_id,
+                parent_id=None,
+                name=name,
+                path=normalized_path,
+                external_id=external_id,
+                collection_type=collection_type,
+                metadata_json=next_metadata,
+            )
+            self._session.add(collection)
+            self._session.flush()
+            return collection, "inserted"
+
+        changed = any(
+            [
+                collection.name != name,
+                collection.path != normalized_path,
+                collection.collection_type != collection_type,
+                collection.metadata_json != next_metadata,
+            ]
+        )
+        if changed:
+            collection.name = name
+            collection.path = normalized_path
+            collection.collection_type = collection_type
+            collection.metadata_json = next_metadata
+            self._session.flush()
+            return collection, "updated"
+        return collection, "unchanged"
+
+    def reconcile_parent_links(self, *, source_id: int) -> None:
+        collections = list(
+            self._session.execute(
+                select(AssetCollection)
+                .where(AssetCollection.source_id == source_id)
+                .order_by(AssetCollection.path, AssetCollection.id)
+            ).scalars()
+        )
+        by_path = {collection.path: collection for collection in collections}
+        for collection in collections:
+            parent_path = _parent_navigation_path(collection.path)
+            parent_id = by_path[parent_path].id if parent_path in by_path else None
+            if collection.parent_id != parent_id:
+                collection.parent_id = parent_id
+        self._session.flush()
+
+    def replace_items_for_source(
+        self,
+        *,
+        source_id: int,
+        memberships: Iterable[tuple[int, int]],
+    ) -> int:
+        self._session.execute(
+            delete(AssetCollectionItem).where(
+                AssetCollectionItem.collection_id.in_(
+                    select(AssetCollection.id).where(
+                        AssetCollection.source_id == source_id
+                    )
+                )
+            )
+        )
+        unique_memberships = sorted(set(memberships))
+        self._session.add_all(
+            [
+                AssetCollectionItem(collection_id=collection_id, asset_id=asset_id)
+                for collection_id, asset_id in unique_memberships
+            ]
+        )
+        self._session.flush()
+        return len(unique_memberships)
+
+
+class AlbumNavigationRepository:
+    """Repository for album-navigation fill-in based on existing asset metadata."""
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+        self._folders = AssetFolderRepository(session)
+        self._collections = AssetCollectionRepository(session)
+
+    def fill_from_existing_assets(
+        self,
+        *,
+        source_id: int | None = None,
+    ) -> AlbumNavigationFillInResult:
+        statement = (
+            select(Asset, Source)
+            .join(Source, Source.id == Asset.source_id)
+            .order_by(Source.id, Asset.id)
+        )
+        if source_id is not None:
+            statement = statement.where(Source.id == source_id)
+
+        rows = self._session.execute(statement).all()
+        created_folder_count = 0
+        created_collection_count = 0
+        assigned_asset_folder_count = 0
+        unresolved_asset_count = 0
+        collection_memberships: dict[int, set[tuple[int, int]]] = {}
+
+        for asset, source in rows:
+            folder_path = _extract_folder_path_from_asset(
+                asset=asset,
+                source=source,
+            )
+            if folder_path is None:
+                if asset.folder_id is None:
+                    unresolved_asset_count += 1
+            else:
+                folder, created_count = self._folders.get_or_create_tree(
+                    source_id=source.id,
+                    path=folder_path,
+                )
+                created_folder_count += created_count
+                if asset.folder_id != folder.id:
+                    asset.folder_id = folder.id
+                    assigned_asset_folder_count += 1
+
+            for spec in _extract_collection_specs_from_asset(asset=asset):
+                collection, status = self._collections.upsert(
+                    source_id=source.id,
+                    external_id=spec.external_id,
+                    name=spec.name,
+                    path=spec.path,
+                    collection_type=spec.collection_type,
+                    metadata_json=spec.metadata_json,
+                )
+                if status == "inserted":
+                    created_collection_count += 1
+                collection_memberships.setdefault(source.id, set()).add(
+                    (collection.id, asset.id)
+                )
+
+        linked_collection_item_count = 0
+        for resolved_source_id, memberships in sorted(collection_memberships.items()):
+            self._collections.reconcile_parent_links(source_id=resolved_source_id)
+            linked_collection_item_count += self._collections.replace_items_for_source(
+                source_id=resolved_source_id,
+                memberships=memberships,
+            )
+
+        self._session.flush()
+        return AlbumNavigationFillInResult(
+            created_folder_count=created_folder_count,
+            created_collection_count=created_collection_count,
+            assigned_asset_folder_count=assigned_asset_folder_count,
+            linked_collection_item_count=linked_collection_item_count,
+            unresolved_asset_count=unresolved_asset_count,
         )
 
 class EventReplaceResult:
@@ -890,6 +1225,136 @@ class PersonRepository:
             person.metadata_json = dict(metadata_json)
         self._session.flush()
         return person
+
+
+@dataclass(slots=True, frozen=True)
+class _AssetCollectionFillInSpec:
+    external_id: str
+    name: str
+    path: str
+    collection_type: str
+    metadata_json: dict[str, Any] | None
+
+
+def _extract_folder_path_from_asset(*, asset: Asset, source: Source) -> str | None:
+    metadata_json = asset.metadata_json if isinstance(asset.metadata_json, dict) else {}
+
+    if source.type == "photos":
+        source_path = metadata_json.get("source_path")
+        root_path = source.config.get("root_path") if isinstance(source.config, dict) else None
+        return _build_photo_folder_path(
+            source_path=source_path if isinstance(source_path, str) else None,
+            root_path=root_path if isinstance(root_path, str) else None,
+        )
+
+    file_path = metadata_json.get("file_path")
+    if isinstance(file_path, str):
+        return _normalize_filesystem_folder_path(file_path)
+    return None
+
+
+def _build_photo_folder_path(
+    *,
+    source_path: str | None,
+    root_path: str | None,
+) -> str | None:
+    normalized_source_path = _normalize_path_string(source_path)
+    if normalized_source_path is None:
+        return None
+
+    source_file_path = PurePosixPath(normalized_source_path)
+    if source_file_path.parent == source_file_path:
+        return None
+
+    normalized_root_path = _normalize_path_string(root_path)
+    if normalized_root_path is None:
+        return _normalize_navigation_path(source_file_path.parent.as_posix())
+
+    root = PurePosixPath(normalized_root_path)
+    try:
+        relative_parent = source_file_path.parent.relative_to(root)
+    except ValueError:
+        return _normalize_navigation_path(source_file_path.parent.as_posix())
+
+    segments = [segment for segment in (root.name, *relative_parent.parts) if segment not in {"", "."}]
+    return _normalize_navigation_path("/".join(segments))
+
+
+def _normalize_filesystem_folder_path(file_path: str) -> str | None:
+    normalized_file_path = _normalize_path_string(file_path)
+    if normalized_file_path is None:
+        return None
+    parent = PurePosixPath(normalized_file_path).parent
+    if parent.as_posix() in {"", "."}:
+        return None
+    return _normalize_navigation_path(parent.as_posix())
+
+
+def _extract_collection_specs_from_asset(
+    *,
+    asset: Asset,
+) -> tuple[_AssetCollectionFillInSpec, ...]:
+    metadata_json = asset.metadata_json if isinstance(asset.metadata_json, dict) else {}
+    raw_collections = metadata_json.get("collections")
+    if not isinstance(raw_collections, list):
+        return ()
+
+    specs: list[_AssetCollectionFillInSpec] = []
+    seen_external_ids: set[str] = set()
+    for raw_collection in raw_collections:
+        if not isinstance(raw_collection, dict):
+            continue
+
+        external_id_value = raw_collection.get("id")
+        name_value = raw_collection.get("name")
+        path_value = raw_collection.get("path")
+        if name_value is None or path_value is None or external_id_value is None:
+            continue
+
+        name = str(name_value).strip()
+        path = _normalize_navigation_path(str(path_value))
+        external_id = str(external_id_value).strip()
+        if name == "" or path is None or external_id == "" or external_id in seen_external_ids:
+            continue
+
+        seen_external_ids.add(external_id)
+        specs.append(
+            _AssetCollectionFillInSpec(
+                external_id=external_id,
+                name=name,
+                path=path,
+                collection_type="lightroom_collection",
+                metadata_json={"fill_in_source": "asset.metadata.collections"},
+            )
+        )
+
+    return tuple(sorted(specs, key=lambda spec: (spec.path.casefold(), spec.external_id)))
+
+
+def _normalize_path_string(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = value.strip().replace("\\", "/")
+    if normalized == "":
+        return None
+    return normalized
+
+
+def _normalize_navigation_path(value: str | None) -> str | None:
+    normalized = _normalize_path_string(value)
+    if normalized is None:
+        return None
+    segments = [segment.strip() for segment in normalized.split("/") if segment.strip() != ""]
+    if not segments:
+        return None
+    return "/".join(segments)
+
+
+def _parent_navigation_path(path: str) -> str | None:
+    if "/" not in path:
+        return None
+    parent_path = path.rsplit("/", 1)[0]
+    return parent_path or None
 
 
 def _serialize_event_signature_from_model(event: Event) -> str:
