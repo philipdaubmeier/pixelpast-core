@@ -25,6 +25,8 @@ from pixelpast.ingestion.lightroom_catalog.progress import (
     LightroomCatalogIngestionProgressTracker,
 )
 from pixelpast.persistence.repositories import (
+    AssetCollectionRepository,
+    AssetFolderRepository,
     AssetRepository,
     PersonRepository,
     TagRepository,
@@ -51,6 +53,8 @@ class LightroomCatalogIngestionPersistenceScope(SessionBoundPersistenceScopeBase
         self._persister = LightroomCatalogAssetPersister(
             source_id=source_id,
             asset_repository=AssetRepository(self._session),
+            asset_folder_repository=AssetFolderRepository(self._session),
+            asset_collection_repository=AssetCollectionRepository(self._session),
             tag_repository=TagRepository(self._session),
             person_repository=PersonRepository(self._session),
         )
@@ -78,10 +82,7 @@ class LightroomCatalogIngestionPersistenceScope(SessionBoundPersistenceScopeBase
     def persist(self, *, candidate: LightroomCatalogCandidate) -> str:
         """Persist one Lightroom catalog candidate through the open session."""
 
-        asset_outcomes = [
-            self._persister.persist(asset=asset)
-            for asset in candidate.assets
-        ]
+        asset_outcomes = self._persister.persist_catalog(candidate=candidate)
         self.persisted_catalog_count += 1
         return summarize_lightroom_catalog_persistence_outcome(
             asset_outcomes=asset_outcomes,

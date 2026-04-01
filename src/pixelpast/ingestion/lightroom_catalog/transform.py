@@ -6,13 +6,14 @@ from collections import defaultdict
 from collections.abc import Iterable
 from datetime import UTC, datetime
 from math import pow
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from pixelpast.ingestion.lightroom_catalog.contracts import (
     LoadedLightroomCatalog,
     LightroomAssetCandidate,
     LightroomCatalogCandidate,
     LightroomChosenImageRow,
+    LightroomCollectionMembership,
     LightroomCollectionRow,
     LightroomFaceRow,
     LightroomPersonCandidate,
@@ -89,6 +90,7 @@ class LightroomCatalogTransformer:
         return LightroomCatalogCandidate(
             catalog=catalog.descriptor,
             chosen_images=selected_image_rows,
+            collections=catalog.collection_nodes,
             assets=assets,
         )
 
@@ -134,6 +136,8 @@ class LightroomCatalogTransformer:
             tag_paths=tag_paths,
             asset_tag_paths=asset_tag_paths,
             persons=persons,
+            folder_path=_build_folder_path(image_row.file_path),
+            collections=_build_collection_memberships(collection_rows),
             metadata_json={
                 "file_name": image_row.file_name,
                 "file_path": image_row.file_path,
@@ -248,17 +252,42 @@ def _resolve_matching_person_path(*, name: str, tag_paths: tuple[str, ...]) -> s
 def _build_collection_metadata(
     collection_rows: Iterable[LightroomCollectionRow],
 ) -> list[dict[str, int | str]]:
+    memberships = _build_collection_memberships(collection_rows)
     return [
         {
-            "id": row.collection_id,
-            "name": row.collection_name,
-            "path": row.collection_path,
+            "id": membership.collection_id,
+            "name": membership.name,
+            "path": membership.path,
         }
+        for membership in memberships
+    ]
+
+
+def _build_collection_memberships(
+    collection_rows: Iterable[LightroomCollectionRow],
+) -> tuple[LightroomCollectionMembership, ...]:
+    return tuple(
+        LightroomCollectionMembership(
+            collection_id=row.collection_id,
+            name=row.collection_name,
+            path=row.collection_path,
+            collection_type=row.collection_type,
+        )
         for row in sorted(
             collection_rows,
             key=lambda row: (row.collection_path.casefold(), row.collection_id),
         )
-    ]
+    )
+
+
+def _build_folder_path(file_path: str) -> str | None:
+    normalized = file_path.strip().replace("\\", "/")
+    if normalized == "":
+        return None
+    parent = PurePosixPath(normalized).parent
+    if parent.as_posix() in {"", "."}:
+        return None
+    return parent.as_posix()
 
 
 def _build_face_region_metadata(

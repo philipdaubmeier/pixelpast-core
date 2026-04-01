@@ -57,6 +57,10 @@ def test_lightroom_transformer_maps_fixture_row_to_asset_candidate() -> None:
         ("John Doe", "who|Persons|John Doe"),
         ("Mona Lisa", "who|Persons|Mona Lisa"),
     )
+    assert candidate.folder_path == (
+        "C:/Users/phili/Desktop/Source/pixelpast-core/test/assets"
+    )
+    assert candidate.collections == ()
     assert candidate.metadata_json == {
         "file_name": "monalisa-2.jpg",
         "file_path": (
@@ -148,6 +152,7 @@ def test_lightroom_transformer_converts_apex_values_and_normalizes_person_links(
                 collection_name="Favorites",
                 collection_path="Root/Favorites",
                 parent_collection_id=None,
+                collection_type="lightroom_collection",
             ),
         ),
     )
@@ -179,6 +184,18 @@ def test_lightroom_transformer_converts_apex_values_and_normalizes_person_links(
     assert candidate.metadata_json["shutter_speed_seconds"] == pytest.approx(0.005)
     assert candidate.metadata_json["iso"] == 400
     assert candidate.metadata_json["color_label"] == "Red"
+    assert candidate.folder_path == "C:/photos"
+    assert tuple(
+        (
+            membership.collection_id,
+            membership.name,
+            membership.path,
+            membership.collection_type,
+        )
+        for membership in candidate.collections
+    ) == (
+        (9, "Favorites", "Root/Favorites", "lightroom_collection"),
+    )
     assert candidate.metadata_json["collections"] == [
         {"id": 9, "name": "Favorites", "path": "Root/Favorites"}
     ]

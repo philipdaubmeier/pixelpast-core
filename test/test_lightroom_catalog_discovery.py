@@ -232,6 +232,7 @@ def test_lightroom_catalog_fetcher_loads_chosen_images_faces_and_collection_rows
                 ),
             ),
             collection_rows=(),
+            collection_nodes=(),
         ),
     )
     assert progress_events == [
@@ -264,6 +265,7 @@ def test_lightroom_catalog_fetcher_applies_asset_range_before_related_row_querie
     assert [row.image_id for row in loaded_catalog.chosen_images] == [68, 69]
     assert [row.image_id for row in loaded_catalog.face_rows] == [68, 68, 69, 69, 69]
     assert loaded_catalog.collection_rows == ()
+    assert loaded_catalog.collection_nodes == ()
 
 
 def test_lightroom_sql_batch_helper_caps_batch_size_below_sqlite_variable_limit() -> (
@@ -322,6 +324,7 @@ def test_lightroom_catalog_connector_delegates_discovery_and_raw_load() -> None:
             206,
         ]
         assert loaded[0].collection_rows == ()
+        assert loaded[0].collection_nodes == ()
     finally:
         shutil.rmtree(workspace_root, ignore_errors=True)
 

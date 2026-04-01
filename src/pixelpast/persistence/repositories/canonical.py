@@ -887,6 +887,37 @@ class AssetCollectionRepository:
         self._session.flush()
         return len(unique_memberships)
 
+    def replace_items_for_assets(
+        self,
+        *,
+        source_id: int,
+        asset_ids: Iterable[int],
+        memberships: Iterable[tuple[int, int]],
+    ) -> int:
+        unique_asset_ids = sorted(set(asset_ids))
+        if not unique_asset_ids:
+            return 0
+
+        self._session.execute(
+            delete(AssetCollectionItem).where(
+                AssetCollectionItem.collection_id.in_(
+                    select(AssetCollection.id).where(
+                        AssetCollection.source_id == source_id
+                    )
+                ),
+                AssetCollectionItem.asset_id.in_(unique_asset_ids),
+            )
+        )
+        unique_memberships = sorted(set(memberships))
+        self._session.add_all(
+            [
+                AssetCollectionItem(collection_id=collection_id, asset_id=asset_id)
+                for collection_id, asset_id in unique_memberships
+            ]
+        )
+        self._session.flush()
+        return len(unique_memberships)
+
 
 class AlbumNavigationRepository:
     """Repository for album-navigation fill-in based on existing asset metadata."""

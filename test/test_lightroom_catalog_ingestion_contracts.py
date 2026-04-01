@@ -14,6 +14,7 @@ from pixelpast.ingestion.lightroom_catalog import (
     LightroomCatalogTransformer,
     LightroomChosenImageRow,
     LightroomCollectionMembership,
+    LightroomCollectionNode,
     LightroomFaceRegion,
     LightroomIngestionResult,
     LightroomPersonCandidate,
@@ -41,6 +42,7 @@ def test_lightroom_catalog_public_contract_imports_remain_stable() -> None:
         LightroomCollectionMembership
         is lightroom_contracts.LightroomCollectionMembership
     )
+    assert LightroomCollectionNode is lightroom_contracts.LightroomCollectionNode
     assert LightroomAssetCandidate is lightroom_contracts.LightroomAssetCandidate
     assert LightroomCatalogCandidate is lightroom_contracts.LightroomCatalogCandidate
     assert LightroomTransformError is lightroom_contracts.LightroomTransformError
@@ -296,6 +298,8 @@ def test_lightroom_contracts_pin_existing_asset_storage_boundary_without_schema_
                 path="who|Persons|Mona Lisa",
             ),
         ),
+        folder_path="C:/Users/phili/Desktop/Source/pixelpast-core/test/assets",
+        collections=(),
         metadata_json={
             "file_name": "monalisa-1.jpg",
             "file_path": (
@@ -326,6 +330,7 @@ def test_lightroom_contracts_pin_existing_asset_storage_boundary_without_schema_
     catalog_candidate = LightroomCatalogCandidate(
         catalog=LightroomCatalogDescriptor(path=_FIXTURE_PATH),
         chosen_images=_fetch_chosen_image_rows(),
+        collections=(),
         assets=(candidate,),
     )
 

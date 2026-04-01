@@ -11,6 +11,7 @@ from pixelpast.ingestion.lightroom_catalog.contracts import (
     LoadedLightroomCatalog,
     LightroomCatalogDescriptor,
     LightroomChosenImageRow,
+    LightroomCollectionNode,
     LightroomCollectionRow,
     LightroomFaceRow,
 )
@@ -86,12 +87,16 @@ class LightroomCatalogFetcher:
             )
             image_ids = tuple(row.image_id for row in chosen_images)
             face_rows = _fetch_face_rows(connection, image_ids=image_ids)
-            collection_rows = _fetch_collection_rows(connection, image_ids=image_ids)
+            collection_rows, collection_nodes = _fetch_collection_rows(
+                connection,
+                image_ids=image_ids,
+            )
         return LoadedLightroomCatalog(
             descriptor=catalog,
             chosen_images=chosen_images,
             face_rows=face_rows,
             collection_rows=collection_rows,
+            collection_nodes=collection_nodes,
         )
 
 
@@ -252,9 +257,9 @@ def _fetch_collection_rows(
     connection: sqlite3.Connection,
     *,
     image_ids: tuple[int, ...],
-) -> tuple[LightroomCollectionRow, ...]:
+) -> tuple[tuple[LightroomCollectionRow, ...], tuple[LightroomCollectionNode, ...]]:
     if not image_ids:
-        return ()
+        return (), ()
 
     membership_rows: list[sqlite3.Row] = []
     for batch_image_ids in _iter_sql_batches(image_ids):
@@ -265,7 +270,8 @@ def _fetch_collection_rows(
                     membership.image AS image_id,
                     collection.id_local AS collection_id,
                     collection.name AS collection_name,
-                    collection.parent AS parent_collection_id
+                    collection.parent AS parent_collection_id,
+                    collection.creationId AS collection_creation_id
                 FROM AgLibraryCollectionImage membership
                 JOIN AgLibraryCollection collection
                     ON collection.id_local = membership.collection
@@ -276,7 +282,7 @@ def _fetch_collection_rows(
             ).fetchall()
         )
     if not membership_rows:
-        return ()
+        return (), ()
 
     collection_lookup = _load_collection_lookup(
         connection,
@@ -284,7 +290,7 @@ def _fetch_collection_rows(
             int(row["collection_id"]) for row in membership_rows if row["collection_id"]
         },
     )
-    return tuple(
+    collection_rows = tuple(
         LightroomCollectionRow(
             image_id=row["image_id"],
             collection_id=row["collection_id"],
@@ -294,22 +300,53 @@ def _fetch_collection_rows(
                 collection_lookup=collection_lookup,
             ),
             parent_collection_id=_coerce_optional_int(row["parent_collection_id"]),
+            collection_type=_resolve_collection_type(row["collection_creation_id"]),
         )
         for row in membership_rows
     )
+    collection_nodes = tuple(
+        LightroomCollectionNode(
+            collection_id=collection_id,
+            collection_name=entry.name,
+            collection_path=_build_collection_path(
+                collection_id=collection_id,
+                collection_lookup=collection_lookup,
+            ),
+            parent_collection_id=entry.parent_collection_id,
+            collection_type=entry.collection_type,
+        )
+        for collection_id, entry in sorted(
+            collection_lookup.items(),
+            key=lambda item: (
+                _build_collection_path(
+                    collection_id=item[0],
+                    collection_lookup=collection_lookup,
+                ).casefold(),
+                item[0],
+            ),
+        )
+    )
+    return collection_rows, collection_nodes
+
+
+@dataclass(slots=True, frozen=True)
+class _CollectionLookupEntry:
+    name: str
+    parent_collection_id: int | None
+    collection_type: str
 
 
 def _load_collection_lookup(
     connection: sqlite3.Connection,
     *,
     collection_ids: set[int],
-) -> dict[int, tuple[str, int | None]]:
-    collection_lookup: dict[int, tuple[str, int | None]] = {}
+) -> dict[int, _CollectionLookupEntry]:
+    collection_lookup: dict[int, _CollectionLookupEntry] = {}
     pending_collection_ids = set(collection_ids)
     while pending_collection_ids:
         rows = connection.execute(
             f"""
-            SELECT id_local, name, parent
+            SELECT id_local, name, parent, creationId
             FROM AgLibraryCollection
             WHERE id_local IN ({_sql_placeholders(len(pending_collection_ids))})
             """,
@@ -319,7 +356,11 @@ def _load_collection_lookup(
         for row in rows:
             collection_id = int(row["id_local"])
             parent_collection_id = _coerce_optional_int(row["parent"])
-            collection_lookup[collection_id] = (row["name"], parent_collection_id)
+            collection_lookup[collection_id] = _CollectionLookupEntry(
+                name=row["name"],
+                parent_collection_id=parent_collection_id,
+                collection_type=_resolve_collection_type(row["creationId"]),
+            )
             if (
                 parent_collection_id is not None
                 and parent_collection_id not in collection_lookup
@@ -331,15 +372,22 @@ def _load_collection_lookup(
 def _build_collection_path(
     *,
     collection_id: int,
-    collection_lookup: dict[int, tuple[str, int | None]],
+    collection_lookup: dict[int, _CollectionLookupEntry],
 ) -> str:
     path_segments: list[str] = []
     current_collection_id: int | None = collection_id
     while current_collection_id is not None:
-        name, current_collection_id = collection_lookup[current_collection_id]
-        path_segments.append(name)
+        entry = collection_lookup[current_collection_id]
+        path_segments.append(entry.name)
+        current_collection_id = entry.parent_collection_id
     path_segments.reverse()
     return "/".join(path_segments)
+
+
+def _resolve_collection_type(creation_id: object) -> str:
+    if creation_id == "com.adobe.ag.library.smart_collection":
+        return "lightroom_smart_collection"
+    return "lightroom_collection"
 
 
 def _build_file_name(*, base_name: str, extension: str | None) -> str:

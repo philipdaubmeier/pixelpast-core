@@ -13,6 +13,9 @@ from sqlalchemy import select
 from pixelpast.ingestion.lightroom_catalog import LightroomCatalogIngestionService
 from pixelpast.persistence.models import (
     Asset,
+    AssetCollection,
+    AssetCollectionItem,
+    AssetFolder,
     AssetPerson,
     AssetTag,
     JobRun,
@@ -45,6 +48,9 @@ def test_lightroom_catalog_ingestion_imports_fixture_end_to_end_without_schema_c
             assets = list(
                 session.execute(select(Asset).order_by(Asset.external_id)).scalars()
             )
+            folders = list(
+                session.execute(select(AssetFolder).order_by(AssetFolder.path)).scalars()
+            )
             tags = list(session.execute(select(Tag).order_by(Tag.path)).scalars())
             persons = list(
                 session.execute(select(Person).order_by(Person.name, Person.id)).scalars()
@@ -65,6 +71,17 @@ def test_lightroom_catalog_ingestion_imports_fixture_end_to_end_without_schema_c
         assert result.error_count == 0
 
         assert len(assets) == 3
+        assert [folder.path for folder in folders] == _expected_folder_paths(
+            "C:/Users/phili/Desktop/Source/pixelpast-core/test/assets"
+        )
+        folder_by_path = {folder.path: folder for folder in folders}
+        assert all(
+            asset.folder_id
+            == folder_by_path[
+                "C:/Users/phili/Desktop/Source/pixelpast-core/test/assets"
+            ].id
+            for asset in assets
+        )
         assert len(tags) == 10
         assert len(persons) == 3
         assert len(asset_tags) == 17
@@ -253,6 +270,22 @@ def test_lightroom_catalog_ingestion_persists_caption_and_collection_metadata_an
                 asset.external_id: asset
                 for asset in session.execute(select(Asset)).scalars()
             }
+            collections = list(
+                session.execute(
+                    select(AssetCollection).order_by(
+                        AssetCollection.path,
+                        AssetCollection.id,
+                    )
+                ).scalars()
+            )
+            collection_items = list(
+                session.execute(
+                    select(AssetCollectionItem).order_by(
+                        AssetCollectionItem.collection_id,
+                        AssetCollectionItem.asset_id,
+                    )
+                ).scalars()
+            )
 
         assert result.status == "completed"
         assert result.processed_asset_count == 3
@@ -268,6 +301,12 @@ def test_lightroom_catalog_ingestion_persists_caption_and_collection_metadata_an
                 "name": "Italy",
                 "path": "Trips/Italy",
             }
+        ]
+        assert [collection.path for collection in collections] == ["Trips", "Trips/Italy"]
+        assert collections[0].parent_id is None
+        assert collections[1].parent_id == collections[0].id
+        assert [item.asset_id for item in collection_items] == [
+            assets[_FIRST_ASSET_EXTERNAL_ID].id
         ]
         assert assets[_FIRST_ASSET_EXTERNAL_ID].metadata_json["face_regions"] == [
             {
@@ -700,3 +739,17 @@ def _corrupt_xmp_blob(*, catalog_path: Path, image_id: int) -> None:
             (original_blob[:4] + b"not-a-valid-zlib-stream", image_id),
         )
         connection.commit()
+
+
+def _expected_folder_paths(*leaf_paths: str) -> list[str]:
+    ordered_paths: list[str] = []
+    seen: set[str] = set()
+    for leaf_path in leaf_paths:
+        parts = [part for part in leaf_path.split("/") if part]
+        for index in range(1, len(parts) + 1):
+            candidate = "/".join(parts[:index])
+            if candidate in seen:
+                continue
+            seen.add(candidate)
+            ordered_paths.append(candidate)
+    return sorted(ordered_paths)

@@ -87,6 +87,18 @@ class LightroomCollectionRow:
     collection_name: str
     collection_path: str
     parent_collection_id: int | None
+    collection_type: str
+
+
+@dataclass(slots=True, frozen=True)
+class LightroomCollectionNode:
+    """One Lightroom collection tree node loaded from the catalog."""
+
+    collection_id: int
+    collection_name: str
+    collection_path: str
+    parent_collection_id: int | None
+    collection_type: str
 
 
 @dataclass(slots=True, frozen=True)
@@ -97,6 +109,7 @@ class LoadedLightroomCatalog:
     chosen_images: tuple[LightroomChosenImageRow, ...]
     face_rows: tuple[LightroomFaceRow, ...]
     collection_rows: tuple[LightroomCollectionRow, ...]
+    collection_nodes: tuple[LightroomCollectionNode, ...]
 
 
 @dataclass(slots=True, frozen=True)
@@ -137,6 +150,7 @@ class LightroomCollectionMembership:
     collection_id: int
     path: str
     name: str
+    collection_type: str
 
 
 @dataclass(slots=True, frozen=True)
@@ -153,6 +167,8 @@ class LightroomAssetCandidate:
     tag_paths: tuple[str, ...]
     asset_tag_paths: tuple[str, ...]
     persons: tuple[LightroomPersonCandidate, ...]
+    folder_path: str | None
+    collections: tuple[LightroomCollectionMembership, ...]
     metadata_json: dict[str, Any] | None
 
 
@@ -162,6 +178,7 @@ class LightroomCatalogCandidate:
 
     catalog: LightroomCatalogDescriptor
     chosen_images: tuple[LightroomChosenImageRow, ...]
+    collections: tuple[LightroomCollectionNode, ...]
     assets: tuple[LightroomAssetCandidate, ...]
 
 
@@ -193,6 +210,7 @@ __all__ = [
     "LightroomCatalogCandidate",
     "LightroomCatalogDescriptor",
     "LightroomChosenImageRow",
+    "LightroomCollectionNode",
     "LightroomCollectionMembership",
     "LightroomCollectionRow",
     "LightroomFaceRow",
