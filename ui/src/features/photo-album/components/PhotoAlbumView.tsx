@@ -676,7 +676,6 @@ export function PhotoAlbumView({
     };
   }, [
     onSelectedAssetChange,
-    selectedAssetId,
     selectedPersonIds,
     selectedTagPaths,
     selection,
