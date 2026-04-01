@@ -1,6 +1,7 @@
 import type { MapPointProjection, PersonProjection, TagProjection } from "../projections/timeline";
 import {
   albumTransport,
+  resolveBackendUrl,
   type ApiAlbumAssetDetailResponse,
   type ApiAlbumAssetListingResponse,
   type ApiAlbumCollectionNode,
@@ -162,7 +163,7 @@ function mapListing(
       timestamp: item.timestamp,
       mediaType: item.media_type,
       title: item.title,
-      thumbnailUrl: item.thumbnail_url,
+      thumbnailUrl: resolveBackendUrl(item.thumbnail_url),
     })),
   };
 }
@@ -225,8 +226,8 @@ function mapAssetDetail(
     shutterSpeedSeconds: response.shutter_speed_seconds ?? null,
     focalLengthMm: response.focal_length_mm ?? null,
     iso: response.iso ?? null,
-    thumbnailUrl: response.thumbnail_url,
-    originalUrl: response.original_url,
+    thumbnailUrl: resolveBackendUrl(response.thumbnail_url),
+    originalUrl: resolveBackendUrl(response.original_url),
     people: response.people.map((person) => ({
       id: String(person.id),
       name: person.name,

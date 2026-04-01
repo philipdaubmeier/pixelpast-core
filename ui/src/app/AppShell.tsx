@@ -309,7 +309,16 @@ export function AppShell({
             onExpandedCollectionIdsChange={setExpandedCollectionIds}
             onTogglePerson={togglePerson}
             onToggleTag={toggleTag}
-            onChromeStateChange={setAlbumChromeState}
+            onChromeStateChange={(nextState) =>
+              setAlbumChromeState((currentState) =>
+                currentState.transportState === nextState.transportState &&
+                currentState.transportError === nextState.transportError &&
+                currentState.resultSummary === nextState.resultSummary &&
+                currentState.hoverLabel === nextState.hoverLabel
+                  ? currentState
+                  : nextState,
+              )
+            }
           />
         </MainContentFrame>
       ) : (

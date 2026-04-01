@@ -121,6 +121,17 @@ function ensureAncestorExpansion(
   return [...nextExpandedIds];
 }
 
+function areNumberSetsEqual(left: number[], right: number[]): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  const normalizedLeft = [...left].sort((a, b) => a - b);
+  const normalizedRight = [...right].sort((a, b) => a - b);
+
+  return normalizedLeft.every((value, index) => value === normalizedRight[index]);
+}
+
 function buildAlbumPersons(
   selectedPersons: PersonProjection[],
   context: AlbumContextProjection | null,
@@ -482,65 +493,109 @@ export function PhotoAlbumView({
     startTransition(() => {
       setFolderTreeState("loading");
       setFolderTreeError(null);
-      setCollectionTreeState("loading");
-      setCollectionTreeError(null);
     });
 
-    void Promise.all([
-      albumApi.getFolderTree({
+    void albumApi
+      .getFolderTree({
         selectedPersons: selectedPersonIds,
         selectedTags: selectedTagPaths,
-      }),
-      albumApi.getCollectionTree({
-        selectedPersons: selectedPersonIds,
-        selectedTags: selectedTagPaths,
-      }),
-    ])
-      .then(([nextFolderNodes, nextCollectionNodes]) => {
+      })
+      .then((nextFolderNodes) => {
         if (cancelled) {
           return;
         }
 
         startTransition(() => {
           setFolderNodes(nextFolderNodes);
-          setCollectionNodes(nextCollectionNodes);
           setFolderTreeState("ready");
-          setCollectionTreeState("ready");
         });
-
-        const stillValidSelection =
-          selection !== null &&
-          (selection.kind === "folder"
-            ? nextFolderNodes.some((node) => node.id === selection.id)
-            : nextCollectionNodes.some((node) => node.id === selection.id));
-
-        if (!stillValidSelection) {
-          onSelectionChange(
-            pickDefaultSelection(nextFolderNodes, nextCollectionNodes),
-          );
-        }
       })
       .catch((error: unknown) => {
         if (cancelled) {
           return;
         }
 
-        const message =
-          error instanceof Error
-            ? error.message
-            : "Unable to load album navigation.";
         startTransition(() => {
           setFolderTreeState("error");
-          setFolderTreeError(message);
-          setCollectionTreeState("error");
-          setCollectionTreeError(message);
+          setFolderTreeError(
+            error instanceof Error
+              ? error.message
+              : "Unable to load album folders.",
+          );
         });
       });
 
     return () => {
       cancelled = true;
     };
-  }, [onSelectionChange, selectedPersonIds, selectedTagPaths, selection]);
+  }, [selectedPersonIds, selectedTagPaths]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    startTransition(() => {
+      setCollectionTreeState("loading");
+      setCollectionTreeError(null);
+    });
+
+    void albumApi
+      .getCollectionTree({
+        selectedPersons: selectedPersonIds,
+        selectedTags: selectedTagPaths,
+      })
+      .then((nextCollectionNodes) => {
+        if (cancelled) {
+          return;
+        }
+
+        startTransition(() => {
+          setCollectionNodes(nextCollectionNodes);
+          setCollectionTreeState("ready");
+        });
+      })
+      .catch((error: unknown) => {
+        if (cancelled) {
+          return;
+        }
+
+        startTransition(() => {
+          setCollectionTreeState("error");
+          setCollectionTreeError(
+            error instanceof Error
+              ? error.message
+              : "Unable to load album collections.",
+          );
+        });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedPersonIds, selectedTagPaths]);
+
+  useEffect(() => {
+    const stillValidSelection =
+      selection !== null &&
+      (selection.kind === "folder"
+        ? folderNodes.some((node) => node.id === selection.id)
+        : collectionNodes.some((node) => node.id === selection.id));
+
+    if (stillValidSelection) {
+      return;
+    }
+
+    const nextSelection = pickDefaultSelection(folderNodes, collectionNodes);
+    const selectionUnchanged =
+      (selection === null && nextSelection === null) ||
+      (selection !== null &&
+        nextSelection !== null &&
+        selection.kind === nextSelection.kind &&
+        selection.id === nextSelection.id);
+
+    if (!selectionUnchanged) {
+      onSelectionChange(nextSelection);
+    }
+  }, [collectionNodes, folderNodes, onSelectionChange, selection]);
 
   useEffect(() => {
     if (selection === null) {
@@ -685,9 +740,14 @@ export function PhotoAlbumView({
   useEffect(() => {
     const folderSelection = findNodeBySelection(folderNodes, selection, "folder");
     if (folderSelection !== null) {
-      onExpandedFolderIdsChange(
-        ensureAncestorExpansion(folderNodes, selection, expandedFolderIds),
+      const nextExpandedFolderIds = ensureAncestorExpansion(
+        folderNodes,
+        selection,
+        expandedFolderIds,
       );
+      if (!areNumberSetsEqual(nextExpandedFolderIds, expandedFolderIds)) {
+        onExpandedFolderIdsChange(nextExpandedFolderIds);
+      }
     }
 
     const collectionSelection = findNodeBySelection(
@@ -696,9 +756,16 @@ export function PhotoAlbumView({
       "collection",
     );
     if (collectionSelection !== null) {
-      onExpandedCollectionIdsChange(
-        ensureAncestorExpansion(collectionNodes, selection, expandedCollectionIds),
+      const nextExpandedCollectionIds = ensureAncestorExpansion(
+        collectionNodes,
+        selection,
+        expandedCollectionIds,
       );
+      if (
+        !areNumberSetsEqual(nextExpandedCollectionIds, expandedCollectionIds)
+      ) {
+        onExpandedCollectionIdsChange(nextExpandedCollectionIds);
+      }
     }
   }, [
     collectionNodes,
@@ -724,15 +791,31 @@ export function PhotoAlbumView({
       : null;
   const activeSelectionLabel =
     listing?.selection.name ?? context?.selection.name ?? null;
-  const activeTransportState = resolveActiveTransportState([
-    { state: folderTreeState, error: folderTreeError },
-    { state: collectionTreeState, error: collectionTreeError },
-    { state: listingState, error: listingError },
-    { state: contextState, error: contextError },
-    ...(selectedAssetId !== null
-      ? [{ state: detailState, error: detailError }]
-      : []),
-  ]);
+  const activeTransportState = useMemo(
+    () =>
+      resolveActiveTransportState([
+        { state: folderTreeState, error: folderTreeError },
+        { state: collectionTreeState, error: collectionTreeError },
+        { state: listingState, error: listingError },
+        { state: contextState, error: contextError },
+        ...(selectedAssetId !== null
+          ? [{ state: detailState, error: detailError }]
+          : []),
+      ]),
+    [
+      collectionTreeError,
+      collectionTreeState,
+      contextError,
+      contextState,
+      detailError,
+      detailState,
+      folderTreeError,
+      folderTreeState,
+      listingError,
+      listingState,
+      selectedAssetId,
+    ],
+  );
 
   useEffect(() => {
     const hoveredAssetTitle =

@@ -165,12 +165,27 @@ const apiBaseUrl = normalizeConfiguredApiBaseUrl(
   import.meta.env.VITE_PIXELPAST_API_BASE_URL ?? "",
 );
 
+const backendBaseUrl =
+  apiBaseUrl === "" ? "" : apiBaseUrl.replace(/\/api$/, "");
+
 function buildApiUrl(path: string): string {
   if (apiBaseUrl !== "") {
     return `${apiBaseUrl}${path}`;
   }
 
   return `/api${path}`;
+}
+
+export function resolveBackendUrl(path: string): string {
+  if (/^https?:\/\//.test(path)) {
+    return path;
+  }
+
+  if (backendBaseUrl !== "") {
+    return `${backendBaseUrl}${path.startsWith("/") ? path : `/${path}`}`;
+  }
+
+  return path;
 }
 
 function buildQueryString(
