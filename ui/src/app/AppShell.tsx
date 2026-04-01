@@ -7,6 +7,11 @@ import { MapPanel } from "../features/context/components/MapPanel";
 import { PersonsPanel } from "../features/context/components/PersonsPanel";
 import { TagsPanel } from "../features/context/components/TagsPanel";
 import { ManageDataOverlay } from "../features/manage-data/components/ManageDataOverlay";
+import { PhotoAlbumView } from "../features/photo-album/components/PhotoAlbumView";
+import {
+  defaultAlbumChromeState,
+  type AlbumNodeSelection,
+} from "../features/photo-album/types";
 import { SocialGraphView } from "../features/social-graph/components/SocialGraphView";
 import {
   buildGridDays,
@@ -124,25 +129,25 @@ function TimelineMainContent({
         <RightContextPane>
           <PersonsPanel
             persons={visiblePersons}
-            hoveredDate={state.hoveredDate}
-            hoverContextStatus={hoverContextStatus}
-            hoverContextError={hoverContextError}
+            contextLabel={state.hoveredDate}
+            contextStatus={hoverContextStatus}
+            contextError={hoverContextError}
             onTogglePerson={togglePerson}
           />
           <TagsPanel
             tags={visibleTags}
-            hoveredDate={state.hoveredDate}
-            hoverContextStatus={hoverContextStatus}
-            hoverContextError={hoverContextError}
+            contextLabel={state.hoveredDate}
+            contextStatus={hoverContextStatus}
+            contextError={hoverContextError}
             onToggleTag={toggleTag}
           />
           <MapPanel
-            hoveredDate={state.hoveredDate}
+            contextLabel={state.hoveredDate}
             mapPoints={mapProjection.mapPoints}
             summary={mapProjection.mapSummary}
             hasPersistentFilters={hasPersistentFilters}
-            hoverContextStatus={hoverContextStatus}
-            hoverContextError={hoverContextError}
+            contextStatus={hoverContextStatus}
+            contextError={hoverContextError}
           />
         </RightContextPane>
       }
@@ -154,7 +159,7 @@ function MainContentFrame({
   mainView,
   children,
 }: {
-  mainView: "day_grid" | "social_graph";
+  mainView: "day_grid" | "photo_album" | "social_graph";
   children: ReactNode;
 }) {
   return (
@@ -188,6 +193,15 @@ export function AppShell({
   onChangeSocialGraphMaxPeoplePerAsset,
 }: AppShellProps) {
   const [isManageDataOpen, setManageDataOpen] = useState(false);
+  const [albumSelection, setAlbumSelection] = useState<AlbumNodeSelection | null>(
+    null,
+  );
+  const [albumSelectedAssetId, setAlbumSelectedAssetId] = useState<number | null>(
+    null,
+  );
+  const [expandedFolderIds, setExpandedFolderIds] = useState<number[]>([]);
+  const [expandedCollectionIds, setExpandedCollectionIds] = useState<number[]>([]);
+  const [albumChromeState, setAlbumChromeState] = useState(defaultAlbumChromeState);
   const {
     state,
     clearSelections,
@@ -227,18 +241,34 @@ export function AppShell({
         resultSummary={
           state.mainView === "day_grid"
             ? `${matchingDayCount} matching day${matchingDayCount === 1 ? "" : "s"}`
-            : `${socialGraph?.persons.length ?? 0} person node${
-                (socialGraph?.persons.length ?? 0) === 1 ? "" : "s"
-              } in view`
+            : state.mainView === "photo_album"
+              ? albumChromeState.resultSummary
+              : `${socialGraph?.persons.length ?? 0} person node${
+                  (socialGraph?.persons.length ?? 0) === 1 ? "" : "s"
+                } in view`
         }
         hasPersistentFilters={hasPersistentFilters}
         transportState={
-          state.mainView === "day_grid" ? timelineState : socialGraphState
+          state.mainView === "day_grid"
+            ? timelineState
+            : state.mainView === "photo_album"
+              ? albumChromeState.transportState
+              : socialGraphState
         }
         transportError={
-          state.mainView === "day_grid" ? timelineError : socialGraphError
+          state.mainView === "day_grid"
+            ? timelineError
+            : state.mainView === "photo_album"
+              ? albumChromeState.transportError
+              : socialGraphError
         }
-        hoverLabel={state.mainView === "day_grid" ? state.hoveredDate ?? "none" : "not active"}
+        hoverLabel={
+          state.mainView === "day_grid"
+            ? state.hoveredDate ?? "none"
+            : state.mainView === "photo_album"
+              ? albumChromeState.hoverLabel
+              : "not active"
+        }
         onSelectMainView={setMainView}
         onSelectGridView={setGridView}
         onTogglePerson={togglePerson}
@@ -259,6 +289,27 @@ export function AppShell({
             hoverContextStatus={hoverContextStatus}
             hoverContextError={hoverContextError}
             onVisibleRangesChange={onVisibleRangesChange}
+          />
+        </MainContentFrame>
+      ) : state.mainView === "photo_album" ? (
+        <MainContentFrame mainView="photo_album">
+          <PhotoAlbumView
+            selectedPersons={selectedPersons}
+            selectedTags={selectedTags}
+            selectedPersonIds={state.selectedPersons}
+            selectedTagPaths={state.selectedTags}
+            hasPersistentFilters={hasPersistentFilters}
+            selection={albumSelection}
+            selectedAssetId={albumSelectedAssetId}
+            expandedFolderIds={expandedFolderIds}
+            expandedCollectionIds={expandedCollectionIds}
+            onSelectionChange={setAlbumSelection}
+            onSelectedAssetChange={setAlbumSelectedAssetId}
+            onExpandedFolderIdsChange={setExpandedFolderIds}
+            onExpandedCollectionIdsChange={setExpandedCollectionIds}
+            onTogglePerson={togglePerson}
+            onToggleTag={toggleTag}
+            onChromeStateChange={setAlbumChromeState}
           />
         </MainContentFrame>
       ) : (

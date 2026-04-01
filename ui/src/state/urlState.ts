@@ -24,6 +24,8 @@ export function readPersistentUiState(search: string): PersistentUiState {
     mainView:
       mainViewParam?.trim() === "social_graph"
         ? "social_graph"
+        : mainViewParam?.trim() === "photo_album"
+          ? "photo_album"
         : mainViewParam?.trim() === "day_grid"
           ? "day_grid"
           : defaultUiState.mainView,

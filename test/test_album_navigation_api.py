@@ -290,6 +290,160 @@ def test_album_collection_asset_listing_supports_filters_and_empty_results() -> 
         shutil.rmtree(workspace_root, ignore_errors=True)
 
 
+def test_album_folder_context_returns_stable_people_tags_and_hover_links() -> None:
+    workspace_root = _create_workspace_dir(prefix="album-folder-context")
+    runtime = None
+    try:
+        runtime = _create_runtime(workspace_root=workspace_root)
+        _seed_album_navigation_data(runtime)
+
+        app = create_app(settings=runtime.settings)
+        with TestClient(app) as client:
+            response = client.get("/api/albums/folders/2/context")
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "supported_filters": ["person_ids", "tag_paths", "filename_query"],
+            "applied_filters": {
+                "person_ids": [],
+                "tag_paths": [],
+            },
+            "selection": {
+                "node_kind": "folder",
+                "id": 2,
+                "source_id": 1,
+                "source_name": "Photos",
+                "source_type": "photos",
+                "parent_id": 1,
+                "name": "2024",
+                "path": "photos/2024",
+                "asset_count": 3,
+            },
+            "persons": [
+                {
+                    "id": 1,
+                    "name": "Anna Becker",
+                    "path": "family/anna",
+                    "asset_count": 2,
+                },
+                {
+                    "id": 2,
+                    "name": "Milo Tan",
+                    "path": "friends/milo",
+                    "asset_count": 1,
+                },
+            ],
+            "tags": [
+                {"id": 3, "label": "Home", "path": "home", "asset_count": 1},
+                {"id": 1, "label": "Travel", "path": "travel", "asset_count": 1},
+                {"id": 2, "label": "Italy", "path": "travel/italy", "asset_count": 1},
+            ],
+            "map_points": [],
+            "asset_contexts": [
+                {
+                    "asset_id": 3,
+                    "person_ids": [1],
+                    "tag_paths": ["home"],
+                    "map_point_ids": [],
+                },
+                {
+                    "asset_id": 2,
+                    "person_ids": [2],
+                    "tag_paths": ["travel"],
+                    "map_point_ids": [],
+                },
+                {
+                    "asset_id": 1,
+                    "person_ids": [1],
+                    "tag_paths": ["travel/italy"],
+                    "map_point_ids": [],
+                },
+            ],
+            "summary_counts": {
+                "assets": 3,
+                "people": 2,
+                "tags": 3,
+                "places": 0,
+            },
+        }
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_album_collection_context_supports_filters_and_map_points() -> None:
+    workspace_root = _create_workspace_dir(prefix="album-collection-context")
+    runtime = None
+    try:
+        runtime = _create_runtime(workspace_root=workspace_root)
+        _seed_album_navigation_data(runtime)
+
+        app = create_app(settings=runtime.settings)
+        with TestClient(app) as client:
+            response = client.get(
+                "/api/albums/collections/2/context",
+                params=[("person_ids", 1), ("tag_paths", "travel/italy")],
+            )
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "supported_filters": ["person_ids", "tag_paths", "filename_query"],
+            "applied_filters": {
+                "person_ids": [1],
+                "tag_paths": ["travel/italy"],
+            },
+            "selection": {
+                "node_kind": "collection",
+                "id": 2,
+                "source_id": 2,
+                "source_name": "Lightroom",
+                "source_type": "lightroom_catalog",
+                "name": "Trips",
+                "path": "Trips",
+                "asset_count": 1,
+                "collection_type": "collection",
+            },
+            "persons": [
+                {
+                    "id": 1,
+                    "name": "Anna Becker",
+                    "path": "family/anna",
+                    "asset_count": 1,
+                }
+            ],
+            "tags": [
+                {"id": 2, "label": "Italy", "path": "travel/italy", "asset_count": 1}
+            ],
+            "map_points": [
+                {
+                    "id": "asset:LR000005",
+                    "latitude": 46.5833,
+                    "longitude": 12.2,
+                    "asset_count": 1,
+                }
+            ],
+            "asset_contexts": [
+                {
+                    "asset_id": 5,
+                    "person_ids": [1],
+                    "tag_paths": ["travel/italy"],
+                    "map_point_ids": ["asset:LR000005"],
+                }
+            ],
+            "summary_counts": {
+                "assets": 1,
+                "people": 1,
+                "tags": 1,
+                "places": 1,
+            },
+        }
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
 def test_album_routes_reject_unsupported_global_filters() -> None:
     workspace_root = _create_workspace_dir(prefix="album-unsupported-filters")
     runtime = None

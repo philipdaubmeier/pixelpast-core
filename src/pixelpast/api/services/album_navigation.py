@@ -4,6 +4,12 @@ from __future__ import annotations
 
 from pixelpast.api.schemas import (
     AlbumAppliedFilters,
+    AlbumContextAssetItem,
+    AlbumContextMapPoint,
+    AlbumContextPerson,
+    AlbumContextResponse,
+    AlbumContextSummaryCounts,
+    AlbumContextTag,
     AlbumAssetDetailResponse,
     AlbumAssetItem,
     AlbumAssetListingResponse,
@@ -21,6 +27,11 @@ from pixelpast.persistence.repositories.album_navigation_read import (
     AlbumAssetListingSnapshot,
     AlbumAssetPersonSnapshot,
     AlbumAssetTagSnapshot,
+    AlbumContextAssetSnapshot,
+    AlbumContextMapPointSnapshot,
+    AlbumContextPersonSnapshot,
+    AlbumContextSnapshot,
+    AlbumContextTagSnapshot,
     AlbumCollectionTreeNodeSnapshot,
     AlbumFaceRegionSnapshot,
     AlbumFolderTreeNodeSnapshot,
@@ -96,6 +107,35 @@ class AlbumNavigationQueryService:
         if snapshot is None:
             return None
         return _to_asset_listing_response(snapshot=snapshot, filters=filters)
+
+    def get_folder_context(
+        self,
+        *,
+        folder_id: int,
+        filters: AlbumQueryFilters,
+    ) -> AlbumContextResponse | None:
+        """Return the stable right-column context for one folder selection."""
+
+        snapshot = self._repository.get_folder_context(folder_id=folder_id, filters=filters)
+        if snapshot is None:
+            return None
+        return _to_context_response(snapshot=snapshot, filters=filters)
+
+    def get_collection_context(
+        self,
+        *,
+        collection_id: int,
+        filters: AlbumQueryFilters,
+    ) -> AlbumContextResponse | None:
+        """Return the stable right-column context for one collection selection."""
+
+        snapshot = self._repository.get_collection_context(
+            collection_id=collection_id,
+            filters=filters,
+        )
+        if snapshot is None:
+            return None
+        return _to_context_response(snapshot=snapshot, filters=filters)
 
     def get_asset_detail(self, *, asset_id: int) -> AlbumAssetDetailResponse | None:
         """Return one normalized single-photo detail payload."""
@@ -209,6 +249,47 @@ def _to_asset_detail_response(
     )
 
 
+def _to_context_response(
+    *,
+    snapshot: AlbumContextSnapshot,
+    filters: AlbumQueryFilters,
+) -> AlbumContextResponse:
+    return AlbumContextResponse(
+        supported_filters=list(SUPPORTED_ALBUM_FILTERS),
+        applied_filters=_to_applied_filters(filters),
+        selection=AlbumSelection(
+            node_kind=snapshot.selection.node_kind,
+            id=snapshot.selection.id,
+            source_id=snapshot.selection.source_id,
+            source_name=snapshot.selection.source_name,
+            source_type=snapshot.selection.source_type,
+            parent_id=snapshot.selection.parent_id,
+            name=snapshot.selection.name,
+            path=snapshot.selection.path,
+            asset_count=snapshot.selection.asset_count,
+            collection_type=snapshot.selection.collection_type,
+        ),
+        persons=[_to_context_person(person) for person in snapshot.persons],
+        tags=[_to_context_tag(tag) for tag in snapshot.tags],
+        map_points=[_to_context_map_point(point) for point in snapshot.map_points],
+        asset_contexts=[
+            AlbumContextAssetItem(
+                asset_id=item.asset_id,
+                person_ids=list(item.person_ids),
+                tag_paths=list(item.tag_paths),
+                map_point_ids=list(item.map_point_ids),
+            )
+            for item in snapshot.asset_contexts
+        ],
+        summary_counts=AlbumContextSummaryCounts(
+            assets=snapshot.summary_counts.assets,
+            people=snapshot.summary_counts.people,
+            tags=snapshot.summary_counts.tags,
+            places=snapshot.summary_counts.places,
+        ),
+    )
+
+
 def _to_asset_person(person: AlbumAssetPersonSnapshot) -> AlbumAssetPerson:
     return AlbumAssetPerson(id=person.id, name=person.name, path=person.path)
 
@@ -224,4 +305,34 @@ def _to_face_region(region: AlbumFaceRegionSnapshot) -> AlbumFaceRegion:
         top=region.top,
         right=region.right,
         bottom=region.bottom,
+    )
+
+
+def _to_context_person(person: AlbumContextPersonSnapshot) -> AlbumContextPerson:
+    return AlbumContextPerson(
+        id=person.id,
+        name=person.name,
+        path=person.path,
+        asset_count=person.asset_count,
+    )
+
+
+def _to_context_tag(tag: AlbumContextTagSnapshot) -> AlbumContextTag:
+    return AlbumContextTag(
+        id=tag.id,
+        label=tag.label,
+        path=tag.path,
+        asset_count=tag.asset_count,
+    )
+
+
+def _to_context_map_point(
+    point: AlbumContextMapPointSnapshot,
+) -> AlbumContextMapPoint:
+    return AlbumContextMapPoint(
+        id=point.id,
+        label=point.label,
+        latitude=point.latitude,
+        longitude=point.longitude,
+        asset_count=point.asset_count,
     )

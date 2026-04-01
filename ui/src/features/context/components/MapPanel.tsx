@@ -4,11 +4,15 @@ import type { MapPointProjection } from "../../../projections/timeline";
 type HoverContextStatus = "idle" | "loading" | "ready" | "error";
 
 type MapPanelProps = {
-  hoveredDate: string | null;
+  contextLabel: string | null;
   mapPoints: MapPointProjection[];
+  highlightedPointIds?: string[];
   hasPersistentFilters: boolean;
-  hoverContextStatus: HoverContextStatus;
-  hoverContextError: string | null;
+  contextStatus: HoverContextStatus;
+  contextError: string | null;
+  loadingMessage?: string;
+  errorMessage?: string;
+  emptySelectionMessage?: string;
   summary: {
     events: number;
     assets: number;
@@ -29,13 +33,18 @@ function projectLatitude(latitude: number): number {
 }
 
 export function MapPanel({
-  hoveredDate,
+  contextLabel,
   mapPoints,
+  highlightedPointIds = [],
   hasPersistentFilters,
-  hoverContextStatus,
-  hoverContextError,
+  contextStatus,
+  contextError,
+  loadingMessage,
+  errorMessage,
+  emptySelectionMessage,
   summary,
 }: MapPanelProps) {
+  const highlightedPointIdSet = new Set(highlightedPointIds);
   const labeledPoints = mapPoints.filter((point) => point.label !== null);
   const unlabeledPoints = mapPoints.filter((point) => point.label === null);
   const pathPolylinePoints = unlabeledPoints
@@ -47,27 +56,29 @@ export function MapPanel({
 
   return (
     <PanelCard title="Map">
-      {hoveredDate !== null && hoverContextStatus !== "ready" ? (
+      {contextLabel !== null && contextStatus !== "ready" ? (
         <div
           className={[
             "mb-3 rounded-2xl border px-3 py-2 text-sm",
-            hoverContextStatus === "error"
+            contextStatus === "error"
               ? "border-rose-200 bg-rose-50 text-rose-700"
               : "border-amber-200 bg-amber-50 text-amber-700",
           ].join(" ")}
         >
-          {hoverContextStatus === "error"
-            ? hoverContextError ?? "Unable to load hover context for this day."
-            : `Loading hover context for ${hoveredDate}.`}
+          {contextStatus === "error"
+            ? contextError ?? errorMessage ?? "Unable to load map context."
+            : loadingMessage ?? `Loading map context for ${contextLabel}.`}
         </div>
       ) : null}
       <div className="subtle-grid relative min-h-[10rem] overflow-hidden rounded-[22px] border border-white/70 bg-stone-100/70">
         {mapPoints.length === 0 ? (
           <div className="flex h-40 items-center justify-center text-sm text-slate-500">
-            {hoveredDate && hoverContextStatus === "loading"
-              ? "Preparing coordinates for the hovered day."
-              : hoveredDate && hoverContextStatus === "error"
-                ? "Hover context failed to load for this day."
+            {contextLabel && contextStatus === "loading"
+              ? loadingMessage ?? "Preparing coordinates for this selection."
+              : contextLabel && contextStatus === "error"
+                ? errorMessage ?? "Map context failed to load."
+              : contextLabel
+              ? emptySelectionMessage ?? "No coordinates in the current selection."
                 : hasPersistentFilters
               ? "No coordinates matched the current persistent filters."
               : "No location context."}
@@ -96,8 +107,18 @@ export function MapPanel({
                     key={`path-point-${point.id ?? index}`}
                     cx={projectLongitude(point.longitude)}
                     cy={projectLatitude(point.latitude)}
-                    r={unlabeledPoints.length >= 2 ? 0.55 : 1.2}
-                    fill="rgba(15, 23, 42, 0.88)"
+                    r={
+                      highlightedPointIdSet.has(point.id ?? "")
+                        ? 1.75
+                        : unlabeledPoints.length >= 2
+                          ? 0.55
+                          : 1.2
+                    }
+                    fill={
+                      highlightedPointIdSet.has(point.id ?? "")
+                        ? "rgba(217, 119, 6, 0.95)"
+                        : "rgba(15, 23, 42, 0.88)"
+                    }
                   />
                 ))}
               </svg>
@@ -111,7 +132,14 @@ export function MapPanel({
                   top: `${projectLatitude(point.latitude)}%`,
                 }}
               >
-                <span className="h-3.5 w-3.5 rounded-full bg-slate-900 shadow-[0_0_0_4px_rgba(255,255,255,0.65)]" />
+                <span
+                  className={[
+                    "h-3.5 w-3.5 rounded-full shadow-[0_0_0_4px_rgba(255,255,255,0.65)]",
+                    highlightedPointIdSet.has(point.id ?? "")
+                      ? "bg-amber-600"
+                      : "bg-slate-900",
+                  ].join(" ")}
+                />
                 <span className="rounded-full bg-white/85 px-2 py-1 text-[11px] font-medium text-slate-700">
                   {point.label}
                 </span>

@@ -59,8 +59,14 @@ def test_album_routes_document_navigation_and_listing_contracts() -> None:
     folder_assets_operation = schema["paths"]["/api/albums/folders/{folder_id}/assets"][
         "get"
     ]
+    folder_context_operation = schema["paths"]["/api/albums/folders/{folder_id}/context"][
+        "get"
+    ]
     collection_assets_operation = schema["paths"][
         "/api/albums/collections/{collection_id}/assets"
+    ]["get"]
+    collection_context_operation = schema["paths"][
+        "/api/albums/collections/{collection_id}/context"
     ]["get"]
     asset_detail_operation = schema["paths"]["/api/albums/assets/{asset_id}"]["get"]
 
@@ -86,9 +92,14 @@ def test_album_routes_document_navigation_and_listing_contracts() -> None:
     assert folder_assets_operation["responses"]["404"]["description"] == (
         "The requested folder or collection node does not exist."
     )
+    assert folder_context_operation["summary"] == "Get album folder context"
+    assert "hover stays local" in folder_context_operation["description"]
+    assert "folder_stable_context" in _response_examples(folder_context_operation, 200)
 
     assert collection_assets_operation["summary"] == "Get album collection asset listing"
     assert "deduplicate assets" in collection_assets_operation["description"]
+    assert collection_context_operation["summary"] == "Get album collection context"
+    assert "lightweight highlight links" in collection_context_operation["description"]
 
     asset_detail_parameters = _parameters_by_name(asset_detail_operation)
     assert asset_detail_operation["summary"] == "Get album asset detail"

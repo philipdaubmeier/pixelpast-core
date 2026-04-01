@@ -15,6 +15,7 @@ from pixelpast.api.schemas import (
     AlbumAssetDetailResponse,
     AlbumAssetListingResponse,
     AlbumCollectionsTreeResponse,
+    AlbumContextResponse,
     AlbumFoldersTreeResponse,
     ApiErrorResponse,
 )
@@ -124,6 +125,71 @@ ALBUM_ASSET_LISTING_EXAMPLES = {
                     "thumbnail_url": "/media/q200/PHOTO041.webp",
                 }
             ],
+        },
+    }
+}
+
+ALBUM_CONTEXT_EXAMPLES = {
+    "folder_stable_context": {
+        "summary": "Stable album context with per-asset hover highlights",
+        "value": {
+            "supported_filters": ["person_ids", "tag_paths", "filename_query"],
+            "applied_filters": {
+                "person_ids": [1],
+                "tag_paths": ["travel/italy"],
+                "filename_query": None,
+            },
+            "selection": {
+                "node_kind": "folder",
+                "id": 3,
+                "source_id": 2,
+                "source_name": "Photos",
+                "source_type": "photos",
+                "parent_id": 1,
+                "name": "Italy",
+                "path": "photos/Italy",
+                "asset_count": 2,
+                "collection_type": None,
+            },
+            "persons": [
+                {
+                    "id": 7,
+                    "name": "Anna Becker",
+                    "path": "family/anna",
+                    "asset_count": 2,
+                }
+            ],
+            "tags": [
+                {
+                    "id": 12,
+                    "label": "Italy",
+                    "path": "travel/italy",
+                    "asset_count": 2,
+                }
+            ],
+            "map_points": [
+                {
+                    "id": "asset:PHOTO041",
+                    "label": "Venice",
+                    "latitude": 45.4371,
+                    "longitude": 12.3326,
+                    "asset_count": 1,
+                }
+            ],
+            "asset_contexts": [
+                {
+                    "asset_id": 41,
+                    "person_ids": [7],
+                    "tag_paths": ["travel/italy"],
+                    "map_point_ids": ["asset:PHOTO041"],
+                }
+            ],
+            "summary_counts": {
+                "assets": 2,
+                "people": 1,
+                "tags": 1,
+                "places": 1,
+            },
         },
     }
 }
@@ -440,6 +506,72 @@ def get_album_folder_asset_listing(
 
 
 @router.get(
+    "/albums/folders/{folder_id}/context",
+    response_model=AlbumContextResponse,
+    response_model_exclude_none=True,
+    summary="Get album folder context",
+    description=(
+        "Return the stable right-column context for one selected physical folder. "
+        "The response includes aggregate people, tags, and map points plus "
+        "per-asset lightweight highlight links so thumbnail hover stays local."
+    ),
+    response_description="Stable album context for one folder selection.",
+    responses=combine_responses(
+        {
+            200: {
+                "content": {
+                    "application/json": {
+                        "examples": ALBUM_CONTEXT_EXAMPLES,
+                    }
+                }
+            }
+        },
+        {
+            400: {
+                **BAD_REQUEST_RESPONSE[400],
+                "content": {
+                    "application/json": {
+                        "examples": ALBUM_BAD_REQUEST_EXAMPLES,
+                    }
+                },
+            }
+        },
+        ALBUM_NOT_FOUND_RESPONSES,
+        VALIDATION_ERROR_RESPONSE,
+    ),
+)
+def get_album_folder_context(
+    folder_id: int,
+    person_ids: list[int] = Query(default=[]),
+    tag_paths: list[str] = Query(default=[]),
+    location_geometry: str | None = Query(default=None),
+    distance_latitude: float | None = Query(default=None, ge=-90, le=90),
+    distance_longitude: float | None = Query(default=None, ge=-180, le=180),
+    distance_radius_meters: int | None = Query(default=None, ge=1),
+    filename_query: str | None = Query(default=None, min_length=1),
+    session: Session = Depends(get_db_session),
+) -> AlbumContextResponse:
+    """Return the stable album context for one folder node."""
+
+    filters = _build_album_filters(
+        person_ids=person_ids,
+        tag_paths=tag_paths,
+        location_geometry=location_geometry,
+        distance_latitude=distance_latitude,
+        distance_longitude=distance_longitude,
+        distance_radius_meters=distance_radius_meters,
+        filename_query=filename_query,
+    )
+    response = _build_service(session).get_folder_context(
+        folder_id=folder_id,
+        filters=filters,
+    )
+    if response is None:
+        raise HTTPException(status_code=404, detail=f"album folder {folder_id} does not exist")
+    return response
+
+
+@router.get(
     "/albums/collections/{collection_id}/assets",
     response_model=AlbumAssetListingResponse,
     response_model_exclude_none=True,
@@ -497,6 +629,75 @@ def get_album_collection_asset_listing(
         filename_query=filename_query,
     )
     response = _build_service(session).get_collection_asset_listing(
+        collection_id=collection_id,
+        filters=filters,
+    )
+    if response is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"album collection {collection_id} does not exist",
+        )
+    return response
+
+
+@router.get(
+    "/albums/collections/{collection_id}/context",
+    response_model=AlbumContextResponse,
+    response_model_exclude_none=True,
+    summary="Get album collection context",
+    description=(
+        "Return the stable right-column context for one selected semantic "
+        "collection. Thumbnail hover remains client-side by using the per-asset "
+        "lightweight highlight links returned with the aggregate context."
+    ),
+    response_description="Stable album context for one collection selection.",
+    responses=combine_responses(
+        {
+            200: {
+                "content": {
+                    "application/json": {
+                        "examples": ALBUM_CONTEXT_EXAMPLES,
+                    }
+                }
+            }
+        },
+        {
+            400: {
+                **BAD_REQUEST_RESPONSE[400],
+                "content": {
+                    "application/json": {
+                        "examples": ALBUM_BAD_REQUEST_EXAMPLES,
+                    }
+                },
+            }
+        },
+        ALBUM_NOT_FOUND_RESPONSES,
+        VALIDATION_ERROR_RESPONSE,
+    ),
+)
+def get_album_collection_context(
+    collection_id: int,
+    person_ids: list[int] = Query(default=[]),
+    tag_paths: list[str] = Query(default=[]),
+    location_geometry: str | None = Query(default=None),
+    distance_latitude: float | None = Query(default=None, ge=-90, le=90),
+    distance_longitude: float | None = Query(default=None, ge=-180, le=180),
+    distance_radius_meters: int | None = Query(default=None, ge=1),
+    filename_query: str | None = Query(default=None, min_length=1),
+    session: Session = Depends(get_db_session),
+) -> AlbumContextResponse:
+    """Return the stable album context for one collection node."""
+
+    filters = _build_album_filters(
+        person_ids=person_ids,
+        tag_paths=tag_paths,
+        location_geometry=location_geometry,
+        distance_latitude=distance_latitude,
+        distance_longitude=distance_longitude,
+        distance_radius_meters=distance_radius_meters,
+        filename_query=filename_query,
+    )
+    response = _build_service(session).get_collection_context(
         collection_id=collection_id,
         filters=filters,
     )

@@ -116,6 +116,69 @@ class AlbumAssetTagSnapshot:
 
 
 @dataclass(frozen=True, slots=True)
+class AlbumContextPersonSnapshot:
+    """Serializable person aggregate for one selected album subtree."""
+
+    id: int
+    name: str
+    path: str | None
+    asset_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class AlbumContextTagSnapshot:
+    """Serializable tag aggregate for one selected album subtree."""
+
+    id: int
+    label: str
+    path: str | None
+    asset_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class AlbumContextMapPointSnapshot:
+    """Serializable map point aggregate for one selected album subtree."""
+
+    id: str
+    label: str | None
+    latitude: float
+    longitude: float
+    asset_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class AlbumContextAssetSnapshot:
+    """Serializable per-asset hover context for one album listing item."""
+
+    asset_id: int
+    person_ids: tuple[int, ...]
+    tag_paths: tuple[str, ...]
+    map_point_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class AlbumContextSummarySnapshot:
+    """Serializable summary counts for one selected album subtree."""
+
+    assets: int
+    people: int
+    tags: int
+    places: int
+
+
+@dataclass(frozen=True, slots=True)
+class AlbumContextSnapshot:
+    """Serializable stable album context for one selected folder or collection."""
+
+    selection: AlbumSelectionSnapshot
+    persons: tuple[AlbumContextPersonSnapshot, ...]
+    tags: tuple[AlbumContextTagSnapshot, ...]
+    map_points: tuple[AlbumContextMapPointSnapshot, ...]
+    asset_contexts: tuple[AlbumContextAssetSnapshot, ...]
+    summary_counts: AlbumContextSummarySnapshot
+
+
+@dataclass(frozen=True, slots=True)
 class AlbumFaceRegionSnapshot:
     """Serializable normalized named face region for one asset detail payload."""
 
@@ -183,6 +246,8 @@ class _AssetRow:
     source_id: int
     timestamp_iso: str
     media_type: str
+    latitude: float | None
+    longitude: float | None
     external_id: str
     summary: str | None
     metadata_json: dict[str, Any] | None
@@ -370,6 +435,41 @@ class AlbumNavigationReadRepository:
             items=tuple(self._to_listing_item(asset) for asset in selected_assets),
         )
 
+    def get_folder_context(
+        self,
+        *,
+        folder_id: int,
+        filters: AlbumQueryFilters,
+    ) -> AlbumContextSnapshot | None:
+        """Return the stable context for one selected folder subtree."""
+
+        listing = self.get_folder_asset_listing(folder_id=folder_id, filters=filters)
+        if listing is None:
+            return None
+        return self._build_context_snapshot(
+            selection=listing.selection,
+            assets=tuple(self._list_assets_from_listing(listing)),
+        )
+
+    def get_collection_context(
+        self,
+        *,
+        collection_id: int,
+        filters: AlbumQueryFilters,
+    ) -> AlbumContextSnapshot | None:
+        """Return the stable context for one selected collection subtree."""
+
+        listing = self.get_collection_asset_listing(
+            collection_id=collection_id,
+            filters=filters,
+        )
+        if listing is None:
+            return None
+        return self._build_context_snapshot(
+            selection=listing.selection,
+            assets=tuple(self._list_assets_from_listing(listing)),
+        )
+
     def get_asset_detail(self, *, asset_id: int) -> AlbumAssetDetailSnapshot | None:
         """Return one normalized single-photo detail snapshot by canonical asset id."""
 
@@ -555,6 +655,8 @@ class AlbumNavigationReadRepository:
                 Asset.source_id,
                 Asset.timestamp,
                 Asset.media_type,
+                Asset.latitude,
+                Asset.longitude,
                 Asset.external_id,
                 Asset.summary,
                 Asset.metadata_json,
@@ -568,6 +670,8 @@ class AlbumNavigationReadRepository:
                 source_id=source_id,
                 timestamp_iso=timestamp.isoformat(),
                 media_type=media_type,
+                latitude=latitude,
+                longitude=longitude,
                 external_id=external_id,
                 summary=summary,
                 metadata_json=metadata_json if isinstance(metadata_json, dict) else None,
@@ -579,6 +683,8 @@ class AlbumNavigationReadRepository:
                 source_id,
                 timestamp,
                 media_type,
+                latitude,
+                longitude,
                 external_id,
                 summary,
                 metadata_json,
@@ -694,6 +800,174 @@ class AlbumNavigationReadRepository:
             timestamp_iso=asset.timestamp_iso,
             media_type=asset.media_type,
             title=_resolve_asset_title(asset),
+        )
+
+    def _build_context_snapshot(
+        self,
+        *,
+        selection: AlbumSelectionSnapshot,
+        assets: tuple[_AssetRow, ...],
+    ) -> AlbumContextSnapshot:
+        asset_ids = [asset.id for asset in assets]
+        person_links_by_asset = self._list_person_links_by_asset(asset_ids=asset_ids)
+        tag_links_by_asset = self._list_tag_links_by_asset(asset_ids=asset_ids)
+        persons = self._list_context_people(
+            asset_ids=asset_ids,
+            person_links_by_asset=person_links_by_asset,
+        )
+        tags = self._list_context_tags(
+            asset_ids=asset_ids,
+            tag_links_by_asset=tag_links_by_asset,
+        )
+        map_points, map_point_ids_by_asset = self._list_context_map_points(assets=assets)
+        return AlbumContextSnapshot(
+            selection=selection,
+            persons=persons,
+            tags=tags,
+            map_points=map_points,
+            asset_contexts=tuple(
+                AlbumContextAssetSnapshot(
+                    asset_id=asset.id,
+                    person_ids=tuple(sorted(person_links_by_asset.get(asset.id, set()))),
+                    tag_paths=tuple(sorted(tag_links_by_asset.get(asset.id, []))),
+                    map_point_ids=map_point_ids_by_asset.get(asset.id, ()),
+                )
+                for asset in assets
+            ),
+            summary_counts=AlbumContextSummarySnapshot(
+                assets=len(assets),
+                people=len(persons),
+                tags=len(tags),
+                places=len(map_points),
+            ),
+        )
+
+    def _list_assets_from_listing(
+        self,
+        listing: AlbumAssetListingSnapshot,
+    ) -> list[_AssetRow]:
+        listed_asset_ids = {item.id for item in listing.items}
+        if not listed_asset_ids:
+            return []
+        return [
+            asset
+            for asset in self._list_all_assets()
+            if asset.id in listed_asset_ids
+        ]
+
+    def _list_context_people(
+        self,
+        *,
+        asset_ids: list[int],
+        person_links_by_asset: dict[int, set[int]],
+    ) -> tuple[AlbumContextPersonSnapshot, ...]:
+        if not asset_ids:
+            return ()
+
+        counts_by_person_id: dict[int, int] = {}
+        for person_ids in person_links_by_asset.values():
+            for person_id in person_ids:
+                counts_by_person_id[person_id] = counts_by_person_id.get(person_id, 0) + 1
+
+        if not counts_by_person_id:
+            return ()
+
+        rows = self._session.execute(
+            select(Person.id, Person.name, Person.path).where(
+                Person.id.in_(list(counts_by_person_id))
+            )
+        )
+        return tuple(
+            sorted(
+                (
+                    AlbumContextPersonSnapshot(
+                        id=person_id,
+                        name=name,
+                        path=path,
+                        asset_count=counts_by_person_id.get(person_id, 0),
+                    )
+                    for person_id, name, path in rows
+                ),
+                key=lambda item: (-item.asset_count, item.name.casefold(), item.path or "", item.id),
+            )
+        )
+
+    def _list_context_tags(
+        self,
+        *,
+        asset_ids: list[int],
+        tag_links_by_asset: dict[int, list[str]],
+    ) -> tuple[AlbumContextTagSnapshot, ...]:
+        if not asset_ids:
+            return ()
+
+        counts_by_tag_path: dict[str, int] = {}
+        for asset_tag_paths in tag_links_by_asset.values():
+            for tag_path in set(asset_tag_paths):
+                counts_by_tag_path[tag_path] = counts_by_tag_path.get(tag_path, 0) + 1
+
+        if not counts_by_tag_path:
+            return ()
+
+        rows = self._session.execute(
+            select(Tag.id, Tag.label, Tag.path).where(Tag.path.in_(list(counts_by_tag_path)))
+        )
+        return tuple(
+            sorted(
+                (
+                    AlbumContextTagSnapshot(
+                        id=tag_id,
+                        label=label,
+                        path=path,
+                        asset_count=counts_by_tag_path.get(path, 0) if isinstance(path, str) else 0,
+                    )
+                    for tag_id, label, path in rows
+                    if isinstance(path, str) and path
+                ),
+                key=lambda item: (-item.asset_count, item.path or item.label.casefold(), item.id),
+            )
+        )
+
+    def _list_context_map_points(
+        self,
+        *,
+        assets: tuple[_AssetRow, ...],
+    ) -> tuple[
+        tuple[AlbumContextMapPointSnapshot, ...],
+        dict[int, tuple[str, ...]],
+    ]:
+        map_points: list[AlbumContextMapPointSnapshot] = []
+        map_point_ids_by_asset: dict[int, tuple[str, ...]] = {}
+        for asset in assets:
+            metadata = asset.metadata_json if isinstance(asset.metadata_json, dict) else {}
+            point_id = f"asset:{asset.short_id}"
+            latitude = asset.latitude
+            longitude = asset.longitude
+            if latitude is None or longitude is None:
+                continue
+            map_points.append(
+                AlbumContextMapPointSnapshot(
+                    id=point_id,
+                    label=_resolve_metadata_text(metadata, "place_label", "location_label"),
+                    latitude=latitude,
+                    longitude=longitude,
+                    asset_count=1,
+                )
+            )
+            map_point_ids_by_asset[asset.id] = (point_id,)
+        return (
+            tuple(
+                sorted(
+                    map_points,
+                    key=lambda item: (
+                        item.label or "",
+                        item.latitude,
+                        item.longitude,
+                        item.id,
+                    ),
+                )
+            ),
+            map_point_ids_by_asset,
         )
 
     def _list_asset_people(self, *, asset_id: int) -> tuple[AlbumAssetPersonSnapshot, ...]:

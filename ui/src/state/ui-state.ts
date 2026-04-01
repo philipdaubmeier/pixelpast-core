@@ -1,4 +1,4 @@
-export type MainView = "day_grid" | "social_graph";
+export type MainView = "day_grid" | "photo_album" | "social_graph";
 export type GridView = string;
 
 export type HoveredPanelItem =

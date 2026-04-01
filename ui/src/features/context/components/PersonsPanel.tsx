@@ -6,35 +6,41 @@ type HoverContextStatus = "idle" | "loading" | "ready" | "error";
 
 type PersonsPanelProps = {
   persons: PersonPanelItemProjection[];
-  hoveredDate: string | null;
-  hoverContextStatus: HoverContextStatus;
-  hoverContextError: string | null;
+  contextLabel: string | null;
+  contextStatus: HoverContextStatus;
+  contextError: string | null;
+  loadingMessage?: string;
+  errorMessage?: string;
+  emptySelectionMessage?: string;
   onTogglePerson: (personId: string) => void;
 };
 
 export function PersonsPanel({
   persons,
-  hoveredDate,
-  hoverContextStatus,
-  hoverContextError,
+  contextLabel,
+  contextStatus,
+  contextError,
+  loadingMessage,
+  errorMessage,
+  emptySelectionMessage,
   onTogglePerson,
 }: PersonsPanelProps) {
   const hasPersons = persons.length > 0;
 
   return (
     <PanelCard title="Persons">
-      {hoveredDate !== null && hoverContextStatus !== "ready" ? (
+      {contextLabel !== null && contextStatus !== "ready" ? (
         <div
           className={[
             "mb-3 rounded-2xl border px-3 py-2 text-sm",
-            hoverContextStatus === "error"
+            contextStatus === "error"
               ? "border-rose-200 bg-rose-50 text-rose-700"
               : "border-amber-200 bg-amber-50 text-amber-700",
           ].join(" ")}
         >
-          {hoverContextStatus === "error"
-            ? hoverContextError ?? "Unable to load person context for this day."
-            : `Loading person context for ${hoveredDate}.`}
+          {contextStatus === "error"
+            ? contextError ?? errorMessage ?? "Unable to load person context."
+            : loadingMessage ?? `Loading person context for ${contextLabel}.`}
         </div>
       ) : null}
       {hasPersons ? (
@@ -52,12 +58,12 @@ export function PersonsPanel({
         </div>
       ) : (
         <div className="flex h-full min-h-32 items-center justify-center rounded-[22px] border border-dashed border-[color:var(--pp-border)] bg-white/35 px-4 text-center text-sm text-slate-500">
-          {hoveredDate && hoverContextStatus === "loading"
-            ? "Loading people linked to this day."
-            : hoveredDate && hoverContextStatus === "error"
-              ? "Person context could not be loaded for this day."
-            : hoveredDate
-            ? "No person context is attached to this day."
+          {contextLabel && contextStatus === "loading"
+            ? loadingMessage ?? "Loading people linked to this selection."
+            : contextLabel && contextStatus === "error"
+              ? errorMessage ?? "Person context could not be loaded."
+            : contextLabel
+            ? emptySelectionMessage ?? "No persons in the current selection."
             : "No persons in the current context."}
         </div>
       )}

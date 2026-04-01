@@ -68,7 +68,9 @@ export function TopBar({
               scopeLabel={
                 mainView === "day_grid"
                   ? `Day Grid / ${activeGridViewLabel}`
-                  : "Social Graph"
+                  : mainView === "photo_album"
+                    ? "Photo Album"
+                    : "Social Graph"
               }
               selectedPersons={selectedPersons}
               selectedTags={selectedTags}

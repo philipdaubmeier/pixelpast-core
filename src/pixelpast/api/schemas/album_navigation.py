@@ -109,6 +109,65 @@ class AlbumAssetTag(BaseModel):
     path: str | None
 
 
+class AlbumContextPerson(BaseModel):
+    """Stable person aggregate for one selected album subtree."""
+
+    id: int
+    name: str
+    path: str | None
+    asset_count: int
+
+
+class AlbumContextTag(BaseModel):
+    """Stable tag aggregate for one selected album subtree."""
+
+    id: int
+    label: str
+    path: str | None
+    asset_count: int
+
+
+class AlbumContextMapPoint(BaseModel):
+    """Stable map point aggregate for one selected album subtree."""
+
+    id: str
+    label: str | None = None
+    latitude: float
+    longitude: float
+    asset_count: int
+
+
+class AlbumContextAssetItem(BaseModel):
+    """Per-asset lightweight context used for client-side hover highlighting."""
+
+    asset_id: int
+    person_ids: list[int] = Field(default_factory=list)
+    tag_paths: list[str] = Field(default_factory=list)
+    map_point_ids: list[str] = Field(default_factory=list)
+
+
+class AlbumContextSummaryCounts(BaseModel):
+    """Summary counters for one selected album context response."""
+
+    assets: int
+    people: int
+    tags: int
+    places: int
+
+
+class AlbumContextResponse(BaseModel):
+    """Stable right-column context for one selected album subtree."""
+
+    supported_filters: list[str]
+    applied_filters: AlbumAppliedFilters
+    selection: AlbumSelection
+    persons: list[AlbumContextPerson] = Field(default_factory=list)
+    tags: list[AlbumContextTag] = Field(default_factory=list)
+    map_points: list[AlbumContextMapPoint] = Field(default_factory=list)
+    asset_contexts: list[AlbumContextAssetItem] = Field(default_factory=list)
+    summary_counts: AlbumContextSummaryCounts
+
+
 class AlbumFaceRegion(BaseModel):
     """Named face rectangle normalized for optional UI overlay rendering."""
 

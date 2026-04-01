@@ -2,6 +2,12 @@
 
 from pixelpast.api.schemas.album_navigation import (
     AlbumAppliedFilters,
+    AlbumContextAssetItem,
+    AlbumContextMapPoint,
+    AlbumContextPerson,
+    AlbumContextResponse,
+    AlbumContextSummaryCounts,
+    AlbumContextTag,
     AlbumAssetDetailResponse,
     AlbumAssetItem,
     AlbumAssetListingResponse,
@@ -63,6 +69,12 @@ from pixelpast.api.schemas.social_graph import (
 
 __all__ = [
     "AlbumAppliedFilters",
+    "AlbumContextAssetItem",
+    "AlbumContextMapPoint",
+    "AlbumContextPerson",
+    "AlbumContextResponse",
+    "AlbumContextSummaryCounts",
+    "AlbumContextTag",
     "AlbumAssetDetailResponse",
     "AlbumAssetItem",
     "AlbumAssetListingResponse",
