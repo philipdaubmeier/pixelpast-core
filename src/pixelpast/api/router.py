@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter
 
+from pixelpast.api.routes.album_navigation import router as album_navigation_router
 from pixelpast.api.routes.bootstrap_ui import router as bootstrap_ui_router
 from pixelpast.api.routes.day_detail import router as day_detail_router
 from pixelpast.api.routes.daygrid import router as daygrid_router
@@ -19,6 +20,7 @@ def create_api_router() -> APIRouter:
     api_router = APIRouter(prefix="/api")
     api_router.include_router(health_router)
     api_router.include_router(bootstrap_ui_router)
+    api_router.include_router(album_navigation_router)
     api_router.include_router(daygrid_router)
     api_router.include_router(hovercontext_router)
     api_router.include_router(day_detail_router)

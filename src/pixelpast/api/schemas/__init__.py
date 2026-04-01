@@ -1,5 +1,15 @@
 """Explicit request and response schemas for the REST API."""
 
+from pixelpast.api.schemas.album_navigation import (
+    AlbumAppliedFilters,
+    AlbumAssetItem,
+    AlbumAssetListingResponse,
+    AlbumCollectionTreeNode,
+    AlbumCollectionsTreeResponse,
+    AlbumFolderTreeNode,
+    AlbumFoldersTreeResponse,
+    AlbumSelection,
+)
 from pixelpast.api.schemas.bootstrap_ui import (
     ExplorationBootstrapResponse,
     ExplorationPerson,
@@ -48,6 +58,14 @@ from pixelpast.api.schemas.social_graph import (
 )
 
 __all__ = [
+    "AlbumAppliedFilters",
+    "AlbumAssetItem",
+    "AlbumAssetListingResponse",
+    "AlbumCollectionTreeNode",
+    "AlbumCollectionsTreeResponse",
+    "AlbumFolderTreeNode",
+    "AlbumFoldersTreeResponse",
+    "AlbumSelection",
     "ApiErrorResponse",
     "ApiValidationErrorItem",
     "ApiValidationErrorResponse",

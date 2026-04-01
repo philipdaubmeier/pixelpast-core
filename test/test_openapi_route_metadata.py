@@ -19,6 +19,12 @@ def test_public_routes_expose_stable_openapi_tags() -> None:
             "description": "Operational liveness endpoints for local process checks.",
         },
         {
+            "name": "album",
+            "description": (
+                "Photo-album folder trees, collection trees, and asset listings."
+            ),
+        },
+        {
             "name": "timeline",
             "description": (
                 "Timeline exploration, day context preload, and day detail reads."
@@ -44,6 +50,44 @@ def test_public_routes_expose_stable_openapi_tags() -> None:
             ),
         },
     ]
+
+
+def test_album_routes_document_navigation_and_listing_contracts() -> None:
+    schema = _build_openapi_schema()
+    folders_operation = schema["paths"]["/api/albums/folders"]["get"]
+    collections_operation = schema["paths"]["/api/albums/collections"]["get"]
+    folder_assets_operation = schema["paths"]["/api/albums/folders/{folder_id}/assets"][
+        "get"
+    ]
+    collection_assets_operation = schema["paths"][
+        "/api/albums/collections/{collection_id}/assets"
+    ]["get"]
+
+    assert folders_operation["tags"] == ["album"]
+    assert folders_operation["summary"] == "Get album folder tree"
+    assert folders_operation["responses"]["200"]["description"] == (
+        "Physical folder navigation tree for the photo-album view."
+    )
+    assert "photo_import_folders" in _response_examples(folders_operation, 200)
+    assert "unsupported_filters" in _response_examples(folders_operation, 400)
+
+    folder_parameters = _parameters_by_name(folders_operation)
+    assert "Repeatable person identifiers" in folder_parameters["person_ids"]["description"]
+    assert "geometry filtering" in folder_parameters["location_geometry"]["description"]
+    assert _non_null_schema(folder_parameters["distance_latitude"])["minimum"] == -90
+    assert _non_null_schema(folder_parameters["filename_query"])["minLength"] == 1
+
+    assert collections_operation["summary"] == "Get album collection tree"
+    assert "lightroom_collections" in _response_examples(collections_operation, 200)
+
+    assert folder_assets_operation["summary"] == "Get album folder asset listing"
+    assert "folder_thumbnail_grid" in _response_examples(folder_assets_operation, 200)
+    assert folder_assets_operation["responses"]["404"]["description"] == (
+        "The requested folder or collection node does not exist."
+    )
+
+    assert collection_assets_operation["summary"] == "Get album collection asset listing"
+    assert "deduplicate assets" in collection_assets_operation["description"]
 
 
 def test_health_route_exposes_meaningful_openapi_metadata() -> None:

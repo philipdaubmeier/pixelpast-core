@@ -15,6 +15,10 @@ OPENAPI_TAGS = [
         "description": "Operational liveness endpoints for local process checks.",
     },
     {
+        "name": "album",
+        "description": "Photo-album folder trees, collection trees, and asset listings.",
+    },
+    {
         "name": "timeline",
         "description": (
             "Timeline exploration, day context preload, and day detail reads."
