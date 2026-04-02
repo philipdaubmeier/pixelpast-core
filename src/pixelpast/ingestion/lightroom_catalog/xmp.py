@@ -58,6 +58,14 @@ def parse_lightroom_xmp_payload(*, image_id: int, blob: bytes) -> LightroomXmpPa
         title=_normalize_optional_text(
             root.findtext(".//dc:title/rdf:Alt/rdf:li", namespaces=_NS)
         ),
+        explicit_keywords=tuple(
+            keyword
+            for keyword in (
+                _normalize_optional_text(node.text)
+                for node in root.findall(".//dc:subject/rdf:Bag/rdf:li", _NS)
+            )
+            if keyword is not None
+        ),
         hierarchical_keywords=tuple(
             keyword
             for keyword in (

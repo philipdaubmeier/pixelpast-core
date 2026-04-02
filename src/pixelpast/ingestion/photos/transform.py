@@ -94,9 +94,14 @@ class PhotoMetadataTransformer:
             hierarchy_node_paths=hierarchy_node_paths,
             excluded_tag_paths=excluded_tag_paths,
         )
+        persisted_tag_paths = _resolve_persisted_tag_paths(
+            hierarchy_node_paths=hierarchy_node_paths,
+            asset_tag_paths=asset_tag_paths,
+            excluded_person_paths=excluded_tag_paths,
+        )
         tag_paths = tuple(
             sorted(
-                set(hierarchy_node_paths).union(asset_tag_paths),
+                persisted_tag_paths,
                 key=lambda value: (value.count(_HIERARCHY_SEPARATOR), value),
             )
         )
@@ -235,7 +240,7 @@ def _extract_hierarchical_paths(metadata: dict[str, Any]) -> tuple[str, ...]:
                 continue
             seen.add(normalized)
             ordered_paths.append(normalized)
-    return tuple(ordered_paths)
+    return _prune_redundant_suffix_paths(tuple(ordered_paths))
 
 
 def _expand_hierarchy_paths(hierarchical_paths: tuple[str, ...]) -> tuple[str, ...]:
@@ -350,6 +355,33 @@ def _resolve_asset_tag_paths(
     return tuple(linked_paths)
 
 
+def _resolve_persisted_tag_paths(
+    *,
+    hierarchy_node_paths: tuple[str, ...],
+    asset_tag_paths: tuple[str, ...],
+    excluded_person_paths: frozenset[str],
+) -> set[str]:
+    """Return canonical tag rows that should exist after excluding person branches."""
+
+    excluded_hierarchy_nodes = _expand_excluded_hierarchy_nodes(excluded_person_paths)
+    return {
+        path
+        for path in set(hierarchy_node_paths).union(asset_tag_paths)
+        if path not in excluded_hierarchy_nodes
+    }
+
+
+def _expand_excluded_hierarchy_nodes(paths: frozenset[str]) -> frozenset[str]:
+    """Return all hierarchy nodes covered by excluded leaf paths."""
+
+    excluded_nodes: set[str] = set()
+    for path in paths:
+        segments = path.split(_HIERARCHY_SEPARATOR)
+        for index in range(1, len(segments) + 1):
+            excluded_nodes.add(_HIERARCHY_SEPARATOR.join(segments[:index]))
+    return frozenset(excluded_nodes)
+
+
 def _resolve_explicit_tag_path(
     *,
     explicit_label: str,
@@ -366,8 +398,25 @@ def _resolve_explicit_tag_path(
         return explicit_label
     return sorted(
         matches,
-        key=lambda value: (value.count(_HIERARCHY_SEPARATOR), value),
+        key=lambda value: (-value.count(_HIERARCHY_SEPARATOR), value),
     )[0]
+
+
+def _prune_redundant_suffix_paths(paths: tuple[str, ...]) -> tuple[str, ...]:
+    """Drop truncated duplicate hierarchy paths when a fuller suffix-equivalent path exists."""
+
+    pruned_paths: list[str] = []
+    for path in paths:
+        path_segments = path.split(_HIERARCHY_SEPARATOR)
+        if any(
+            other != path
+            and len(other.split(_HIERARCHY_SEPARATOR)) > len(path_segments)
+            and other.split(_HIERARCHY_SEPARATOR)[-len(path_segments) :] == path_segments
+            for other in paths
+        ):
+            continue
+        pruned_paths.append(path)
+    return tuple(pruned_paths)
 
 
 def _build_metadata_json(

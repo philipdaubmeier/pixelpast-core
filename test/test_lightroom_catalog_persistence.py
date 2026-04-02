@@ -176,8 +176,8 @@ def test_lightroom_catalog_persistence_scope_persists_assets_and_is_idempotent()
         assert collections == []
         assert collection_items == []
         assert len(people) == 3
-        assert len(tags) == 10
-        assert len(asset_tags) == 17
+        assert len(tags) == 6
+        assert len(asset_tags) == 11
         assert len(asset_people) == 5
         assert len(sources) == 1
         assert len(job_runs) == 3
@@ -203,6 +203,26 @@ def test_lightroom_catalog_persistence_scope_persists_assets_and_is_idempotent()
             "iso": None,
             "rating": 4,
             "color_label": "Gelb",
+            "explicit_keywords": [
+                "Italy",
+                "John Doe",
+                "Mona Lisa",
+                "San Marino",
+                "events",
+                "vacation",
+            ],
+            "hierarchical_subjects": [
+                "events|vacation",
+                "events|vacation|Italy|San Marino",
+                "who|Persons|John Doe",
+                "who|Persons|Mona Lisa",
+            ],
+            "linked_tag_paths": [
+                "events|vacation|Italy",
+                "events|vacation|Italy|San Marino",
+                "events",
+                "events|vacation",
+            ],
             "collections": [],
             "face_regions": [
                 {

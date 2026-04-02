@@ -1250,12 +1250,43 @@ class PersonRepository:
             return person
 
         person.name = name
-        if person.path is None and path is not None:
+        if _should_replace_person_path(
+            existing_path=person.path,
+            incoming_path=path,
+            person_name=name,
+        ):
             person.path = path
         if metadata_json is not None:
             person.metadata_json = dict(metadata_json)
         self._session.flush()
         return person
+
+
+def _should_replace_person_path(
+    *,
+    existing_path: str | None,
+    incoming_path: str | None,
+    person_name: str,
+) -> bool:
+    """Return whether one newly discovered person path should replace the stored one."""
+
+    if incoming_path is None or incoming_path == existing_path:
+        return False
+    if existing_path is None:
+        return True
+    if existing_path == person_name:
+        return True
+
+    incoming_leaf = incoming_path.rsplit("|", 1)[-1]
+    existing_leaf = existing_path.rsplit("|", 1)[-1]
+    if incoming_leaf != person_name or existing_leaf != person_name:
+        return False
+
+    incoming_segments = incoming_path.split("|")
+    existing_segments = existing_path.split("|")
+    if len(incoming_segments) <= len(existing_segments):
+        return False
+    return incoming_segments[-len(existing_segments) :] == existing_segments
 
 
 @dataclass(slots=True, frozen=True)

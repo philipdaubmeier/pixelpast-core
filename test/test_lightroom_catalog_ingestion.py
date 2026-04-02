@@ -82,9 +82,9 @@ def test_lightroom_catalog_ingestion_imports_fixture_end_to_end_without_schema_c
             ].id
             for asset in assets
         )
-        assert len(tags) == 10
+        assert len(tags) == 6
         assert len(persons) == 3
-        assert len(asset_tags) == 17
+        assert len(asset_tags) == 11
         assert len(asset_people) == 5
 
         assert [asset.external_id for asset in assets] == [
@@ -108,6 +108,26 @@ def test_lightroom_catalog_ingestion_imports_fixture_end_to_end_without_schema_c
             "iso": None,
             "rating": 4,
             "color_label": "Gelb",
+            "explicit_keywords": [
+                "Italy",
+                "John Doe",
+                "Mona Lisa",
+                "San Marino",
+                "events",
+                "vacation",
+            ],
+            "hierarchical_subjects": [
+                "events|vacation",
+                "events|vacation|Italy|San Marino",
+                "who|Persons|John Doe",
+                "who|Persons|Mona Lisa",
+            ],
+            "linked_tag_paths": [
+                "events|vacation|Italy",
+                "events|vacation|Italy|San Marino",
+                "events",
+                "events|vacation",
+            ],
             "collections": [],
             "face_regions": [
                 {
@@ -133,10 +153,6 @@ def test_lightroom_catalog_ingestion_imports_fixture_end_to_end_without_schema_c
             "events|vacation|Italy|San Marino",
             "events|vacation|München",
             "events|wedding",
-            "who",
-            "who|Persons",
-            "who|Persons|John Doe",
-            "who|Persons|Mona Lisa",
         ]
         assert [person.name for person in persons] == [
             "John Doe",

@@ -52,11 +52,8 @@ def test_photo_metadata_transformer_builds_canonical_candidate_from_metadata() -
         assert candidate.longitude == 2.33
         assert candidate.tag_paths == (
             "events",
-            "who",
             "events|vacation",
-            "who|Persons",
             "events|vacation|Italy",
-            "who|Persons|Mona Lisa",
         )
         assert candidate.asset_tag_paths == ("events", "events|vacation")
         assert candidate.persons == (
@@ -149,6 +146,47 @@ def test_photo_metadata_transformer_applies_fallback_timestamp_and_gps_sources(
         )
         assert mtime_candidate.metadata_json is not None
         assert mtime_candidate.metadata_json["resolution"]["timestamp"] == "mtime"
+    finally:
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_photo_metadata_transformer_prefers_full_hierarchy_path_over_truncated_suffix_duplicate() -> (
+    None
+):
+    workspace_root = _create_workspace_dir(prefix="photo-transform-hierarchy-suffix")
+    try:
+        photo_path = workspace_root / "image.jpg"
+        photo_path.write_bytes(b"photo")
+
+        candidate = PhotoMetadataTransformer().build_asset_candidate(
+            path=photo_path.resolve(),
+            metadata={
+                "XMP:Subject": ["Weichering"],
+                "XMP:HierarchicalSubject": [
+                    "Deutschland|Weichering",
+                    "WO|Deutschland|Weichering",
+                ],
+            },
+            fallback_exif=PhotoExifMetadata(
+                timestamp=datetime(2024, 1, 2, 3, 4, 5, tzinfo=UTC),
+                latitude=None,
+                longitude=None,
+            ),
+        )
+
+        assert candidate.tag_paths == (
+            "WO",
+            "WO|Deutschland",
+            "WO|Deutschland|Weichering",
+        )
+        assert candidate.asset_tag_paths == ("WO|Deutschland|Weichering",)
+        assert candidate.metadata_json is not None
+        assert candidate.metadata_json["hierarchical_subjects"] == [
+            "WO|Deutschland|Weichering"
+        ]
+        assert candidate.metadata_json["linked_tag_paths"] == [
+            "WO|Deutschland|Weichering"
+        ]
     finally:
         shutil.rmtree(workspace_root, ignore_errors=True)
 

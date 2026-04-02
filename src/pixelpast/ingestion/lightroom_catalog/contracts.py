@@ -121,6 +121,7 @@ class LightroomXmpPayload:
     document_id: str | None
     preserved_file_name: str | None
     title: str | None
+    explicit_keywords: tuple[str, ...]
     hierarchical_keywords: tuple[str, ...]
 
 

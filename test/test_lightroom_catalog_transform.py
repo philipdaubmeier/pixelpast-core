@@ -40,18 +40,12 @@ def test_lightroom_transformer_maps_fixture_row_to_asset_candidate() -> None:
         "events|vacation",
         "events|vacation|Italy",
         "events|vacation|Italy|San Marino",
-        "who",
-        "who|Persons",
-        "who|Persons|John Doe",
-        "who|Persons|Mona Lisa",
     )
     assert candidate.asset_tag_paths == (
-        "events",
-        "events|vacation",
         "events|vacation|Italy",
         "events|vacation|Italy|San Marino",
-        "who",
-        "who|Persons",
+        "events",
+        "events|vacation",
     )
     assert tuple((person.name, person.path) for person in candidate.persons) == (
         ("John Doe", "who|Persons|John Doe"),
@@ -76,6 +70,26 @@ def test_lightroom_transformer_maps_fixture_row_to_asset_candidate() -> None:
         "iso": None,
         "rating": 4,
         "color_label": "Gelb",
+        "explicit_keywords": [
+            "Italy",
+            "John Doe",
+            "Mona Lisa",
+            "San Marino",
+            "events",
+            "vacation",
+        ],
+        "hierarchical_subjects": [
+            "events|vacation",
+            "events|vacation|Italy|San Marino",
+            "who|Persons|John Doe",
+            "who|Persons|Mona Lisa",
+        ],
+        "linked_tag_paths": [
+            "events|vacation|Italy",
+            "events|vacation|Italy|San Marino",
+            "events",
+            "events|vacation",
+        ],
         "collections": [],
         "face_regions": [
             {
@@ -162,16 +176,11 @@ def test_lightroom_transformer_converts_apex_values_and_normalizes_person_links(
         "events",
         "events|vacation",
         "events|vacation|München",
-        "who",
-        "who|Persons",
-        "who|Persons|Mona Lisa",
     )
     assert candidate.asset_tag_paths == (
+        "events|vacation|München",
         "events",
         "events|vacation",
-        "events|vacation|München",
-        "who",
-        "who|Persons",
     )
     assert tuple((person.name, person.path) for person in candidate.persons) == (
         ("Mona Lisa", "who|Persons|Mona Lisa"),
@@ -184,6 +193,22 @@ def test_lightroom_transformer_converts_apex_values_and_normalizes_person_links(
     assert candidate.metadata_json["shutter_speed_seconds"] == pytest.approx(0.005)
     assert candidate.metadata_json["iso"] == 400
     assert candidate.metadata_json["color_label"] == "Red"
+    assert candidate.metadata_json["explicit_keywords"] == [
+        "Mona Lisa",
+        "München",
+        "events",
+        "vacation",
+    ]
+    assert candidate.metadata_json["hierarchical_subjects"] == [
+        "events",
+        "events|vacation|München",
+        "who|Persons|Mona Lisa",
+    ]
+    assert candidate.metadata_json["linked_tag_paths"] == [
+        "events|vacation|München",
+        "events",
+        "events|vacation",
+    ]
     assert candidate.folder_path == "C:/photos"
     assert tuple(
         (

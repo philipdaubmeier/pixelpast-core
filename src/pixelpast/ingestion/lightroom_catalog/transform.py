@@ -116,13 +116,21 @@ class LightroomCatalogTransformer:
         hierarchical_keywords = _extract_hierarchical_keywords(
             xmp_payload.hierarchical_keywords
         )
+        explicit_keywords = _extract_explicit_keywords(xmp_payload.explicit_keywords)
         tag_paths = _expand_hierarchy_paths(hierarchical_keywords)
         persons, excluded_person_paths = _build_person_candidates(
             face_rows=tuple(face_rows),
             tag_paths=tag_paths,
         )
-        asset_tag_paths = tuple(
-            path for path in tag_paths if path not in excluded_person_paths
+        asset_tag_paths = _resolve_asset_tag_paths(
+            explicit_labels=explicit_keywords,
+            hierarchy_node_paths=tag_paths,
+            excluded_tag_paths=excluded_person_paths,
+        )
+        persisted_tag_paths = _resolve_persisted_tag_paths(
+            hierarchy_node_paths=tag_paths,
+            asset_tag_paths=asset_tag_paths,
+            excluded_person_paths=excluded_person_paths,
         )
 
         return LightroomAssetCandidate(
@@ -133,7 +141,12 @@ class LightroomCatalogTransformer:
             latitude=image_row.gps_latitude,
             longitude=image_row.gps_longitude,
             creator_name=_normalize_optional_text(image_row.creator_name),
-            tag_paths=tag_paths,
+            tag_paths=tuple(
+                sorted(
+                    persisted_tag_paths,
+                    key=lambda value: (value.count(_HIERARCHY_SEPARATOR), value),
+                )
+            ),
             asset_tag_paths=asset_tag_paths,
             persons=persons,
             folder_path=_build_folder_path(image_row.file_path),
@@ -154,6 +167,9 @@ class LightroomCatalogTransformer:
                 "iso": _normalize_iso(image_row.iso_speed_rating),
                 "rating": image_row.rating,
                 "color_label": _normalize_optional_text(image_row.color_label),
+                "explicit_keywords": list(explicit_keywords),
+                "hierarchical_subjects": list(hierarchical_keywords),
+                "linked_tag_paths": list(asset_tag_paths),
                 "collections": _build_collection_metadata(collection_rows),
                 "face_regions": _build_face_region_metadata(face_rows),
             },
@@ -190,7 +206,19 @@ def _extract_hierarchical_keywords(keywords: tuple[str, ...]) -> tuple[str, ...]
             continue
         seen.add(normalized)
         ordered_paths.append(normalized)
-    return tuple(ordered_paths)
+    return _prune_redundant_suffix_paths(tuple(ordered_paths))
+
+
+def _extract_explicit_keywords(keywords: tuple[str, ...]) -> tuple[str, ...]:
+    ordered_labels: list[str] = []
+    seen: set[str] = set()
+    for keyword in keywords:
+        normalized = _normalize_optional_text(keyword)
+        if normalized is None or normalized in seen:
+            continue
+        seen.add(normalized)
+        ordered_labels.append(normalized)
+    return tuple(ordered_labels)
 
 
 def _normalize_hierarchical_path(value: str) -> str | None:
@@ -247,6 +275,81 @@ def _resolve_matching_person_path(*, name: str, tag_paths: tuple[str, ...]) -> s
     if not matches:
         return None
     return sorted(matches, key=lambda value: (-value.count(_HIERARCHY_SEPARATOR), value))[0]
+
+
+def _resolve_asset_tag_paths(
+    *,
+    explicit_labels: tuple[str, ...],
+    hierarchy_node_paths: tuple[str, ...],
+    excluded_tag_paths: frozenset[str],
+) -> tuple[str, ...]:
+    linked_paths: list[str] = []
+    seen: set[str] = set()
+
+    for label in explicit_labels:
+        path = _resolve_explicit_tag_path(
+            explicit_label=label,
+            hierarchy_node_paths=hierarchy_node_paths,
+        )
+        if path in excluded_tag_paths or path in seen:
+            continue
+        seen.add(path)
+        linked_paths.append(path)
+
+    return tuple(linked_paths)
+
+
+def _resolve_persisted_tag_paths(
+    *,
+    hierarchy_node_paths: tuple[str, ...],
+    asset_tag_paths: tuple[str, ...],
+    excluded_person_paths: frozenset[str],
+) -> set[str]:
+    excluded_hierarchy_nodes = _expand_excluded_hierarchy_nodes(excluded_person_paths)
+    return {
+        path
+        for path in set(hierarchy_node_paths).union(asset_tag_paths)
+        if path not in excluded_hierarchy_nodes
+    }
+
+
+def _expand_excluded_hierarchy_nodes(paths: frozenset[str]) -> frozenset[str]:
+    excluded_nodes: set[str] = set()
+    for path in paths:
+        segments = path.split(_HIERARCHY_SEPARATOR)
+        for index in range(1, len(segments) + 1):
+            excluded_nodes.add(_HIERARCHY_SEPARATOR.join(segments[:index]))
+    return frozenset(excluded_nodes)
+
+
+def _resolve_explicit_tag_path(
+    *,
+    explicit_label: str,
+    hierarchy_node_paths: tuple[str, ...],
+) -> str:
+    matches = [
+        path
+        for path in hierarchy_node_paths
+        if path.rsplit(_HIERARCHY_SEPARATOR, 1)[-1] == explicit_label
+    ]
+    if not matches:
+        return explicit_label
+    return sorted(matches, key=lambda value: (-value.count(_HIERARCHY_SEPARATOR), value))[0]
+
+
+def _prune_redundant_suffix_paths(paths: tuple[str, ...]) -> tuple[str, ...]:
+    pruned_paths: list[str] = []
+    for path in paths:
+        path_segments = path.split(_HIERARCHY_SEPARATOR)
+        if any(
+            other != path
+            and len(other.split(_HIERARCHY_SEPARATOR)) > len(path_segments)
+            and other.split(_HIERARCHY_SEPARATOR)[-len(path_segments) :] == path_segments
+            for other in paths
+        ):
+            continue
+        pruned_paths.append(path)
+    return tuple(pruned_paths)
 
 
 def _build_collection_metadata(

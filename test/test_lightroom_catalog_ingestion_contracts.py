@@ -198,6 +198,7 @@ def test_lightroom_fixture_pins_xmp_blob_decompression_rule_and_xml_shape() -> N
         document_id="3EC1FA8A05CE57D59B0BA4C353580C5F",
         preserved_file_name="monalisa-1.jpg",
         title="Title 1",
+        explicit_keywords=("Mona Lisa", "München", "events", "vacation"),
         hierarchical_keywords=(
             "events",
             "events|vacation|M\u00fcnchen",
@@ -231,6 +232,28 @@ def test_lightroom_fixture_contains_xmp_titles_keywords_faces_and_creator_metada
         "Title 2",
         "Title 3 \u00e4\u00f6\u00fc\u00df\u00c4\u00d6\u00dc",
     ]
+    assert xmp_payloads[0].explicit_keywords == (
+        "Mona Lisa",
+        "München",
+        "events",
+        "vacation",
+    )
+    assert xmp_payloads[1].explicit_keywords == (
+        "Italy",
+        "John Doe",
+        "Mona Lisa",
+        "San Marino",
+        "events",
+        "vacation",
+    )
+    assert xmp_payloads[2].explicit_keywords == (
+        "John Doe",
+        "Mona Lisa",
+        "München",
+        "events",
+        "vacation",
+        "wedding",
+    )
     assert xmp_payloads[1].hierarchical_keywords == (
         "events|vacation",
         "events|vacation|Italy|San Marino",
@@ -290,7 +313,14 @@ def test_lightroom_contracts_pin_existing_asset_storage_boundary_without_schema_
         latitude=48.86189241666667,
         longitude=2.3358866333333332,
         creator_name="Leonardo da Vinci",
-        tag_paths=("events", "events|vacation", "events|vacation|M\u00fcnchen"),
+        tag_paths=(
+            "events",
+            "events|vacation",
+            "events|vacation|M\u00fcnchen",
+            "who",
+            "who|Persons",
+            "who|Persons|Mona Lisa",
+        ),
         asset_tag_paths=("events", "events|vacation", "events|vacation|M\u00fcnchen"),
         persons=(
             LightroomPersonCandidate(
@@ -315,6 +345,17 @@ def test_lightroom_contracts_pin_existing_asset_storage_boundary_without_schema_
             "iso": None,
             "rating": 3,
             "color_label": "Rot",
+            "explicit_keywords": ["Mona Lisa", "München", "events", "vacation"],
+            "hierarchical_subjects": [
+                "events",
+                "events|vacation|München",
+                "who|Persons|Mona Lisa",
+            ],
+            "linked_tag_paths": [
+                "events|vacation|München",
+                "events",
+                "events|vacation",
+            ],
             "collections": [],
             "face_regions": [
                 {

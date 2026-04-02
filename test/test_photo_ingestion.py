@@ -31,6 +31,8 @@ from pixelpast.persistence.models import (
     AssetTag,
     JobRun,
     Person,
+    PersonGroup,
+    PersonGroupMember,
     Source,
     Tag,
 )
@@ -136,15 +138,10 @@ def test_photo_fixture_ingestion_persists_rich_metadata_and_relationships() -> N
             "events|vacation|Italy|San Marino",
             "events|vacation|München",
             "events|wedding",
-            "who",
-            "who|Persons",
-            "who|Persons|John Doe",
-            "who|Persons|Mona Lisa",
         }
         assert set(tags_by_path) == expected_tag_paths
         assert tags_by_path["events|vacation|München"].label == "München"
         assert tags_by_path["events|vacation|Italy|San Marino"].label == "San Marino"
-        assert tags_by_path["who|Persons|Mona Lisa"].label == "Mona Lisa"
 
         assert asset_tag_paths_by_name["monalisa-1.jpg"] == {
             "events",
@@ -232,11 +229,72 @@ def test_photo_ingestion_with_fixtures_is_idempotent() -> None:
         assert [run.job for run in job_runs] == ["photos", "photos"]
         assert [run.status for run in job_runs] == ["completed", "completed"]
         assert len(people) == 3
-        assert len(tags) == 10
+        assert len(tags) == 6
         assert len(asset_tags) == 11
         assert len(asset_people) == 5
         assert len(sources) == 1
         assert sources[0].config == {"root_path": photos_root.resolve().as_posix()}
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_photo_ingestion_upgrades_existing_person_paths_without_breaking_group_memberships() -> (
+    None
+):
+    workspace_root = _create_workspace_dir(prefix="photo-person-path-upgrade")
+    runtime = None
+    try:
+        photos_root = _copy_photo_fixtures(workspace_root=workspace_root)
+        runtime = _create_runtime(
+            workspace_root=workspace_root,
+            photos_root=photos_root,
+        )
+
+        with runtime.session_factory() as session:
+            existing_person = Person(
+                name="Mona Lisa",
+                path="Persons|Mona Lisa",
+                aliases=None,
+                metadata_json=None,
+            )
+            session.add(existing_person)
+            session.flush()
+            group = PersonGroup(
+                name="Family",
+                type="manual",
+                path=None,
+                metadata_json={},
+            )
+            session.add(group)
+            session.flush()
+            session.add(
+                PersonGroupMember(group_id=group.id, person_id=existing_person.id)
+            )
+            session.commit()
+            existing_person_id = existing_person.id
+            group_id = group.id
+
+        result = PhotoIngestionService().ingest(runtime=runtime)
+
+        assert result.status == "completed"
+
+        with runtime.session_factory() as session:
+            mona_lisa = session.execute(
+                select(Person).where(Person.name == "Mona Lisa")
+            ).scalar_one()
+            memberships = list(
+                session.execute(
+                    select(PersonGroupMember).where(PersonGroupMember.group_id == group_id)
+                ).scalars()
+            )
+
+        assert mona_lisa.id == existing_person_id
+        assert mona_lisa.path == "who|Persons|Mona Lisa"
+        assert [(membership.group_id, membership.person_id) for membership in memberships] == [
+            (group_id, existing_person_id)
+        ]
     finally:
         if runtime is not None:
             runtime.engine.dispose()
