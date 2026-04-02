@@ -1002,15 +1002,6 @@ export function PhotoAlbumView({
           loadingMessage="Loading album map context."
           errorMessage="Album map context could not be loaded."
           emptySelectionMessage="No coordinates are attached to this album selection."
-          summary={
-            context === null
-              ? null
-              : {
-                  events: 0,
-                  assets: context.summaryCounts.assets,
-                  places: context.summaryCounts.places,
-                }
-          }
         />
       </aside>
     </div>

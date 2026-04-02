@@ -13,11 +13,6 @@ type MapPanelProps = {
   loadingMessage?: string;
   errorMessage?: string;
   emptySelectionMessage?: string;
-  summary: {
-    events: number;
-    assets: number;
-    places: number;
-  } | null;
 };
 
 function clamp(value: number, min: number, max: number): number {
@@ -42,7 +37,6 @@ export function MapPanel({
   loadingMessage,
   errorMessage,
   emptySelectionMessage,
-  summary,
 }: MapPanelProps) {
   const highlightedPointIdSet = new Set(highlightedPointIds);
   const labeledPoints = mapPoints.filter((point) => point.label !== null);
@@ -147,32 +141,6 @@ export function MapPanel({
             ))}
           </>
         )}
-        <div className="pointer-events-none absolute inset-x-3 bottom-3 grid grid-cols-3 gap-2 text-center">
-          <div className="rounded-2xl bg-[color:rgba(255,252,247,0.9)] px-2 py-2 shadow-[0_8px_24px_rgba(61,44,15,0.08)] backdrop-blur-sm">
-            <div className="text-base font-semibold text-slate-900">
-              {summary?.events ?? 0}
-            </div>
-            <div className="text-[10px] uppercase tracking-[0.2em] text-slate-500">
-              Events
-            </div>
-          </div>
-          <div className="rounded-2xl bg-[color:rgba(255,252,247,0.9)] px-2 py-2 shadow-[0_8px_24px_rgba(61,44,15,0.08)] backdrop-blur-sm">
-            <div className="text-base font-semibold text-slate-900">
-              {summary?.assets ?? 0}
-            </div>
-            <div className="text-[10px] uppercase tracking-[0.2em] text-slate-500">
-              Assets
-            </div>
-          </div>
-          <div className="rounded-2xl bg-[color:rgba(255,252,247,0.9)] px-2 py-2 shadow-[0_8px_24px_rgba(61,44,15,0.08)] backdrop-blur-sm">
-            <div className="text-base font-semibold text-slate-900">
-              {summary?.places ?? 0}
-            </div>
-            <div className="text-[10px] uppercase tracking-[0.2em] text-slate-500">
-              Places
-            </div>
-          </div>
-        </div>
       </div>
     </PanelCard>
   );

@@ -1,4 +1,5 @@
 import { useMemo, useState, type ReactNode } from "react";
+import { HoverSummaryPanel } from "../features/context/components/HoverSummaryPanel";
 import { LeftGridPane } from "./layout/LeftGridPane";
 import { MainSplitLayout } from "./layout/MainSplitLayout";
 import { RightContextPane } from "./layout/RightContextPane";
@@ -144,11 +145,11 @@ function TimelineMainContent({
           <MapPanel
             contextLabel={state.hoveredDate}
             mapPoints={mapProjection.mapPoints}
-            summary={mapProjection.mapSummary}
             hasPersistentFilters={hasPersistentFilters}
             contextStatus={hoverContextStatus}
             contextError={hoverContextError}
           />
+          <HoverSummaryPanel summary={mapProjection.mapSummary} />
         </RightContextPane>
       }
     />

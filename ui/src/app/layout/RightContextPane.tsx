@@ -5,5 +5,9 @@ type RightContextPaneProps = {
 };
 
 export function RightContextPane({ children }: RightContextPaneProps) {
-  return <aside className="grid h-full min-h-0 grid-rows-3 gap-2">{children}</aside>;
+  return (
+    <aside className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.15fr)_auto] gap-2">
+      {children}
+    </aside>
+  );
 }
