@@ -23,6 +23,10 @@ dist/
 venv/
 env/
 
+# Lightroom test fixture lock files
+*.lrcat-shm
+*.lrcat-wal
+
 # Editors and local settings
 .idea/
 .vscode/
