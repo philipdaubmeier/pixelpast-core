@@ -261,6 +261,58 @@ class AssetCollectionItem(Base):
     )
 
 
+class AssetFolderPersonGroup(Base):
+    """Derived relevance link between one folder subtree and one person group."""
+
+    __tablename__ = "asset_folder_person_group"
+    __table_args__ = (
+        Index("ix_asset_folder_person_group_group_id", "group_id"),
+        Index(
+            "ix_asset_folder_person_group_matched_person_count",
+            "matched_person_count",
+        ),
+    )
+
+    folder_id: Mapped[int] = mapped_column(
+        ForeignKey("asset_folder.id"),
+        primary_key=True,
+    )
+    group_id: Mapped[int] = mapped_column(
+        ForeignKey("person_group.id"),
+        primary_key=True,
+    )
+    matched_person_count: Mapped[int] = mapped_column(nullable=False)
+    group_person_count: Mapped[int] = mapped_column(nullable=False)
+    matched_asset_count: Mapped[int] = mapped_column(nullable=False)
+    matched_creator_person_count: Mapped[int] = mapped_column(nullable=False)
+
+
+class AssetCollectionPersonGroup(Base):
+    """Derived relevance link between one collection subtree and one person group."""
+
+    __tablename__ = "asset_collection_person_group"
+    __table_args__ = (
+        Index("ix_asset_collection_person_group_group_id", "group_id"),
+        Index(
+            "ix_asset_collection_person_group_matched_person_count",
+            "matched_person_count",
+        ),
+    )
+
+    collection_id: Mapped[int] = mapped_column(
+        ForeignKey("asset_collection.id"),
+        primary_key=True,
+    )
+    group_id: Mapped[int] = mapped_column(
+        ForeignKey("person_group.id"),
+        primary_key=True,
+    )
+    matched_person_count: Mapped[int] = mapped_column(nullable=False)
+    group_person_count: Mapped[int] = mapped_column(nullable=False)
+    matched_asset_count: Mapped[int] = mapped_column(nullable=False)
+    matched_creator_person_count: Mapped[int] = mapped_column(nullable=False)
+
+
 class DailyView(Base):
     """Catalog entry describing one reusable derived daily view."""
 

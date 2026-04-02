@@ -3,6 +3,8 @@
 from pixelpast.persistence.base import Base
 from pixelpast.persistence.models import (
     Asset,
+    AssetCollectionPersonGroup,
+    AssetFolderPersonGroup,
     AssetPerson,
     AssetTag,
     DailyView,
@@ -31,6 +33,8 @@ __all__ = [
     "JobRun",
     "Event",
     "Asset",
+    "AssetCollectionPersonGroup",
+    "AssetFolderPersonGroup",
     "EventAsset",
     "EventPlace",
     "DailyView",

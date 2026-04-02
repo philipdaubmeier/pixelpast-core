@@ -9,6 +9,11 @@ from pixelpast.analytics.asset_thumbnails import (
     AssetThumbnailJob,
     AssetThumbnailJobResult,
 )
+from pixelpast.analytics.album_aggregate import (
+    ALBUM_AGGREGATE_JOB_NAME,
+    AlbumAggregateJob,
+    AlbumAggregateJobResult,
+)
 from pixelpast.analytics.daily_aggregate import DailyAggregateJob
 from pixelpast.analytics.daily_aggregate.job import DailyAggregateJobResult
 from pixelpast.analytics.google_places import GooglePlacesJob, GooglePlacesJobResult
@@ -18,7 +23,12 @@ from pixelpast.shared.runtime import RuntimeContext
 logger = logging.getLogger(__name__)
 
 _SUPPORTED_JOBS = frozenset(
-    {ASSET_THUMBNAILS_JOB_NAME, "daily-aggregate", "google_places"}
+    {
+        ALBUM_AGGREGATE_JOB_NAME,
+        ASSET_THUMBNAILS_JOB_NAME,
+        "daily-aggregate",
+        "google_places",
+    }
 )
 
 
@@ -38,7 +48,12 @@ def run_derive_job(
     renditions: tuple[str, ...] = (),
     force: bool = False,
     progress_callback: Callable[[JobProgressSnapshot], None] | None = None,
-) -> DailyAggregateJobResult | GooglePlacesJobResult | AssetThumbnailJobResult:
+) -> (
+    DailyAggregateJobResult
+    | GooglePlacesJobResult
+    | AssetThumbnailJobResult
+    | AlbumAggregateJobResult
+):
     """Run a derived-data job entrypoint."""
 
     if job not in _SUPPORTED_JOBS:
@@ -46,6 +61,40 @@ def run_derive_job(
         raise ValueError(
             f"Unsupported job '{job}'. Available jobs: {available_jobs}."
         )
+
+    if job == ALBUM_AGGREGATE_JOB_NAME:
+        if start_date is not None or end_date is not None:
+            raise ValueError(
+                "Album aggregate derivation does not support --start-date/--end-date."
+            )
+        if max_place_ids is not None:
+            raise ValueError(
+                "Album aggregate derivation does not support --top-place-ids."
+            )
+        if renditions:
+            raise ValueError("Album aggregate derivation does not support --rendition.")
+        if force:
+            raise ValueError("Album aggregate derivation does not support --force.")
+
+        result = AlbumAggregateJob().run(
+            runtime=runtime,
+            progress_callback=progress_callback,
+        )
+        logger.info(
+            "derive completed",
+            extra={
+                "job": job,
+                "database_url": runtime.settings.database_url,
+                "run_id": result.run_id,
+                "mode": result.mode,
+                "status": result.status,
+                "folder_row_count": result.folder_row_count,
+                "collection_row_count": result.collection_row_count,
+                "asset_evidence_count": result.asset_evidence_count,
+                "person_group_count": result.person_group_count,
+            },
+        )
+        return result
 
     if job == ASSET_THUMBNAILS_JOB_NAME:
         if start_date is not None or end_date is not None:
