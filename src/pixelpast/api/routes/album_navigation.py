@@ -205,6 +205,8 @@ ALBUM_ASSET_DETAIL_EXAMPLES = {
             "source_type": "lightroom_catalog",
             "media_type": "photo",
             "title": "IMG_1042.JPG",
+            "creator": "Anna Becker",
+            "preserved_filename": "IMG_1042.CR3",
             "caption": "Evening light over the canal.",
             "description": None,
             "timestamp": "2024-07-15T18:42:00+00:00",

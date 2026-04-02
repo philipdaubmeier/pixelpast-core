@@ -91,6 +91,8 @@ export type AlbumAssetDetailProjection = {
   sourceType: string;
   mediaType: string;
   title: string;
+  creator: string | null;
+  preservedFilename: string | null;
   caption: string | null;
   description: string | null;
   timestamp: string;
@@ -215,6 +217,8 @@ function mapAssetDetail(
     sourceType: response.source_type,
     mediaType: response.media_type,
     title: response.title,
+    creator: response.creator ?? null,
+    preservedFilename: response.preserved_filename ?? null,
     caption: response.caption ?? null,
     description: response.description ?? null,
     timestamp: response.timestamp,

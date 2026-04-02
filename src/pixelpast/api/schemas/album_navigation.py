@@ -188,6 +188,8 @@ class AlbumAssetDetailResponse(BaseModel):
     source_type: str
     media_type: str
     title: str
+    creator: str | None = None
+    preserved_filename: str | None = None
     caption: str | None = None
     description: str | None = None
     timestamp: str

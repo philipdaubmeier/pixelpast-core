@@ -114,6 +114,8 @@ export type ApiAlbumAssetDetailResponse = {
   source_type: string;
   media_type: string;
   title: string;
+  creator?: string;
+  preserved_filename?: string;
   caption?: string;
   description?: string;
   timestamp: string;

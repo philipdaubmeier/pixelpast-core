@@ -200,6 +200,8 @@ class AlbumAssetDetailSnapshot:
     source_type: str
     media_type: str
     title: str
+    creator: str | None
+    preserved_filename: str | None
     caption: str | None
     description: str | None
     timestamp_iso: str
@@ -267,6 +269,7 @@ class _AssetDetailRow:
     latitude: float | None
     longitude: float | None
     external_id: str
+    creator_name: str | None
     metadata_json: dict[str, Any] | None
 
 
@@ -486,9 +489,11 @@ class AlbumNavigationReadRepository:
                 Asset.latitude,
                 Asset.longitude,
                 Asset.external_id,
+                Person.name,
                 Asset.metadata_json,
             )
             .join(Source, Source.id == Asset.source_id)
+            .outerjoin(Person, Person.id == Asset.creator_person_id)
             .where(Asset.id == asset_id)
         ).one_or_none()
         if row is None:
@@ -506,7 +511,8 @@ class AlbumNavigationReadRepository:
             latitude=row[8],
             longitude=row[9],
             external_id=row[10],
-            metadata_json=row[11] if isinstance(row[11], dict) else None,
+            creator_name=row[11] if isinstance(row[11], str) else None,
+            metadata_json=row[12] if isinstance(row[12], dict) else None,
         )
         metadata = detail_row.metadata_json if isinstance(detail_row.metadata_json, dict) else {}
 
@@ -518,6 +524,12 @@ class AlbumNavigationReadRepository:
             source_type=detail_row.source_type,
             media_type=detail_row.media_type,
             title=_resolve_asset_detail_title(detail_row),
+            creator=detail_row.creator_name,
+            preserved_filename=_resolve_metadata_text(
+                metadata,
+                "preserved_filename",
+                "preserved_file_name",
+            ),
             caption=_resolve_metadata_text(metadata, "caption"),
             description=_resolve_metadata_text(metadata, "description", "comment"),
             timestamp_iso=detail_row.timestamp_iso,
@@ -1087,6 +1099,7 @@ def _resolve_filename_candidates_from_metadata(
     candidates: list[str] = []
     for key in (
         "file_name",
+        "preserved_filename",
         "preserved_file_name",
         "filename",
         "original_filename",

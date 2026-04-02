@@ -8,7 +8,6 @@ import {
   type AlbumTreeNodeProjection,
 } from "../../../api/album";
 import { PanelCard } from "../../../components/PanelCard";
-import { Pill } from "../../../components/Pill";
 import {
   buildVisiblePersons,
   buildVisibleTags,
@@ -327,6 +326,8 @@ function AssetMetadataPanel({
     detail === null
       ? []
       : [
+          ["Creator", detail.creator],
+          ["Original file", detail.preservedFilename],
           ["Camera", detail.camera],
           ["Lens", detail.lens],
           [

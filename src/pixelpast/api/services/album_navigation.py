@@ -230,6 +230,8 @@ def _to_asset_detail_response(
         source_type=snapshot.source_type,
         media_type=snapshot.media_type,
         title=snapshot.title,
+        creator=snapshot.creator,
+        preserved_filename=snapshot.preserved_filename,
         caption=snapshot.caption,
         description=snapshot.description,
         timestamp=snapshot.timestamp_iso,
