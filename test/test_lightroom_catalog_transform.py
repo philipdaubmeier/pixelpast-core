@@ -14,6 +14,7 @@ from pixelpast.ingestion.lightroom_catalog import (
     LightroomChosenImageRow,
     LightroomCollectionRow,
     LightroomFaceRow,
+    LightroomKeywordRow,
 )
 
 _FIXTURE_PATH = Path("test/assets/lightroom-classic-catalog-test-fixture.lrcat")
@@ -159,6 +160,15 @@ def test_lightroom_transformer_converts_apex_values_and_normalizes_person_links(
                 orientation=0.0,
             ),
         ),
+        keyword_rows=(
+            LightroomKeywordRow(
+                image_id=1,
+                keyword_id=97,
+                keyword_name="Mona Lisa",
+                keyword_path="who|Persons|Mona Lisa",
+                keyword_type="person",
+            ),
+        ),
         collection_rows=(
             LightroomCollectionRow(
                 image_id=1,
@@ -240,6 +250,48 @@ def test_lightroom_transformer_converts_apex_values_and_normalizes_person_links(
             "bottom": 0.6,
         },
     ]
+
+
+def test_lightroom_transformer_creates_people_from_person_keyword_type_without_face_regions() -> None:
+    transformer = LightroomCatalogTransformer()
+
+    candidate = transformer.build_asset_candidate(
+        image_row=LightroomChosenImageRow(
+            image_id=1,
+            root_file_id=1,
+            file_name="example.jpg",
+            file_path="C:/photos/example.jpg",
+            capture_time_text="2020-01-01T02:03:40.000",
+            rating=None,
+            color_label=None,
+            xmp_blob=_FIXTURE_ROW.xmp_blob,
+            caption=None,
+            creator_name=None,
+            camera=None,
+            lens=None,
+            aperture_apex=None,
+            shutter_speed_apex=None,
+            iso_speed_rating=None,
+            gps_latitude=None,
+            gps_longitude=None,
+        ),
+        face_rows=(),
+        keyword_rows=(
+            LightroomKeywordRow(
+                image_id=1,
+                keyword_id=97,
+                keyword_name="Mona Lisa",
+                keyword_path="who|Persons|Mona Lisa",
+                keyword_type="person",
+            ),
+        ),
+        collection_rows=(),
+    )
+
+    assert tuple((person.name, person.path) for person in candidate.persons) == (
+        ("Mona Lisa", "who|Persons|Mona Lisa"),
+    )
+    assert all("who|" not in path for path in candidate.tag_paths)
 
 
 _FIXTURE_ROW = LightroomCatalogFetcher().fetch_catalogs(

@@ -79,6 +79,17 @@ class LightroomFaceRow:
 
 
 @dataclass(slots=True, frozen=True)
+class LightroomKeywordRow:
+    """One Lightroom keyword assignment row loaded for a chosen image."""
+
+    image_id: int
+    keyword_id: int
+    keyword_name: str
+    keyword_path: str
+    keyword_type: str | None
+
+
+@dataclass(slots=True, frozen=True)
 class LightroomCollectionRow:
     """One Lightroom collection membership row loaded separately from base rows."""
 
@@ -108,6 +119,7 @@ class LoadedLightroomCatalog:
     descriptor: LightroomCatalogDescriptor
     chosen_images: tuple[LightroomChosenImageRow, ...]
     face_rows: tuple[LightroomFaceRow, ...]
+    keyword_rows: tuple[LightroomKeywordRow, ...]
     collection_rows: tuple[LightroomCollectionRow, ...]
     collection_nodes: tuple[LightroomCollectionNode, ...]
 
@@ -215,6 +227,7 @@ __all__ = [
     "LightroomCollectionMembership",
     "LightroomCollectionRow",
     "LightroomFaceRow",
+    "LightroomKeywordRow",
     "LightroomFaceRegion",
     "LightroomIngestionResult",
     "LightroomPersonCandidate",

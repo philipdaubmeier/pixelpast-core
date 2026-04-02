@@ -17,6 +17,7 @@ from pixelpast.ingestion.lightroom_catalog import (
     LightroomCollectionNode,
     LightroomFaceRegion,
     LightroomIngestionResult,
+    LightroomKeywordRow,
     LightroomPersonCandidate,
     LightroomTransformError,
     LightroomXmpPayload,
@@ -35,6 +36,7 @@ _DESCRIPTION_TAG = "{http://www.w3.org/1999/02/22-rdf-syntax-ns#}Description"
 def test_lightroom_catalog_public_contract_imports_remain_stable() -> None:
     assert LightroomCatalogDescriptor is lightroom_contracts.LightroomCatalogDescriptor
     assert LightroomChosenImageRow is lightroom_contracts.LightroomChosenImageRow
+    assert LightroomKeywordRow is lightroom_contracts.LightroomKeywordRow
     assert LightroomXmpPayload is lightroom_contracts.LightroomXmpPayload
     assert LightroomPersonCandidate is lightroom_contracts.LightroomPersonCandidate
     assert LightroomFaceRegion is lightroom_contracts.LightroomFaceRegion
@@ -317,9 +319,6 @@ def test_lightroom_contracts_pin_existing_asset_storage_boundary_without_schema_
             "events",
             "events|vacation",
             "events|vacation|M\u00fcnchen",
-            "who",
-            "who|Persons",
-            "who|Persons|Mona Lisa",
         ),
         asset_tag_paths=("events", "events|vacation", "events|vacation|M\u00fcnchen"),
         persons=(

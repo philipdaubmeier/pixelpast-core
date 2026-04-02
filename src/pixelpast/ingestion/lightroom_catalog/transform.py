@@ -16,6 +16,7 @@ from pixelpast.ingestion.lightroom_catalog.contracts import (
     LightroomCollectionMembership,
     LightroomCollectionRow,
     LightroomFaceRow,
+    LightroomKeywordRow,
     LightroomPersonCandidate,
 )
 from pixelpast.ingestion.lightroom_catalog.xmp import parse_lightroom_xmp_payload
@@ -74,6 +75,10 @@ class LightroomCatalogTransformer:
         for row in catalog.collection_rows:
             collection_rows_by_image[row.image_id].append(row)
 
+        keyword_rows_by_image: dict[int, list[LightroomKeywordRow]] = defaultdict(list)
+        for row in catalog.keyword_rows:
+            keyword_rows_by_image[row.image_id].append(row)
+
         selected_image_rows = _slice_image_rows(
             image_rows=catalog.chosen_images,
             start_index=start_index,
@@ -83,6 +88,7 @@ class LightroomCatalogTransformer:
             self.build_asset_candidate(
                 image_row=image_row,
                 face_rows=face_rows_by_image.get(image_row.image_id, ()),
+                keyword_rows=keyword_rows_by_image.get(image_row.image_id, ()),
                 collection_rows=collection_rows_by_image.get(image_row.image_id, ()),
             )
             for image_row in selected_image_rows
@@ -99,6 +105,7 @@ class LightroomCatalogTransformer:
         *,
         image_row: LightroomChosenImageRow,
         face_rows: Iterable[LightroomFaceRow],
+        keyword_rows: Iterable[LightroomKeywordRow],
         collection_rows: Iterable[LightroomCollectionRow],
     ) -> LightroomAssetCandidate:
         """Transform one chosen Lightroom image row into one canonical asset."""
@@ -119,6 +126,7 @@ class LightroomCatalogTransformer:
         explicit_keywords = _extract_explicit_keywords(xmp_payload.explicit_keywords)
         tag_paths = _expand_hierarchy_paths(hierarchical_keywords)
         persons, excluded_person_paths = _build_person_candidates(
+            keyword_rows=tuple(keyword_rows),
             face_rows=tuple(face_rows),
             tag_paths=tag_paths,
         )
@@ -245,6 +253,7 @@ def _expand_hierarchy_paths(paths: tuple[str, ...]) -> tuple[str, ...]:
 
 def _build_person_candidates(
     *,
+    keyword_rows: tuple[LightroomKeywordRow, ...],
     face_rows: tuple[LightroomFaceRow, ...],
     tag_paths: tuple[str, ...],
 ) -> tuple[tuple[LightroomPersonCandidate, ...], frozenset[str]]:
@@ -252,12 +261,36 @@ def _build_person_candidates(
     excluded_paths: set[str] = set()
     seen_names: set[str] = set()
 
-    for face_row in face_rows:
-        name = _normalize_optional_text(face_row.name)
+    face_names = {
+        name
+        for face_row in face_rows
+        if (name := _normalize_optional_text(face_row.name)) is not None
+    }
+    for keyword_row in keyword_rows:
+        if keyword_row.keyword_type != "person":
+            continue
+        name = _normalize_optional_text(keyword_row.keyword_name)
         if name is None or name in seen_names:
             continue
         seen_names.add(name)
-        matching_path = _resolve_matching_person_path(name=name, tag_paths=tag_paths)
+        matching_path = _resolve_matching_person_path(
+            name=name,
+            preferred_path=keyword_row.keyword_path,
+            tag_paths=tag_paths,
+        )
+        if matching_path is not None:
+            excluded_paths.add(matching_path)
+        persons.append(LightroomPersonCandidate(name=name, path=matching_path))
+
+    for name in sorted(face_names, key=str.casefold):
+        if name in seen_names:
+            continue
+        seen_names.add(name)
+        matching_path = _resolve_matching_person_path(
+            name=name,
+            preferred_path=None,
+            tag_paths=tag_paths,
+        )
         if matching_path is not None:
             excluded_paths.add(matching_path)
         persons.append(LightroomPersonCandidate(name=name, path=matching_path))
@@ -268,12 +301,19 @@ def _build_person_candidates(
     )
 
 
-def _resolve_matching_person_path(*, name: str, tag_paths: tuple[str, ...]) -> str | None:
+def _resolve_matching_person_path(
+    *,
+    name: str,
+    preferred_path: str | None,
+    tag_paths: tuple[str, ...],
+) -> str | None:
     matches = [
         path for path in tag_paths if path.rsplit(_HIERARCHY_SEPARATOR, 1)[-1] == name
     ]
     if not matches:
         return None
+    if preferred_path is not None and preferred_path in matches:
+        return preferred_path
     return sorted(matches, key=lambda value: (-value.count(_HIERARCHY_SEPARATOR), value))[0]
 
 

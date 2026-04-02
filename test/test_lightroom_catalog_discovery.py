@@ -18,6 +18,7 @@ from pixelpast.ingestion.lightroom_catalog import (
     LightroomCatalogLoadProgress,
     LightroomChosenImageRow,
     LightroomFaceRow,
+    LightroomKeywordRow,
     open_lightroom_catalog_read_only,
 )
 from pixelpast.ingestion.lightroom_catalog import fetch as lightroom_fetch
@@ -231,6 +232,85 @@ def test_lightroom_catalog_fetcher_loads_chosen_images_faces_and_collection_rows
                     orientation=0.0,
                 ),
             ),
+            keyword_rows=(
+                LightroomKeywordRow(
+                    image_id=67,
+                    keyword_id=83,
+                    keyword_name="events",
+                    keyword_path="events",
+                    keyword_type=None,
+                ),
+                LightroomKeywordRow(
+                    image_id=67,
+                    keyword_id=89,
+                    keyword_name="München",
+                    keyword_path="events|vacation|München",
+                    keyword_type=None,
+                ),
+                LightroomKeywordRow(
+                    image_id=67,
+                    keyword_id=97,
+                    keyword_name="Mona Lisa",
+                    keyword_path="who|Persons|Mona Lisa",
+                    keyword_type="person",
+                ),
+                LightroomKeywordRow(
+                    image_id=68,
+                    keyword_id=87,
+                    keyword_name="vacation",
+                    keyword_path="events|vacation",
+                    keyword_type=None,
+                ),
+                LightroomKeywordRow(
+                    image_id=68,
+                    keyword_id=97,
+                    keyword_name="Mona Lisa",
+                    keyword_path="who|Persons|Mona Lisa",
+                    keyword_type="person",
+                ),
+                LightroomKeywordRow(
+                    image_id=68,
+                    keyword_id=138,
+                    keyword_name="San Marino",
+                    keyword_path="events|vacation|Italy|San Marino",
+                    keyword_type=None,
+                ),
+                LightroomKeywordRow(
+                    image_id=68,
+                    keyword_id=146,
+                    keyword_name="John Doe",
+                    keyword_path="who|Persons|John Doe",
+                    keyword_type="person",
+                ),
+                LightroomKeywordRow(
+                    image_id=69,
+                    keyword_id=89,
+                    keyword_name="München",
+                    keyword_path="events|vacation|München",
+                    keyword_type=None,
+                ),
+                LightroomKeywordRow(
+                    image_id=69,
+                    keyword_id=97,
+                    keyword_name="Mona Lisa",
+                    keyword_path="who|Persons|Mona Lisa",
+                    keyword_type="person",
+                ),
+                LightroomKeywordRow(
+                    image_id=69,
+                    keyword_id=146,
+                    keyword_name="John Doe",
+                    keyword_path="who|Persons|John Doe",
+                    keyword_type="person",
+                ),
+                LightroomKeywordRow(
+                    image_id=69,
+                    keyword_id=190,
+                    keyword_name="wedding",
+                    keyword_path="events|wedding",
+                    keyword_type=None,
+                ),
+            ),
             collection_rows=(),
             collection_nodes=(),
         ),
@@ -264,6 +344,7 @@ def test_lightroom_catalog_fetcher_applies_asset_range_before_related_row_querie
 
     assert [row.image_id for row in loaded_catalog.chosen_images] == [68, 69]
     assert [row.image_id for row in loaded_catalog.face_rows] == [68, 68, 69, 69, 69]
+    assert [row.image_id for row in loaded_catalog.keyword_rows] == [68, 68, 68, 68, 69, 69, 69, 69]
     assert loaded_catalog.collection_rows == ()
     assert loaded_catalog.collection_nodes == ()
 
@@ -322,6 +403,19 @@ def test_lightroom_catalog_connector_delegates_discovery_and_raw_load() -> None:
             200,
             203,
             206,
+        ]
+        assert [row.keyword_id for row in loaded[0].keyword_rows] == [
+            83,
+            89,
+            97,
+            87,
+            97,
+            138,
+            146,
+            89,
+            97,
+            146,
+            190,
         ]
         assert loaded[0].collection_rows == ()
         assert loaded[0].collection_nodes == ()

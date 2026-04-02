@@ -14,6 +14,7 @@ from pixelpast.ingestion.lightroom_catalog.contracts import (
     LightroomCollectionNode,
     LightroomCollectionRow,
     LightroomFaceRow,
+    LightroomKeywordRow,
 )
 
 
@@ -87,6 +88,7 @@ class LightroomCatalogFetcher:
             )
             image_ids = tuple(row.image_id for row in chosen_images)
             face_rows = _fetch_face_rows(connection, image_ids=image_ids)
+            keyword_rows = _fetch_keyword_rows(connection, image_ids=image_ids)
             collection_rows, collection_nodes = _fetch_collection_rows(
                 connection,
                 image_ids=image_ids,
@@ -95,6 +97,7 @@ class LightroomCatalogFetcher:
             descriptor=catalog,
             chosen_images=chosen_images,
             face_rows=face_rows,
+            keyword_rows=keyword_rows,
             collection_rows=collection_rows,
             collection_nodes=collection_nodes,
         )
@@ -329,11 +332,70 @@ def _fetch_collection_rows(
     return collection_rows, collection_nodes
 
 
+def _fetch_keyword_rows(
+    connection: sqlite3.Connection,
+    *,
+    image_ids: tuple[int, ...],
+) -> tuple[LightroomKeywordRow, ...]:
+    if not image_ids:
+        return ()
+
+    assignment_rows: list[sqlite3.Row] = []
+    for batch_image_ids in _iter_sql_batches(image_ids):
+        assignment_rows.extend(
+            connection.execute(
+                f"""
+                SELECT
+                    keyword_image.image AS image_id,
+                    keyword.id_local AS keyword_id,
+                    keyword.name AS keyword_name,
+                    keyword.keywordType AS keyword_type,
+                    keyword.parent AS parent_keyword_id
+                FROM AgLibraryKeywordImage keyword_image
+                JOIN AgLibraryKeyword keyword
+                    ON keyword.id_local = keyword_image.tag
+                WHERE keyword_image.image IN ({_sql_placeholders(len(batch_image_ids))})
+                ORDER BY keyword_image.image, keyword.id_local
+                """,
+                batch_image_ids,
+            ).fetchall()
+        )
+    if not assignment_rows:
+        return ()
+
+    keyword_lookup = _load_keyword_lookup(
+        connection,
+        keyword_ids={
+            int(row["keyword_id"]) for row in assignment_rows if row["keyword_id"] is not None
+        },
+    )
+    return tuple(
+        LightroomKeywordRow(
+            image_id=row["image_id"],
+            keyword_id=row["keyword_id"],
+            keyword_name=row["keyword_name"],
+            keyword_path=_build_keyword_path(
+                keyword_id=row["keyword_id"],
+                keyword_lookup=keyword_lookup,
+            ),
+            keyword_type=row["keyword_type"],
+        )
+        for row in assignment_rows
+        if row["keyword_name"] is not None
+    )
+
+
 @dataclass(slots=True, frozen=True)
 class _CollectionLookupEntry:
     name: str
     parent_collection_id: int | None
     collection_type: str
+
+
+@dataclass(slots=True, frozen=True)
+class _KeywordLookupEntry:
+    name: str
+    parent_keyword_id: int | None
 
 
 def _load_collection_lookup(
@@ -369,6 +431,38 @@ def _load_collection_lookup(
     return collection_lookup
 
 
+def _load_keyword_lookup(
+    connection: sqlite3.Connection,
+    *,
+    keyword_ids: set[int],
+) -> dict[int, _KeywordLookupEntry]:
+    keyword_lookup: dict[int, _KeywordLookupEntry] = {}
+    pending_keyword_ids = set(keyword_ids)
+    while pending_keyword_ids:
+        rows = connection.execute(
+            f"""
+            SELECT id_local, name, parent
+            FROM AgLibraryKeyword
+            WHERE id_local IN ({_sql_placeholders(len(pending_keyword_ids))})
+            """,
+            tuple(sorted(pending_keyword_ids)),
+        ).fetchall()
+        pending_keyword_ids = set()
+        for row in rows:
+            keyword_id = int(row["id_local"])
+            parent_keyword_id = _coerce_optional_int(row["parent"])
+            keyword_lookup[keyword_id] = _KeywordLookupEntry(
+                name=row["name"],
+                parent_keyword_id=parent_keyword_id,
+            )
+            if (
+                parent_keyword_id is not None
+                and parent_keyword_id not in keyword_lookup
+            ):
+                pending_keyword_ids.add(parent_keyword_id)
+    return keyword_lookup
+
+
 def _build_collection_path(
     *,
     collection_id: int,
@@ -382,6 +476,22 @@ def _build_collection_path(
         current_collection_id = entry.parent_collection_id
     path_segments.reverse()
     return "/".join(path_segments)
+
+
+def _build_keyword_path(
+    *,
+    keyword_id: int,
+    keyword_lookup: dict[int, _KeywordLookupEntry],
+) -> str:
+    path_segments: list[str] = []
+    current_keyword_id: int | None = keyword_id
+    while current_keyword_id is not None:
+        entry = keyword_lookup[current_keyword_id]
+        if entry.name:
+            path_segments.append(entry.name)
+        current_keyword_id = entry.parent_keyword_id
+    path_segments.reverse()
+    return "|".join(path_segments)
 
 
 def _resolve_collection_type(creation_id: object) -> str:
