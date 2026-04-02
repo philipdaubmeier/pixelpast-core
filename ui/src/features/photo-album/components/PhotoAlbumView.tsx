@@ -1,6 +1,7 @@
 import { startTransition, useEffect, useMemo, useState } from "react";
 import {
   albumApi,
+  type AlbumAssetProjection,
   type AlbumAssetDetailProjection,
   type AlbumAssetListingProjection,
   type AlbumContextProjection,
@@ -309,19 +310,23 @@ function TreeSection({
 }
 
 function AssetMetadataPanel({
+  selectionLabel,
+  hoveredAsset,
   detailState,
   detailError,
   detail,
 }: {
+  selectionLabel: string | null;
+  hoveredAsset: AlbumAssetProjection | null;
   detailState: LoadState;
   detailError: string | null;
   detail: AlbumAssetDetailProjection | null;
 }) {
+  const activeAsset = hoveredAsset ?? detail;
   const metadataRows =
     detail === null
       ? []
       : [
-          ["Captured", formatTimestamp(detail.timestamp)],
           ["Camera", detail.camera],
           ["Lens", detail.lens],
           [
@@ -342,14 +347,7 @@ function AssetMetadataPanel({
         ].filter((row): row is [string, string] => row[1] !== null);
 
   return (
-    <PanelCard
-      title="Metadata"
-      description={
-        detail?.caption ??
-        detail?.description ??
-        "Lazy-loaded asset detail for the current focus selection."
-      }
-    >
+    <PanelCard>
       {detailState === "loading" ? (
         <div className="flex h-full min-h-32 items-center justify-center rounded-[22px] border border-dashed border-[color:var(--pp-border)] bg-white/35 px-4 text-center text-sm text-slate-500">
           Loading selected photo detail.
@@ -358,44 +356,39 @@ function AssetMetadataPanel({
         <div className="flex h-full min-h-32 items-center justify-center rounded-[22px] border border-rose-200 bg-rose-50 px-4 text-center text-sm text-rose-700">
           {detailError ?? "Photo detail could not be loaded."}
         </div>
-      ) : detail === null ? (
+      ) : activeAsset === null ? (
         <div className="flex h-full min-h-32 items-center justify-center rounded-[22px] border border-dashed border-[color:var(--pp-border)] bg-white/35 px-4 text-center text-sm text-slate-500">
           Select a thumbnail to inspect metadata and face regions.
         </div>
       ) : (
         <div className="thin-scrollbar flex h-full flex-col gap-3 overflow-y-auto pr-1">
           <div className="rounded-[22px] border border-[color:var(--pp-border)] bg-white/70 px-4 py-3">
-            <h3 className="text-sm font-semibold text-slate-900">{detail.title}</h3>
+            {selectionLabel ? (
+              <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">
+                {selectionLabel}
+              </p>
+            ) : null}
+            <h3 className="mt-1 text-sm font-semibold text-slate-900">
+              {activeAsset.title}
+            </h3>
             <p className="mt-1 text-xs text-slate-500">
-              {detail.sourceName} / {detail.sourceType}
+              {formatTimestamp(activeAsset.timestamp)}
             </p>
           </div>
-          <dl className="grid grid-cols-2 gap-2">
-            {metadataRows.map(([label, value]) => (
-              <div
-                key={label}
-                className="rounded-[20px] border border-[color:var(--pp-border)] bg-white/60 px-3 py-2"
-              >
-                <dt className="text-[10px] uppercase tracking-[0.18em] text-slate-500">
-                  {label}
-                </dt>
-                <dd className="mt-1 text-sm text-slate-800">{value}</dd>
-              </div>
-            ))}
-          </dl>
-          {detail.people.length > 0 ? (
-            <div className="rounded-[22px] border border-[color:var(--pp-border)] bg-white/60 px-3 py-3">
-              <div className="text-[10px] uppercase tracking-[0.18em] text-slate-500">
-                People In Focus
-              </div>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {detail.people.map((person) => (
-                  <Pill key={person.id} muted>
-                    {person.name}
-                  </Pill>
-                ))}
-              </div>
-            </div>
+          {detail !== null ? (
+            <dl className="grid grid-cols-2 gap-2">
+              {metadataRows.map(([label, value]) => (
+                <div
+                  key={label}
+                  className="rounded-[20px] border border-[color:var(--pp-border)] bg-white/60 px-3 py-2"
+                >
+                  <dt className="text-[10px] uppercase tracking-[0.18em] text-slate-500">
+                    {label}
+                  </dt>
+                  <dd className="mt-1 text-sm text-slate-800">{value}</dd>
+                </div>
+              ))}
+            </dl>
           ) : null}
         </div>
       )}
@@ -784,6 +777,10 @@ export function PhotoAlbumView({
     hoveredAssetId !== null
       ? context?.assetContextsByAssetId[hoveredAssetId] ?? null
       : null;
+  const hoveredAsset =
+    hoveredAssetId !== null
+      ? listing?.items.find((item) => item.id === hoveredAssetId) ?? null
+      : null;
   const activeSelectionLabel =
     listing?.selection.name ?? context?.selection.name ?? null;
   const activeTransportState = useMemo(
@@ -968,6 +965,8 @@ export function PhotoAlbumView({
 
       <aside className="grid min-h-0 gap-2 xl:grid-rows-[minmax(0,1.05fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(0,1fr)]">
         <AssetMetadataPanel
+          selectionLabel={activeSelectionLabel}
+          hoveredAsset={hoveredAsset}
           detailState={detailState}
           detailError={detailError}
           detail={detail}
