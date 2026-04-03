@@ -38,6 +38,9 @@ function toDraftPersonGroupMembership(
     groupId: String(response.person_group.id),
     groupName: response.person_group.name,
     memberCount: response.person_group.member_count,
+    albumAggregateIgnoredPersonIds: (
+      response.person_group.album_aggregate_rules?.ignored_person_ids ?? []
+    ).map((personId) => String(personId)),
     members: response.members.map((member) => ({
       id: String(member.id),
       name: member.name,
@@ -116,6 +119,11 @@ export const manageDataClient = {
         person_ids: membership.members
           .map((member) => toPersistedIdentifier(member.id))
           .filter((value): value is number => value !== undefined),
+        album_aggregate_rules: {
+          ignored_person_ids: membership.albumAggregateIgnoredPersonIds
+            .map((personId) => toPersistedIdentifier(personId))
+            .filter((value): value is number => value !== undefined),
+        },
       }),
     );
   },

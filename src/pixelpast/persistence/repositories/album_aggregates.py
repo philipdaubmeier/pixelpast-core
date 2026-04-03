@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
@@ -70,6 +71,7 @@ class AlbumAggregatePersonGroupInput:
     name: str
     path: str | None
     person_ids: tuple[int, ...]
+    ignored_person_ids: tuple[int, ...]
 
 
 @dataclass(slots=True, frozen=True)
@@ -271,7 +273,12 @@ class AlbumAggregateRepository:
 
         group_rows = list(
             self._session.execute(
-                select(PersonGroup.id, PersonGroup.name, PersonGroup.path).order_by(
+                select(
+                    PersonGroup.id,
+                    PersonGroup.name,
+                    PersonGroup.path,
+                    PersonGroup.metadata_json,
+                ).order_by(
                     func.lower(PersonGroup.name),
                     PersonGroup.id,
                 )
@@ -280,7 +287,7 @@ class AlbumAggregateRepository:
         if not group_rows:
             return ()
 
-        group_ids = [group_id for group_id, _, _ in group_rows]
+        group_ids = [group_id for group_id, _, _, _ in group_rows]
         member_rows = self._session.execute(
             select(PersonGroupMember.group_id, PersonGroupMember.person_id)
             .where(PersonGroupMember.group_id.in_(group_ids))
@@ -296,8 +303,11 @@ class AlbumAggregateRepository:
                 name=name,
                 path=path,
                 person_ids=tuple(sorted(set(person_ids_by_group_id.get(group_id, [])))),
+                ignored_person_ids=tuple(
+                    _normalize_album_aggregate_ignored_person_ids(metadata_json)
+                ),
             )
-            for group_id, name, path in group_rows
+            for group_id, name, path, metadata_json in group_rows
         )
 
     def replace_all(
@@ -561,3 +571,25 @@ class AlbumAggregateRepository:
             ) in self._session.execute(statement)
         )
 
+
+def _normalize_album_aggregate_ignored_person_ids(
+    metadata_json: Any,
+) -> tuple[int, ...]:
+    if not isinstance(metadata_json, dict):
+        return ()
+    album_aggregate = metadata_json.get("album_aggregate")
+    if not isinstance(album_aggregate, dict):
+        return ()
+    raw_ignored_person_ids = album_aggregate.get("ignored_person_ids")
+    if not isinstance(raw_ignored_person_ids, list):
+        return ()
+    normalized_ids: list[int] = []
+    seen_ids: set[int] = set()
+    for value in raw_ignored_person_ids:
+        if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+            continue
+        if value in seen_ids:
+            continue
+        normalized_ids.append(value)
+        seen_ids.add(value)
+    return tuple(sorted(normalized_ids))

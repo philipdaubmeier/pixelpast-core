@@ -51,6 +51,12 @@ class PersonGroupCatalogWriteEntry(BaseModel):
     name: str = Field(min_length=1)
 
 
+class PersonGroupAlbumAggregateRulesEntry(BaseModel):
+    """Typed album-aggregate rules exposed through manage-data contracts."""
+
+    ignored_person_ids: list[int] = Field(default_factory=list)
+
+
 class PersonGroupsCatalogResponse(BaseModel):
     """Read response for the canonical person-group catalog."""
 
@@ -79,6 +85,9 @@ class PersonGroupMembershipGroupEntry(BaseModel):
     id: int
     name: str
     member_count: int
+    album_aggregate_rules: PersonGroupAlbumAggregateRulesEntry = Field(
+        default_factory=PersonGroupAlbumAggregateRulesEntry
+    )
 
 
 class PersonGroupMembershipResponse(BaseModel):
@@ -92,3 +101,6 @@ class SavePersonGroupMembershipRequest(BaseModel):
     """Batch replacement request for one person group's membership set."""
 
     person_ids: list[int] = Field(default_factory=list)
+    album_aggregate_rules: PersonGroupAlbumAggregateRulesEntry = Field(
+        default_factory=PersonGroupAlbumAggregateRulesEntry
+    )

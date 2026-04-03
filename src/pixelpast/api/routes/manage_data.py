@@ -114,6 +114,9 @@ PERSON_GROUP_MEMBERSHIP_EXAMPLES = {
                 "id": 3,
                 "name": "Immediate Family",
                 "member_count": 2,
+                "album_aggregate_rules": {
+                    "ignored_person_ids": [7],
+                },
             },
             "members": [
                 {
@@ -138,6 +141,9 @@ SAVE_PERSON_GROUP_MEMBERSHIP_EXAMPLES = {
         "summary": "Replace one group's persisted member set",
         "value": {
             "person_ids": [7, 12, 18],
+            "album_aggregate_rules": {
+                "ignored_person_ids": [7],
+            },
         },
     }
 }
@@ -418,6 +424,7 @@ def save_person_group_membership(
         response = service.save_person_group_membership(
             group_id=group_id,
             person_ids=request.person_ids,
+            album_aggregate_rules=request.album_aggregate_rules,
         )
         session.commit()
         return response

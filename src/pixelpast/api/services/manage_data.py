@@ -5,6 +5,7 @@ from __future__ import annotations
 from pixelpast.api.schemas.manage_data import (
     PersonCatalogEntry,
     PersonCatalogWriteEntry,
+    PersonGroupAlbumAggregateRulesEntry,
     PersonGroupCatalogEntry,
     PersonGroupCatalogWriteEntry,
     PersonGroupMembershipGroupEntry,
@@ -128,6 +129,9 @@ class ManageDataCatalogService:
                 id=group_snapshot.id,
                 name=group_snapshot.name,
                 member_count=group_snapshot.member_count,
+                album_aggregate_rules=PersonGroupAlbumAggregateRulesEntry(
+                    ignored_person_ids=list(group_snapshot.ignored_person_ids)
+                ),
             ),
             members=[
                 PersonGroupMembershipMemberEntry(
@@ -145,16 +149,26 @@ class ManageDataCatalogService:
         *,
         group_id: int,
         person_ids: list[int],
+        album_aggregate_rules: PersonGroupAlbumAggregateRulesEntry,
     ) -> PersonGroupMembershipResponse:
         """Replace one group's member set and return the reloaded persisted state."""
 
         if group_id not in self._person_group_repository.get_existing_ids():
             raise ManageDataValidationError(f"person group id {group_id} does not exist")
 
-        self._validate_person_group_membership_person_ids(person_ids=person_ids)
-        self._person_group_repository.replace_membership(
+        normalized_person_ids = _normalize_member_identifier_list(person_ids)
+        normalized_ignored_person_ids = _normalize_member_identifier_list(
+            album_aggregate_rules.ignored_person_ids
+        )
+        self._validate_person_group_membership_person_ids(person_ids=normalized_person_ids)
+        self._validate_person_group_ignored_person_ids(
+            person_ids=normalized_person_ids,
+            ignored_person_ids=normalized_ignored_person_ids,
+        )
+        self._person_group_repository.replace_membership_and_album_aggregate_rules(
             group_id=group_id,
-            person_ids=_normalize_member_identifier_list(person_ids),
+            person_ids=normalized_person_ids,
+            ignored_person_ids=normalized_ignored_person_ids,
         )
         return self.get_person_group_membership(group_id=group_id)
 
@@ -225,6 +239,19 @@ class ManageDataCatalogService:
             if person_id not in existing_person_ids:
                 raise ManageDataValidationError(f"person id {person_id} does not exist")
 
+    def _validate_person_group_ignored_person_ids(
+        self,
+        *,
+        person_ids: list[int],
+        ignored_person_ids: list[int],
+    ) -> None:
+        membership_person_ids = set(person_ids)
+        for person_id in ignored_person_ids:
+            if person_id not in membership_person_ids:
+                raise ManageDataValidationError(
+                    "album aggregate ignored person ids must be members of the person group"
+                )
+
 
 def _normalize_person_write_entry(row: PersonCatalogWriteEntry) -> PersonCatalogSnapshot:
     name = row.name.strip()
@@ -263,6 +290,7 @@ def _normalize_person_group_write_entry(
         id=row.id or 0,
         name=name,
         member_count=0,
+        ignored_person_ids=[],
     )
 
 

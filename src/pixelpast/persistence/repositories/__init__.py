@@ -55,6 +55,7 @@ from pixelpast.persistence.repositories.manage_data import (
     ManageDataPersonGroupRepository,
     ManageDataPersonRepository,
     PersonCatalogSnapshot,
+    PersonGroupAlbumAggregateRulesSnapshot,
     PersonGroupCatalogSnapshot,
     PersonGroupMembershipSnapshot,
 )
@@ -141,6 +142,7 @@ __all__ = [
     "ManageDataPersonRepository",
     "PersonRepository",
     "PersonCatalogSnapshot",
+    "PersonGroupAlbumAggregateRulesSnapshot",
     "PersonGroupCollectionRelevanceSnapshot",
     "PersonGroupCatalogSnapshot",
     "PersonGroupFolderRelevanceSnapshot",

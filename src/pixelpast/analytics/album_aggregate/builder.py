@@ -32,9 +32,11 @@ def build_album_aggregate_snapshots(
     """Build deterministic folder and collection relevance rows from canonical data."""
 
     group_person_ids = {
-        group.group_id: set(group.person_ids)
+        group.group_id: (
+            set(group.person_ids) - set(group.ignored_person_ids)
+        )
         for group in inputs.person_groups
-        if group.person_ids
+        if set(group.person_ids) - set(group.ignored_person_ids)
     }
     groups_by_person_id = _build_groups_by_person_id(group_person_ids=group_person_ids)
 

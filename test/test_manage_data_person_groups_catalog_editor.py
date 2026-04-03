@@ -20,6 +20,8 @@ def test_manage_data_client_maps_person_groups_catalog_and_delete_contract() -> 
     assert "delete_ids: deleteIds" in source
     assert "getPersonGroupMembership(groupId)" in source
     assert "savePersonGroupMembership(groupId" in source
+    assert "albumAggregateIgnoredPersonIds" in source
+    assert "ignored_person_ids" in source
 
 
 def test_manage_data_overlay_renders_person_groups_editor_actions() -> None:
@@ -33,6 +35,8 @@ def test_manage_data_overlay_renders_person_groups_editor_actions() -> None:
     assert "Manage members" in source
     assert "Delete group" in source
     assert "Confirm delete" in source
+    assert "Album Aggregate Ignore List" in source
+    assert "Stop ignoring" in source
 
 
 def test_manage_data_overlay_renders_person_group_membership_subview() -> None:
@@ -44,5 +48,7 @@ def test_manage_data_overlay_renders_person_group_membership_subview() -> None:
     assert "Person Group Membership" in source
     assert "Back to catalog" in source
     assert "Search persisted persons by name, alias, or path" in source
+    assert "Search current group members" in source
     assert "Remove member" in source
+    assert "Ignored persons stay canonical group members" in source
     assert "Apply or discard the person-group catalog draft before editing members." in source

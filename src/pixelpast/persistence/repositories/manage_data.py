@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
@@ -29,6 +30,7 @@ class PersonGroupCatalogSnapshot:
     id: int
     name: str
     member_count: int
+    ignored_person_ids: list[int]
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,6 +41,13 @@ class PersonGroupMembershipSnapshot:
     name: str
     aliases: list[str]
     path: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class PersonGroupAlbumAggregateRulesSnapshot:
+    """Stable typed rules snapshot for album aggregate derive behavior."""
+
+    ignored_person_ids: list[int]
 
 
 class ManageDataPersonRepository:
@@ -123,12 +132,13 @@ class ManageDataPersonGroupRepository:
                 PersonGroup.id,
                 PersonGroup.name,
                 func.count(PersonGroupMember.person_id),
+                PersonGroup.metadata_json,
             )
             .outerjoin(
                 PersonGroupMember,
                 PersonGroupMember.group_id == PersonGroup.id,
             )
-            .group_by(PersonGroup.id, PersonGroup.name)
+            .group_by(PersonGroup.id, PersonGroup.name, PersonGroup.metadata_json)
             .order_by(func.lower(PersonGroup.name), PersonGroup.id)
         )
         return [
@@ -136,8 +146,13 @@ class ManageDataPersonGroupRepository:
                 id=group_id,
                 name=name,
                 member_count=member_count,
+                ignored_person_ids=_normalize_album_aggregate_ignored_person_ids(
+                    metadata_json
+                ),
             )
-            for group_id, name, member_count in self._session.execute(statement).all()
+            for group_id, name, member_count, metadata_json in self._session.execute(
+                statement
+            ).all()
         ]
 
     def get_existing_ids(self) -> set[int]:
@@ -154,23 +169,27 @@ class ManageDataPersonGroupRepository:
                 PersonGroup.id,
                 PersonGroup.name,
                 func.count(PersonGroupMember.person_id),
+                PersonGroup.metadata_json,
             )
             .outerjoin(
                 PersonGroupMember,
                 PersonGroupMember.group_id == PersonGroup.id,
             )
             .where(PersonGroup.id == group_id)
-            .group_by(PersonGroup.id, PersonGroup.name)
+            .group_by(PersonGroup.id, PersonGroup.name, PersonGroup.metadata_json)
         )
         row = self._session.execute(statement).one_or_none()
         if row is None:
             return None
 
-        snapshot_group_id, name, member_count = row
+        snapshot_group_id, name, member_count, metadata_json = row
         return PersonGroupCatalogSnapshot(
             id=snapshot_group_id,
             name=name,
             member_count=member_count,
+            ignored_person_ids=_normalize_album_aggregate_ignored_person_ids(
+                metadata_json
+            ),
         )
 
     def list_members(self, *, group_id: int) -> list[PersonGroupMembershipSnapshot]:
@@ -252,6 +271,44 @@ class ManageDataPersonGroupRepository:
 
         self._session.flush()
 
+    def replace_membership_and_album_aggregate_rules(
+        self,
+        *,
+        group_id: int,
+        person_ids: list[int],
+        ignored_person_ids: list[int],
+    ) -> None:
+        """Replace one group's membership set and album-aggregate ignore rules."""
+
+        self.replace_membership(group_id=group_id, person_ids=person_ids)
+        group = self._session.execute(
+            select(PersonGroup).where(PersonGroup.id == group_id)
+        ).scalar_one()
+        metadata_json = (
+            dict(group.metadata_json)
+            if isinstance(group.metadata_json, dict)
+            else {}
+        )
+        album_aggregate_metadata = (
+            dict(metadata_json.get("album_aggregate"))
+            if isinstance(metadata_json.get("album_aggregate"), dict)
+            else {}
+        )
+        normalized_ignored_person_ids = _normalize_album_aggregate_ignored_person_ids(
+            {"album_aggregate": {"ignored_person_ids": ignored_person_ids}}
+        )
+        if normalized_ignored_person_ids:
+            album_aggregate_metadata["ignored_person_ids"] = normalized_ignored_person_ids
+            metadata_json["album_aggregate"] = album_aggregate_metadata
+        else:
+            album_aggregate_metadata.pop("ignored_person_ids", None)
+            if album_aggregate_metadata:
+                metadata_json["album_aggregate"] = album_aggregate_metadata
+            else:
+                metadata_json.pop("album_aggregate", None)
+        group.metadata_json = metadata_json
+        self._session.flush()
+
 
 def _normalize_aliases_shape(raw_aliases: object) -> list[str]:
     """Return aliases in the explicit string-list shape used by the contract."""
@@ -270,3 +327,34 @@ def _normalize_aliases_shape(raw_aliases: object) -> list[str]:
         normalized_aliases.append(alias)
         seen.add(alias)
     return normalized_aliases
+
+
+def _normalize_album_aggregate_ignored_person_ids(
+    metadata_json: Any,
+) -> list[int]:
+    if not isinstance(metadata_json, dict):
+        return []
+    album_aggregate = metadata_json.get("album_aggregate")
+    if not isinstance(album_aggregate, dict):
+        return []
+    raw_ignored_person_ids = album_aggregate.get("ignored_person_ids")
+    if not isinstance(raw_ignored_person_ids, list):
+        return []
+    return _normalize_member_identifier_list(
+        [
+            value
+            for value in raw_ignored_person_ids
+            if isinstance(value, int) and not isinstance(value, bool)
+        ]
+    )
+
+
+def _normalize_member_identifier_list(person_ids: list[int]) -> list[int]:
+    normalized_person_ids: list[int] = []
+    seen_person_ids: set[int] = set()
+    for person_id in person_ids:
+        if person_id <= 0 or person_id in seen_person_ids:
+            continue
+        normalized_person_ids.append(person_id)
+        seen_person_ids.add(person_id)
+    return sorted(normalized_person_ids)

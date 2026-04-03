@@ -348,6 +348,7 @@ def test_manage_data_person_group_membership_contract_replaces_member_set() -> N
                 "id": 1,
                 "name": "Travel Buddies",
                 "member_count": 2,
+                "album_aggregate_rules": {"ignored_person_ids": []},
             },
             "members": [
                 {
@@ -368,7 +369,10 @@ def test_manage_data_person_group_membership_contract_replaces_member_set() -> N
         with TestClient(app) as client:
             save_response = client.put(
                 "/api/manage-data/person-groups/1/members",
-                json={"person_ids": [3, 3, 1]},
+                json={
+                    "person_ids": [3, 3, 1],
+                    "album_aggregate_rules": {"ignored_person_ids": [3, 3, 1]},
+                },
             )
 
         assert save_response.status_code == 200
@@ -377,6 +381,7 @@ def test_manage_data_person_group_membership_contract_replaces_member_set() -> N
                 "id": 1,
                 "name": "Travel Buddies",
                 "member_count": 2,
+                "album_aggregate_rules": {"ignored_person_ids": [1, 3]},
             },
             "members": [
                 {
@@ -400,11 +405,15 @@ def test_manage_data_person_group_membership_contract_replaces_member_set() -> N
                 .order_by(PersonGroupMember.group_id, PersonGroupMember.person_id)
                 .all()
             )
+            group = session.query(PersonGroup).where(PersonGroup.id == 1).one()
 
         assert [(link.group_id, link.person_id) for link in memberships] == [
             (1, 1),
             (1, 3),
         ]
+        assert group.metadata_json == {
+            "album_aggregate": {"ignored_person_ids": [1, 3]}
+        }
 
         with TestClient(app) as client:
             rejected_response = client.put(
@@ -414,6 +423,22 @@ def test_manage_data_person_group_membership_contract_replaces_member_set() -> N
 
         assert rejected_response.status_code == 400
         assert rejected_response.json() == {"detail": "person id 999 does not exist"}
+
+        with TestClient(app) as client:
+            rejected_ignore_response = client.put(
+                "/api/manage-data/person-groups/1/members",
+                json={
+                    "person_ids": [1, 3],
+                    "album_aggregate_rules": {"ignored_person_ids": [2]},
+                },
+            )
+
+        assert rejected_ignore_response.status_code == 400
+        assert rejected_ignore_response.json() == {
+            "detail": (
+                "album aggregate ignored person ids must be members of the person group"
+            )
+        }
     finally:
         if runtime is not None:
             runtime.engine.dispose()

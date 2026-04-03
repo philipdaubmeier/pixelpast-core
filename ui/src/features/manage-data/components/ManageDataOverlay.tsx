@@ -45,6 +45,7 @@ type MembershipRuntimeState = {
   draft: PersonGroupMembershipDraft | null;
   personOptions: PersonCatalogDraftRow[];
   searchQuery: string;
+  ignoredSearchQuery: string;
 };
 
 type SectionRuntimeState = {
@@ -91,6 +92,7 @@ const initialSectionState: SectionRuntimeState = {
     draft: null,
     personOptions: [],
     searchQuery: "",
+    ignoredSearchQuery: "",
   },
 };
 
@@ -130,12 +132,16 @@ async function loadSectionData(
 function PersonGroupMembershipSection(props: {
   membership: PersonGroupMembershipDraft;
   searchQuery: string;
+  ignoredSearchQuery: string;
   saveError: string | null;
   personOptions: PersonCatalogDraftRow[];
   dirty: boolean;
   onSearchChange: (value: string) => void;
+  onIgnoredSearchChange: (value: string) => void;
   onAddMember: (personId: string) => void;
   onRemoveMember: (personId: string) => void;
+  onAddIgnoredPerson: (personId: string) => void;
+  onRemoveIgnoredPerson: (personId: string) => void;
   onClose: () => void;
 }) {
   const availableSuggestions = useMemo(() => {
@@ -158,6 +164,33 @@ function PersonGroupMembershipSection(props: {
   }, [props.membership.members, props.personOptions, props.searchQuery]);
 
   const firstSuggestion = availableSuggestions[0] ?? null;
+  const ignoredSuggestions = useMemo(() => {
+    const normalizedQuery = props.ignoredSearchQuery.trim().toLowerCase();
+    const ignoredPersonIds = new Set(props.membership.albumAggregateIgnoredPersonIds);
+
+    return props.membership.members
+      .filter((member) => !ignoredPersonIds.has(member.id))
+      .filter((member) => {
+        if (normalizedQuery === "") {
+          return true;
+        }
+
+        return [member.name, member.aliases.join(", "), member.path]
+          .join(" ")
+          .toLowerCase()
+          .includes(normalizedQuery);
+      })
+      .slice(0, 8);
+  }, [
+    props.ignoredSearchQuery,
+    props.membership.albumAggregateIgnoredPersonIds,
+    props.membership.members,
+  ]);
+  const firstIgnoredSuggestion = ignoredSuggestions[0] ?? null;
+  const ignoredPeople = useMemo(() => {
+    const ignoredPersonIds = new Set(props.membership.albumAggregateIgnoredPersonIds);
+    return props.membership.members.filter((member) => ignoredPersonIds.has(member.id));
+  }, [props.membership.albumAggregateIgnoredPersonIds, props.membership.members]);
 
   return (
     <section className="flex h-full min-h-0 flex-col gap-1 overflow-hidden">
@@ -274,6 +307,93 @@ function PersonGroupMembershipSection(props: {
                     className="rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-sm font-medium text-rose-800 transition hover:bg-rose-100"
                   >
                     Remove member
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+      <div className="panel-surface flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div className="px-3 py-1.5">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
+            Album Aggregate Ignore List
+          </p>
+          <p className="mt-1 text-xs leading-5 text-slate-500">
+            Ignored persons stay canonical group members, but do not count as
+            album aggregate signals for this group.
+          </p>
+        </div>
+        <div className="px-3 pb-2">
+          <label className="flex items-center gap-2 rounded-[18px] border border-[color:var(--pp-border)] bg-white/80 px-2 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+              Ignore
+            </span>
+            <input
+              type="search"
+              value={props.ignoredSearchQuery}
+              onChange={(event) => props.onIgnoredSearchChange(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && firstIgnoredSuggestion !== null) {
+                  event.preventDefault();
+                  props.onAddIgnoredPerson(firstIgnoredSuggestion.id);
+                }
+              }}
+              placeholder="Search current group members"
+              className="w-full border-none bg-transparent text-sm text-slate-800 outline-none placeholder:text-slate-400"
+            />
+          </label>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {ignoredSuggestions.length === 0 ? (
+              <span className="rounded-full border border-dashed border-[color:rgba(98,80,46,0.16)] px-3 py-1.5 text-xs text-slate-500">
+                {props.ignoredSearchQuery.trim() === ""
+                  ? "Select current group members to ignore for album aggregate matching."
+                  : "No matching group members available."}
+              </span>
+            ) : (
+              ignoredSuggestions.map((person) => (
+                <button
+                  key={person.id}
+                  type="button"
+                  onClick={() => props.onAddIgnoredPerson(person.id)}
+                  className="rounded-full border border-[color:rgba(15,23,42,0.12)] bg-white px-2 py-1 text-left text-sm text-slate-800 transition hover:bg-slate-50"
+                >
+                  {person.name}
+                  {person.path ? ` - ${person.path}` : ""}
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+        <div className="thin-scrollbar min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-2 py-1">
+          {ignoredPeople.length === 0 ? (
+            <CatalogEmptyState
+              title="No ignored persons"
+              description="Add one or more current group members when some people should not influence album aggregate relevance for this group."
+            />
+          ) : (
+            <div className="flex flex-col gap-0.5">
+              {ignoredPeople.map((person) => (
+                <div
+                  key={person.id}
+                  className="flex flex-wrap items-center justify-between gap-1 rounded-[16px] border border-[color:rgba(98,80,46,0.14)] bg-white/70 px-2 py-1"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-slate-900">
+                      {person.name}
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-slate-500">
+                      {[person.path, person.aliases.join(", ")]
+                        .filter((value) => value.trim() !== "")
+                        .join(" â€¢ ") || "No path or aliases"}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => props.onRemoveIgnoredPerson(person.id)}
+                    className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-sm font-medium text-amber-800 transition hover:bg-amber-100"
+                  >
+                    Stop ignoring
                   </button>
                 </div>
               ))}
@@ -517,6 +637,7 @@ export function ManageDataOverlay(props: {
           snapshot: null,
           draft: null,
           searchQuery: "",
+          ignoredSearchQuery: "",
         },
       }));
     });
@@ -545,6 +666,7 @@ export function ManageDataOverlay(props: {
               draft: JSON.parse(JSON.stringify(membership)),
               personOptions,
               searchQuery: "",
+              ignoredSearchQuery: "",
             },
           };
         });
@@ -564,6 +686,7 @@ export function ManageDataOverlay(props: {
             snapshot: null,
             draft: null,
             searchQuery: "",
+            ignoredSearchQuery: "",
           },
         }));
       });
@@ -714,6 +837,7 @@ export function ManageDataOverlay(props: {
           ) as PersonGroupMembershipDraft,
           saveError: null,
           searchQuery: "",
+          ignoredSearchQuery: "",
         },
       }));
       return;
@@ -781,6 +905,7 @@ export function ManageDataOverlay(props: {
               snapshot: JSON.parse(JSON.stringify(reloadedMembership)),
               draft: JSON.parse(JSON.stringify(reloadedMembership)),
               searchQuery: "",
+              ignoredSearchQuery: "",
             },
           }));
         });
@@ -1107,6 +1232,16 @@ export function ManageDataOverlay(props: {
     }));
   }
 
+  function updateIgnoredMembershipSearchQuery(value: string) {
+    setSectionState((currentState) => ({
+      ...currentState,
+      membership: {
+        ...currentState.membership,
+        ignoredSearchQuery: value,
+      },
+    }));
+  }
+
   function addMembershipMember(personId: string) {
     setSectionState((currentState) => {
       if (currentState.membership.draft === null) {
@@ -1172,6 +1307,71 @@ export function ManageDataOverlay(props: {
             members: currentState.membership.draft.members.filter(
               (member) => member.id !== personId,
             ),
+            albumAggregateIgnoredPersonIds:
+              currentState.membership.draft.albumAggregateIgnoredPersonIds.filter(
+                (ignoredPersonId) => ignoredPersonId !== personId,
+              ),
+          },
+        },
+      };
+    });
+  }
+
+  function addIgnoredMembershipPerson(personId: string) {
+    setSectionState((currentState) => {
+      if (currentState.membership.draft === null) {
+        return currentState;
+      }
+      if (
+        currentState.membership.draft.albumAggregateIgnoredPersonIds.includes(personId)
+      ) {
+        return {
+          ...currentState,
+          membership: {
+            ...currentState.membership,
+            ignoredSearchQuery: "",
+          },
+        };
+      }
+      if (
+        !currentState.membership.draft.members.some((member) => member.id === personId)
+      ) {
+        return currentState;
+      }
+
+      return {
+        ...currentState,
+        membership: {
+          ...currentState.membership,
+          draft: {
+            ...currentState.membership.draft,
+            albumAggregateIgnoredPersonIds: [
+              ...currentState.membership.draft.albumAggregateIgnoredPersonIds,
+              personId,
+            ].sort((left, right) => Number(left) - Number(right)),
+          },
+          ignoredSearchQuery: "",
+        },
+      };
+    });
+  }
+
+  function removeIgnoredMembershipPerson(personId: string) {
+    setSectionState((currentState) => {
+      if (currentState.membership.draft === null) {
+        return currentState;
+      }
+
+      return {
+        ...currentState,
+        membership: {
+          ...currentState.membership,
+          draft: {
+            ...currentState.membership.draft,
+            albumAggregateIgnoredPersonIds:
+              currentState.membership.draft.albumAggregateIgnoredPersonIds.filter(
+                (ignoredPersonId) => ignoredPersonId !== personId,
+              ),
           },
         },
       };
@@ -1271,12 +1471,16 @@ export function ManageDataOverlay(props: {
                   <PersonGroupMembershipSection
                     membership={sectionState.membership.draft}
                     searchQuery={sectionState.membership.searchQuery}
+                    ignoredSearchQuery={sectionState.membership.ignoredSearchQuery}
                     saveError={sectionState.membership.saveError}
                     personOptions={sectionState.membership.personOptions}
                     dirty={isDirty}
                     onSearchChange={updateMembershipSearchQuery}
+                    onIgnoredSearchChange={updateIgnoredMembershipSearchQuery}
                     onAddMember={addMembershipMember}
                     onRemoveMember={removeMembershipMember}
+                    onAddIgnoredPerson={addIgnoredMembershipPerson}
+                    onRemoveIgnoredPerson={removeIgnoredMembershipPerson}
                     onClose={() => closePersonGroupMembershipEditor()}
                   />
                 ) : null

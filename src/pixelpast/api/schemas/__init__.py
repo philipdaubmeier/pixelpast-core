@@ -50,6 +50,7 @@ from pixelpast.api.schemas.hovercontext import (
 from pixelpast.api.schemas.manage_data import (
     PersonCatalogEntry,
     PersonCatalogWriteEntry,
+    PersonGroupAlbumAggregateRulesEntry,
     PersonGroupCatalogEntry,
     PersonGroupCatalogWriteEntry,
     PersonGroupMembershipGroupEntry,
@@ -105,6 +106,7 @@ __all__ = [
     "ExplorationViewMode",
     "PersonCatalogEntry",
     "PersonCatalogWriteEntry",
+    "PersonGroupAlbumAggregateRulesEntry",
     "PersonGroupCatalogEntry",
     "PersonGroupCatalogWriteEntry",
     "PersonGroupMembershipGroupEntry",

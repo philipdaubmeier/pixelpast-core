@@ -332,6 +332,87 @@ def test_album_aggregate_job_persists_derive_run_and_progress() -> None:
             database_path.unlink()
 
 
+def test_album_aggregate_job_excludes_group_specific_ignored_persons() -> None:
+    database_path = _build_test_database_path("album-aggregate-ignored-persons")
+    runtime = _create_runtime(database_path=database_path)
+    try:
+        initialize_database(runtime)
+        with runtime.session_factory() as session:
+            seeded = _seed_album_aggregate_scenario(session=session)
+            family_group = (
+                session.query(PersonGroup)
+                .where(PersonGroup.id == seeded["group_ids"]["family"])
+                .one()
+            )
+            family_group.metadata_json = {
+                "album_aggregate": {
+                    "ignored_person_ids": [
+                        seeded["person_ids"]["anna"],
+                        seeded["person_ids"]["cara"],
+                    ]
+                }
+            }
+            session.commit()
+
+        result = AlbumAggregateJob().run(runtime=runtime)
+
+        assert result.folder_row_count == 6
+        assert result.collection_row_count == 4
+
+        with runtime.session_factory() as session:
+            family_folder_rows = list(
+                session.execute(
+                    select(AssetFolderPersonGroup)
+                    .where(
+                        AssetFolderPersonGroup.group_id == seeded["group_ids"]["family"]
+                    )
+                    .order_by(AssetFolderPersonGroup.folder_id)
+                ).scalars()
+            )
+            family_collection_rows = list(
+                session.execute(
+                    select(AssetCollectionPersonGroup)
+                    .where(
+                        AssetCollectionPersonGroup.group_id
+                        == seeded["group_ids"]["family"]
+                    )
+                    .order_by(AssetCollectionPersonGroup.collection_id)
+                ).scalars()
+            )
+
+        assert [
+            (
+                row.folder_id,
+                row.matched_person_count,
+                row.group_person_count,
+                row.matched_asset_count,
+                row.matched_creator_person_count,
+            )
+            for row in family_folder_rows
+        ] == [
+            (seeded["folder_ids"]["root"], 1, 1, 1, 0),
+            (seeded["folder_ids"]["year"], 1, 1, 1, 0),
+            (seeded["folder_ids"]["trip"], 1, 1, 1, 0),
+        ]
+        assert [
+            (
+                row.collection_id,
+                row.matched_person_count,
+                row.group_person_count,
+                row.matched_asset_count,
+                row.matched_creator_person_count,
+            )
+            for row in family_collection_rows
+        ] == [
+            (seeded["collection_ids"]["trips"], 1, 1, 1, 0),
+            (seeded["collection_ids"]["italy"], 1, 1, 1, 0),
+        ]
+    finally:
+        runtime.engine.dispose()
+        if database_path.exists():
+            database_path.unlink()
+
+
 def test_cli_derive_album_aggregate_prints_progress_and_summary(monkeypatch) -> None:
     database_path = _build_test_database_path("cli-album-aggregate")
     monkeypatch.setenv(

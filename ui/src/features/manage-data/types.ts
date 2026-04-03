@@ -25,6 +25,7 @@ export type PersonGroupMembershipDraft = {
   groupName: string;
   memberCount: number;
   members: PersonGroupMembershipDraftMember[];
+  albumAggregateIgnoredPersonIds: string[];
 };
 
 export type ManageDataSectionDescriptor = {

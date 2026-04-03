@@ -38,6 +38,9 @@ export type ApiPersonGroupMembershipResponse = {
     id: number;
     name: string;
     member_count: number;
+    album_aggregate_rules: {
+      ignored_person_ids: number[];
+    };
   };
   members: Array<{
     id: number;
@@ -49,6 +52,9 @@ export type ApiPersonGroupMembershipResponse = {
 
 export type ApiSavePersonGroupMembershipRequest = {
   person_ids: number[];
+  album_aggregate_rules: {
+    ignored_person_ids: number[];
+  };
 };
 
 function normalizeConfiguredApiBaseUrl(value: string): string {
