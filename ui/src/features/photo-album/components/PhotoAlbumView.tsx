@@ -259,20 +259,34 @@ function PersonGroupChip({
   );
 }
 
-function PersonGroupOverflowChip({
-  hiddenGroups,
+function PersonGroupDot({
+  group,
+  active,
+  onToggle,
 }: {
-  hiddenGroups: AlbumTreeNodeProjection["personGroups"];
+  group: AlbumTreeNodeProjection["personGroups"][number];
+  active: boolean;
+  onToggle: (groupId: string) => void;
 }) {
+  const colorOption = getPersonGroupColorOption(group.colorIndex);
+
   return (
-    <span
-      title={hiddenGroups
-        .map((group) => `${group.groupName} | ${formatPersonGroupSummary(group)}`)
-        .join("\n")}
-      className="inline-flex items-center rounded-full border border-dashed border-[color:var(--pp-border)] bg-white/75 px-2 py-0.5 text-[10px] font-medium text-slate-500"
-    >
-      +{hiddenGroups.length}
-    </span>
+    <button
+      type="button"
+      onClick={() => onToggle(group.groupId)}
+      title={`${group.groupName} | ${formatPersonGroupSummary(group)}`}
+      className={[
+        "h-2.5 w-2.5 shrink-0 rounded-full border transition hover:scale-110",
+        active
+          ? "border-slate-900 shadow-[0_0_0_1px_rgba(15,23,42,0.45)]"
+          : "border-white/80 hover:border-slate-300",
+      ].join(" ")}
+      style={{
+        backgroundColor: colorOption?.color ?? "#7c6f64",
+        borderColor: active ? undefined : colorOption?.borderColor ?? "rgba(255,255,255,0.8)",
+      }}
+      aria-label={`${group.groupName} | ${formatPersonGroupSummary(group)}`}
+    />
   );
 }
 
@@ -324,7 +338,6 @@ function TreeSection({
       const isExpanded = expandedIds.includes(node.id);
       const hasChildren = node.childCount > 0;
       const inlinePersonGroups = node.personGroups.slice(0, MAX_INLINE_PERSON_GROUPS);
-      const hiddenPersonGroups = node.personGroups.slice(MAX_INLINE_PERSON_GROUPS);
 
       return [
         <div
@@ -334,7 +347,7 @@ function TreeSection({
         >
           <div
             className={[
-              "rounded-xl border px-1.5 py-1 transition",
+              "rounded-xl border px-1.5 py-0.5 transition",
               isSelected
                 ? "border-slate-900 bg-slate-900/95 shadow-[0_10px_30px_rgba(15,23,42,0.12)]"
                 : "border-[color:var(--pp-border)] bg-white/65 hover:bg-white",
@@ -357,58 +370,43 @@ function TreeSection({
               >
                 {hasChildren ? (isExpanded ? "-" : "+") : "."}
               </button>
-              <button
-                type="button"
-                onClick={() => onSelectNode(node.id)}
-                className="flex min-w-0 flex-1 items-center justify-between gap-2 rounded-lg px-1 py-0.5 text-left"
-              >
+              <div className="flex min-w-0 flex-1 items-center justify-between gap-2 rounded-lg px-1 py-0">
                 <span className="min-w-0">
-                  <span
+                  <button
+                    type="button"
+                    onClick={() => onSelectNode(node.id)}
                     className={[
-                      "block truncate text-[11px] font-medium leading-4",
+                      "block max-w-full truncate text-left text-[11px] font-medium leading-4",
                       isSelected ? "text-white" : "text-slate-700",
                     ].join(" ")}
                   >
                     {node.name}
+                  </button>
+                </span>
+                <span className="flex shrink-0 items-center gap-1.5">
+                  {inlinePersonGroups.length > 0 ? (
+                    <span className="flex items-center gap-1">
+                      {inlinePersonGroups.map((group) => (
+                        <PersonGroupDot
+                          key={group.groupId}
+                          group={group}
+                          active={selectedPersonGroupIdSet.has(group.groupId)}
+                          onToggle={onTogglePersonGroup}
+                        />
+                      ))}
+                    </span>
+                  ) : null}
+                  <span
+                    className={[
+                      "shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
+                      isSelected ? "bg-white/15 text-white" : "bg-stone-100 text-slate-600",
+                    ].join(" ")}
+                  >
+                    {node.assetCount}
                   </span>
                 </span>
-                <span
-                  className={[
-                    "shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
-                    isSelected ? "bg-white/15 text-white" : "bg-stone-100 text-slate-600",
-                  ].join(" ")}
-                >
-                  {node.assetCount}
-                </span>
-              </button>
+              </div>
             </div>
-            {node.personGroups.length > 0 ? (
-              <div className="mt-1.5 flex flex-wrap items-center gap-1 pl-5">
-                {inlinePersonGroups.map((group) => (
-                  <PersonGroupChip
-                    key={group.groupId}
-                    group={group}
-                    active={selectedPersonGroupIdSet.has(group.groupId)}
-                    onToggle={onTogglePersonGroup}
-                  />
-                ))}
-                {hiddenPersonGroups.length > 0 ? (
-                  <PersonGroupOverflowChip hiddenGroups={hiddenPersonGroups} />
-                ) : null}
-              </div>
-            ) : null}
-            {isSelected && node.personGroups.length > 0 ? (
-              <div
-                className={[
-                  "mt-1 pl-5 text-[10px]",
-                  isSelected ? "text-white/70" : "text-slate-500",
-                ].join(" ")}
-              >
-                {node.personGroups[0].matchedPersonCount} /{" "}
-                {node.personGroups[0].groupPersonCount} people in the top matching
-                group
-              </div>
-            ) : null}
           </div>
         </div>,
         ...(hasChildren && isExpanded ? renderBranch(node.id, depth + 1) : []),

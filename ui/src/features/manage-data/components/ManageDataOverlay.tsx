@@ -1,4 +1,10 @@
-import { startTransition, useEffect, useMemo, useState } from "react";
+import {
+  startTransition,
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+} from "react";
 import { manageDataClient } from "../client";
 import type {
   ManageDataSectionDescriptor,
@@ -17,6 +23,7 @@ import {
   CatalogTable,
   InlineTextField,
 } from "./CatalogEditorPrimitives";
+import { PERSON_GROUP_COLOR_OPTIONS } from "../../person-groups/palette";
 
 const MANAGE_SECTIONS: ManageDataSectionDescriptor[] = [
   {
@@ -30,45 +37,6 @@ const MANAGE_SECTIONS: ManageDataSectionDescriptor[] = [
     description: "",
   },
 ];
-
-const PERSON_GROUP_COLOR_OPTIONS = [
-  {
-    index: 1,
-    label: "Sunlit clay",
-    swatchClassName: "bg-[#db9d47]",
-    ringClassName: "ring-[#db9d47]/35",
-  },
-  {
-    index: 2,
-    label: "Amerald",
-    swatchClassName: "bg-[#06ba63]",
-    ringClassName: "ring-[#06ba63]/35",
-  },
-  {
-    index: 3,
-    label: "Sky",
-    swatchClassName: "bg-[#06bee1]",
-    ringClassName: "ring-[#06bee1]/35",
-  },
-  {
-    index: 4,
-    label: "Majorelle blue",
-    swatchClassName: "bg-[#574ae2]",
-    ringClassName: "ring-[#574ae2]/35",
-  },
-  {
-    index: 5,
-    label: "Lobster",
-    swatchClassName: "bg-[#db5461]",
-    ringClassName: "ring-[#db5461]/35",
-  },
-  {
-    index: 6,
-    label: "Plum",
-    swatchClassName: "bg-[#f497da]",
-    ringClassName: "ring-[#f497da]/35",
-  },
-] as const;
 
 type SectionLoadState = "loading" | "ready" | "error";
 type SectionSaveState = "idle" | "saving" | "error";
@@ -641,16 +609,19 @@ function PersonGroupsSection(props: {
                       title={`Color slot ${option.index}: ${option.label}`}
                       className={[
                         "inline-flex h-7 w-7 items-center justify-center rounded-full border border-[color:rgba(15,23,42,0.12)] bg-white transition hover:scale-[1.03] hover:bg-slate-50",
-                        row.colorIndex === option.index
-                          ? `ring-2 ring-offset-2 ${option.ringClassName}`
-                          : "",
+                        row.colorIndex === option.index ? "ring-2 ring-offset-2" : "",
                       ].join(" ")}
+                      style={
+                        row.colorIndex === option.index
+                          ? ({
+                              "--tw-ring-color": option.borderColor,
+                            } as CSSProperties)
+                          : undefined
+                      }
                     >
                       <span
-                        className={[
-                          "h-4 w-4 rounded-full shadow-[inset_0_1px_1px_rgba(255,255,255,0.35)]",
-                          option.swatchClassName,
-                        ].join(" ")}
+                        className="h-4 w-4 rounded-full shadow-[inset_0_1px_1px_rgba(255,255,255,0.35)]"
+                        style={{ backgroundColor: option.color }}
                       />
                       <span className="sr-only">
                         {`Select color slot ${option.index}: ${option.label}`}
