@@ -38,6 +38,10 @@ def test_manage_data_overlay_renders_person_groups_editor_actions() -> None:
     assert "Manage members" in source
     assert "Delete group" in source
     assert "Confirm delete" in source
+    assert 'title="No color"' in source
+    assert "PERSON_GROUP_COLOR_OPTIONS" in source
+    assert 'field: "name" | "colorIndex"' in source
+    assert 'columns={["Group Name", "Color", "Members", "Membership", "Delete"]}' in source
     assert "Album Aggregate Ignore List" in source
     assert "Stop ignoring" in source
 

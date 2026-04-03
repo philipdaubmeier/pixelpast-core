@@ -31,6 +31,45 @@ const MANAGE_SECTIONS: ManageDataSectionDescriptor[] = [
   },
 ];
 
+const PERSON_GROUP_COLOR_OPTIONS = [
+  {
+    index: 1,
+    label: "Amber",
+    swatchClassName: "bg-[#d97706]",
+    ringClassName: "ring-[#d97706]/35",
+  },
+  {
+    index: 2,
+    label: "Moss",
+    swatchClassName: "bg-[#5f7a32]",
+    ringClassName: "ring-[#5f7a32]/35",
+  },
+  {
+    index: 3,
+    label: "Teal",
+    swatchClassName: "bg-[#0f766e]",
+    ringClassName: "ring-[#0f766e]/35",
+  },
+  {
+    index: 4,
+    label: "Sky",
+    swatchClassName: "bg-[#0369a1]",
+    ringClassName: "ring-[#0369a1]/35",
+  },
+  {
+    index: 5,
+    label: "Rose",
+    swatchClassName: "bg-[#be185d]",
+    ringClassName: "ring-[#be185d]/35",
+  },
+  {
+    index: 6,
+    label: "Plum",
+    swatchClassName: "bg-[#7c3aed]",
+    ringClassName: "ring-[#7c3aed]/35",
+  },
+] as const;
+
 type SectionLoadState = "loading" | "ready" | "error";
 type SectionSaveState = "idle" | "saving" | "error";
 type MembershipLoadState = "idle" | "loading" | "ready" | "error";
@@ -511,7 +550,11 @@ function PersonGroupsSection(props: {
   dirty: boolean;
   onSearchChange: (value: string) => void;
   onAdd: () => void;
-  onChangeRow: (rowId: string, field: "name", value: string) => void;
+  onChangeRow: (
+    rowId: string,
+    field: "name" | "colorIndex",
+    value: string | number | null,
+  ) => void;
   onDeleteRow: (rowId: string) => void;
   onOpenMembershipEditor: (rowId: string) => void;
 }) {
@@ -550,7 +593,10 @@ function PersonGroupsSection(props: {
         </span>
       }
     >
-      <CatalogTable columns={["Group Name", "Members", "Membership", "Delete"]}>
+      <CatalogTable
+        columns={["Group Name", "Color", "Members", "Membership", "Delete"]}
+        gridClassName="grid-cols-[minmax(0,1.15fr)_minmax(16rem,1.1fr)_minmax(0,0.7fr)_minmax(0,0.8fr)_minmax(0,0.7fr)]"
+      >
         {filteredRows.length === 0 ? (
           <CatalogEmptyState
             title="No matching groups"
@@ -558,12 +604,61 @@ function PersonGroupsSection(props: {
           />
         ) : (
           filteredRows.map((row) => (
-            <CatalogRow key={row.id}>
+            <CatalogRow
+              key={row.id}
+              gridClassName="grid-cols-[minmax(0,1.15fr)_minmax(16rem,1.1fr)_minmax(0,0.7fr)_minmax(0,0.8fr)_minmax(0,0.7fr)]"
+            >
               <InlineTextField
                 value={row.name}
                 placeholder="Group name"
                 onChange={(value) => props.onChangeRow(row.id, "name", value)}
               />
+              <div className="flex min-h-[1.75rem] items-center">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => props.onChangeRow(row.id, "colorIndex", null)}
+                    aria-pressed={row.colorIndex === null}
+                    title="No color"
+                    className={[
+                      "inline-flex items-center gap-2 rounded-full border px-2 py-0.5 text-xs font-medium transition",
+                      row.colorIndex === null
+                        ? "border-slate-900 bg-slate-900 text-white"
+                        : "border-[color:rgba(15,23,42,0.12)] bg-white text-slate-700 hover:bg-slate-50",
+                    ].join(" ")}
+                  >
+                    <span className="h-3 w-3 rounded-full border border-dashed border-current bg-transparent" />
+                    No color
+                  </button>
+                  {PERSON_GROUP_COLOR_OPTIONS.map((option) => (
+                    <button
+                      key={option.index}
+                      type="button"
+                      onClick={() =>
+                        props.onChangeRow(row.id, "colorIndex", option.index)
+                      }
+                      aria-pressed={row.colorIndex === option.index}
+                      title={`Color slot ${option.index}: ${option.label}`}
+                      className={[
+                        "inline-flex h-7 w-7 items-center justify-center rounded-full border border-[color:rgba(15,23,42,0.12)] bg-white transition hover:scale-[1.03] hover:bg-slate-50",
+                        row.colorIndex === option.index
+                          ? `ring-2 ring-offset-2 ${option.ringClassName}`
+                          : "",
+                      ].join(" ")}
+                    >
+                      <span
+                        className={[
+                          "h-4 w-4 rounded-full shadow-[inset_0_1px_1px_rgba(255,255,255,0.35)]",
+                          option.swatchClassName,
+                        ].join(" ")}
+                      />
+                      <span className="sr-only">
+                        {`Select color slot ${option.index}: ${option.label}`}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div className="flex min-h-[1.75rem] items-center px-1 text-sm text-slate-600">
                 {row.memberCount} persisted members
               </div>
@@ -1111,8 +1206,8 @@ export function ManageDataOverlay(props: {
 
   function updatePersonGroupDraftRow(
     rowId: string,
-    field: "name",
-    value: string,
+    field: "name" | "colorIndex",
+    value: string | number | null,
   ) {
     setSectionState((currentState) => {
       if (
@@ -1127,7 +1222,12 @@ export function ManageDataOverlay(props: {
       return {
         ...currentState,
         draft: draftRows.map((row) =>
-          row.id === rowId ? { ...row, [field]: value } : row,
+          row.id === rowId
+            ? {
+                ...row,
+                [field]: field === "colorIndex" ? (value as number | null) : value,
+              }
+            : row,
         ),
       };
     });
