@@ -524,7 +524,7 @@ function SocialGraphSigmaScene({
     SigmaEdgeAttributes
   >();
   const setSettings = useSetSettings<SigmaNodeAttributes, SigmaEdgeAttributes>();
-  const { gotoNode, reset } = useCamera({ duration: 280 });
+  const { reset } = useCamera({ duration: 280 });
   const { kill, start, stop } =
     useWorkerLayoutForceAtlas2(FORCE_ATLAS2_SETTINGS);
   const layoutRuntimeMs = useMemo(
@@ -572,14 +572,6 @@ function SocialGraphSigmaScene({
       kill();
     };
   }, [kill, layoutRuntimeMs, reset, sigmaGraph, start, stop]);
-
-  useEffect(() => {
-    if (focusedNodeId === null || !sigmaGraph.hasNode(focusedNodeId)) {
-      return;
-    }
-
-    gotoNode(focusedNodeId, { duration: 260 });
-  }, [focusedNodeId, gotoNode, sigmaGraph]);
 
   useEffect(() => {
     if (resetSequence === 0) {
