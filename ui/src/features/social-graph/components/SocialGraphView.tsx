@@ -77,6 +77,7 @@ type SocialGraphSigmaSceneProps = {
   focusedNodeId: string | null;
   hoveredLinkId: string | null;
   resetSequence: number;
+  stopSimulationSequence: number;
   selectedPersonIds: Set<string>;
   activeNeighborhoodIds: Set<string>;
   activeLinkIds: Set<string>;
@@ -507,6 +508,7 @@ function SocialGraphSigmaScene({
   focusedNodeId,
   hoveredLinkId,
   resetSequence,
+  stopSimulationSequence,
   selectedPersonIds,
   activeNeighborhoodIds,
   activeLinkIds,
@@ -586,6 +588,14 @@ function SocialGraphSigmaScene({
 
     reset({ duration: 260 });
   }, [reset, resetSequence]);
+
+  useEffect(() => {
+    if (stopSimulationSequence === 0) {
+      return;
+    }
+
+    stop();
+  }, [stop, stopSimulationSequence]);
 
   useEffect(() => {
     registerEvents({
@@ -744,6 +754,7 @@ function SocialGraphCanvas({
   const [hoveredLinkId, setHoveredLinkId] = useState<string | null>(null);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [resetSequence, setResetSequence] = useState(0);
+  const [stopSimulationSequence, setStopSimulationSequence] = useState(0);
   const links = useMemo<GraphLinkDetails[]>(
     () =>
       graph.links.map((link) => ({
@@ -884,6 +895,15 @@ function SocialGraphCanvas({
               >
                 Reset zoom
               </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setStopSimulationSequence((currentValue) => currentValue + 1);
+                }}
+                className="rounded-full border border-[color:var(--pp-border)] bg-white/88 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-700 transition hover:bg-white"
+              >
+                Stop simulation
+              </button>
             </div>
             <SigmaContainer
               className="h-full w-full"
@@ -897,6 +917,7 @@ function SocialGraphCanvas({
                 focusedNodeId={focusedNodeId}
                 hoveredLinkId={hoveredLinkId}
                 resetSequence={resetSequence}
+                stopSimulationSequence={stopSimulationSequence}
                 selectedPersonIds={selectedPersonIds}
                 activeNeighborhoodIds={activeNeighborhoodIds}
                 activeLinkIds={activeLinkIds}
