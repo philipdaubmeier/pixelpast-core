@@ -10,7 +10,14 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 
 from pixelpast.api.app import create_app
-from pixelpast.persistence.models import Asset, AssetPerson, Person, Source
+from pixelpast.persistence.models import (
+    Asset,
+    AssetPerson,
+    Person,
+    PersonGroup,
+    PersonGroupMember,
+    Source,
+)
 from pixelpast.shared.runtime import create_runtime_context, initialize_database
 from pixelpast.shared.settings import Settings
 
@@ -29,9 +36,31 @@ def test_social_graph_endpoint_returns_stable_response_shape() -> None:
         assert response.status_code == 200
         assert response.json() == {
             "persons": [
-                {"id": 1, "name": "Anna", "occurrence_count": 2},
-                {"id": 2, "name": "Ben", "occurrence_count": 2},
-                {"id": 3, "name": "Zoe", "occurrence_count": 1},
+                {
+                    "id": 1,
+                    "name": "Anna",
+                    "occurrence_count": 2,
+                    "matching_groups": [
+                        {"id": 2, "name": "Alpha", "color_index": None},
+                        {"id": 1, "name": "Family", "color_index": 2},
+                    ],
+                },
+                {
+                    "id": 2,
+                    "name": "Ben",
+                    "occurrence_count": 2,
+                    "matching_groups": [
+                        {"id": 1, "name": "Family", "color_index": 2},
+                    ],
+                },
+                {
+                    "id": 3,
+                    "name": "Zoe",
+                    "occurrence_count": 1,
+                    "matching_groups": [
+                        {"id": 2, "name": "Alpha", "color_index": None},
+                    ],
+                },
             ],
             "links": [
                 {"person_ids": [1, 2], "weight": 2, "affinity": 0.5},
@@ -79,9 +108,31 @@ def test_social_graph_endpoint_supports_person_filter_over_qualifying_assets() -
         assert response.status_code == 200
         assert response.json() == {
             "persons": [
-                {"id": 1, "name": "Anna", "occurrence_count": 2},
-                {"id": 2, "name": "Ben", "occurrence_count": 2},
-                {"id": 3, "name": "Zoe", "occurrence_count": 1},
+                {
+                    "id": 1,
+                    "name": "Anna",
+                    "occurrence_count": 2,
+                    "matching_groups": [
+                        {"id": 2, "name": "Alpha", "color_index": None},
+                        {"id": 1, "name": "Family", "color_index": 2},
+                    ],
+                },
+                {
+                    "id": 2,
+                    "name": "Ben",
+                    "occurrence_count": 2,
+                    "matching_groups": [
+                        {"id": 1, "name": "Family", "color_index": 2},
+                    ],
+                },
+                {
+                    "id": 3,
+                    "name": "Zoe",
+                    "occurrence_count": 1,
+                    "matching_groups": [
+                        {"id": 2, "name": "Alpha", "color_index": None},
+                    ],
+                },
             ],
             "links": [
                 {"person_ids": [1, 2], "weight": 2, "affinity": 0.5},
@@ -111,8 +162,18 @@ def test_social_graph_endpoint_excludes_assets_above_people_cutoff() -> None:
         assert response.status_code == 200
         assert response.json() == {
             "persons": [
-                {"id": 1, "name": "Person 1", "occurrence_count": 1},
-                {"id": 2, "name": "Person 2", "occurrence_count": 1},
+                {
+                    "id": 1,
+                    "name": "Person 1",
+                    "occurrence_count": 1,
+                    "matching_groups": [],
+                },
+                {
+                    "id": 2,
+                    "name": "Person 2",
+                    "occurrence_count": 1,
+                    "matching_groups": [],
+                },
             ],
             "links": [
                 {"person_ids": [1, 2], "weight": 1, "affinity": 0.333333},
@@ -138,8 +199,52 @@ def test_social_graph_endpoint_rejects_unsupported_persistent_filters() -> None:
         assert response.json() == {
             "detail": (
                 "unsupported social graph filters: tag_paths; "
-                "supported filters: start, end, person_ids, max_people_per_asset"
+                "supported filters: start, end, person_ids, person_group_ids, max_people_per_asset"
             )
+        }
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_social_graph_endpoint_supports_person_group_filter_projection() -> None:
+    workspace_root = _create_workspace_dir(prefix="social-graph-group-filter")
+    runtime = None
+    try:
+        runtime = _create_runtime(workspace_root=workspace_root)
+        _seed_social_graph_scenario(runtime=runtime)
+
+        app = create_app(settings=runtime.settings)
+        with TestClient(app) as client:
+            response = client.get(
+                "/api/social/graph?start=2024-01-02&end=2024-01-03&person_group_ids=1"
+            )
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "persons": [
+                {
+                    "id": 1,
+                    "name": "Anna",
+                    "occurrence_count": 2,
+                    "matching_groups": [
+                        {"id": 2, "name": "Alpha", "color_index": None},
+                        {"id": 1, "name": "Family", "color_index": 2},
+                    ],
+                },
+                {
+                    "id": 2,
+                    "name": "Ben",
+                    "occurrence_count": 2,
+                    "matching_groups": [
+                        {"id": 1, "name": "Family", "color_index": 2},
+                    ],
+                },
+            ],
+            "links": [
+                {"person_ids": [1, 2], "weight": 2, "affinity": 0.5},
+            ],
         }
     finally:
         if runtime is not None:
@@ -154,6 +259,20 @@ def _seed_social_graph_scenario(*, runtime) -> None:
         ben = Person(name="Ben", aliases=None, metadata_json=None)
         zoe = Person(name="Zoe", aliases=None, metadata_json=None)
         session.add_all([anna, ben, zoe])
+        session.flush()
+        family_group = PersonGroup(
+            name="Family",
+            type="manual",
+            path=None,
+            metadata_json={"ui": {"color_index": 2}},
+        )
+        alpha_group = PersonGroup(
+            name="Alpha",
+            type="manual",
+            path=None,
+            metadata_json={"ui": {"color_index": 0}},
+        )
+        session.add_all([family_group, alpha_group])
         session.flush()
 
         asset_one = Asset(
@@ -200,6 +319,10 @@ def _seed_social_graph_scenario(*, runtime) -> None:
                 AssetPerson(asset_id=asset_two.id, person_id=ben.id),
                 AssetPerson(asset_id=asset_two.id, person_id=zoe.id),
                 AssetPerson(asset_id=asset_three.id, person_id=ben.id),
+                PersonGroupMember(group_id=family_group.id, person_id=anna.id),
+                PersonGroupMember(group_id=family_group.id, person_id=ben.id),
+                PersonGroupMember(group_id=alpha_group.id, person_id=anna.id),
+                PersonGroupMember(group_id=alpha_group.id, person_id=zoe.id),
             ]
         )
         session.commit()

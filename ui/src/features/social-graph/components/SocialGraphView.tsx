@@ -18,10 +18,15 @@ import { useWorkerLayoutForceAtlas2 } from "@react-sigma/layout-forceatlas2";
 import { UndirectedGraph } from "graphology";
 import type { PersonGroupProjection } from "../../../api/personGroups";
 import { PanelCard } from "../../../components/PanelCard";
+import {
+  getPersonGroupColorOption,
+  type PersonGroupColorOption,
+} from "../../person-groups/palette";
 import type { PersonProjection, TagProjection } from "../../../projections/timeline";
 import type {
   SocialGraphLinkProjection,
   SocialGraphPersonProjection,
+  SocialGraphPersonGroupProjection,
   SocialGraphProjection,
 } from "../../../projections/socialGraph";
 
@@ -41,6 +46,7 @@ type SigmaNodeAttributes = {
   label: string;
   size: number;
   color: string;
+  dimColor: string;
   x: number;
   y: number;
   occurrenceCount: number;
@@ -81,9 +87,7 @@ type SocialGraphSigmaSceneProps = {
 };
 
 const BASE_NODE_COLOR = "#748fb6";
-const ACTIVE_NODE_COLOR = "#5d7da9";
 const SELECTED_NODE_COLOR = "#ca9f58";
-const BASE_NODE_STROKE = "#49668e";
 const ACTIVE_EDGE_COLOR = "#627081";
 const BASE_EDGE_COLOR = "#a3aab4";
 const DIM_EDGE_COLOR = "#d5d9df";
@@ -137,6 +141,24 @@ const SIGMA_SETTINGS = {
   zIndex: true,
 } as const;
 
+function hexToRgba(hexColor: string, alpha: number): string {
+  const normalized = hexColor.replace("#", "");
+
+  if (normalized.length !== 6) {
+    return hexColor;
+  }
+
+  const red = Number.parseInt(normalized.slice(0, 2), 16);
+  const green = Number.parseInt(normalized.slice(2, 4), 16);
+  const blue = Number.parseInt(normalized.slice(4, 6), 16);
+
+  if ([red, green, blue].some((channel) => Number.isNaN(channel))) {
+    return hexColor;
+  }
+
+  return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
@@ -157,6 +179,31 @@ function buildLinkLabel(
   const leftName = personNamesById.get(leftPersonId) ?? leftPersonId;
   const rightName = personNamesById.get(rightPersonId) ?? rightPersonId;
   return `${leftName} <-> ${rightName}`;
+}
+
+function compareSocialGraphGroups(
+  left: SocialGraphPersonGroupProjection,
+  right: SocialGraphPersonGroupProjection,
+): number {
+  return (
+    left.name.localeCompare(right.name, undefined, { sensitivity: "base" }) ||
+    left.id.localeCompare(right.id, undefined, { numeric: true })
+  );
+}
+
+function resolvePrimaryGroupColor(
+  person: SocialGraphPersonProjection,
+): PersonGroupColorOption | null {
+  const matchingGroups = [...person.matchingGroups].sort(compareSocialGraphGroups);
+
+  for (const group of matchingGroups) {
+    const colorOption = getPersonGroupColorOption(group.colorIndex);
+    if (colorOption !== null) {
+      return colorOption;
+    }
+  }
+
+  return null;
 }
 
 function getNodeRadius(
@@ -360,6 +407,8 @@ function createSigmaGraph(
     .forEach((person, index) => {
       const angle = index * goldenAngle;
       const distance = spiralSpacing * Math.sqrt(index + 1);
+      const primaryGroupColor = resolvePrimaryGroupColor(person);
+      const nodeColor = primaryGroupColor?.color ?? BASE_NODE_COLOR;
 
       sigmaGraph.addNode(person.id, {
         label: person.name,
@@ -368,7 +417,8 @@ function createSigmaGraph(
           maxOccurrenceCount,
           projection.persons.length,
         ),
-        color: BASE_NODE_COLOR,
+        color: nodeColor,
+        dimColor: hexToRgba(nodeColor, 0.24),
         occurrenceCount: person.occurrenceCount,
         x: Math.cos(angle) * distance,
         y: Math.sin(angle) * distance,
@@ -635,9 +685,9 @@ function SocialGraphSigmaScene({
           color: isSelected
             ? SELECTED_NODE_COLOR
             : isActive || isFocused
-              ? ACTIVE_NODE_COLOR
+              ? data.color
               : shouldDim
-                ? "rgba(116, 143, 182, 0.28)"
+                ? data.dimColor
                 : data.color,
           forceLabel:
             showAllNodeLabels || isSelected || isActive || isFocused,
@@ -726,6 +776,13 @@ function SocialGraphCanvas({
   const activeNodeId = hoveredNodeId ?? focusedNodeId;
   const detailPerson =
     (activeNodeId !== null ? personsById.get(activeNodeId) : null) ?? null;
+  const detailPersonMatchingGroups = useMemo(
+    () =>
+      detailPerson === null
+        ? []
+        : [...detailPerson.matchingGroups].sort(compareSocialGraphGroups),
+    [detailPerson],
+  );
   const focusedLink =
     (hoveredLinkId !== null ? linksById.get(hoveredLinkId) : null) ?? null;
   const activeNeighborhoodIds = useMemo(() => {
@@ -954,6 +1011,31 @@ function SocialGraphCanvas({
                     {formatCompactNumber(detailPerson.occurrenceCount)} total
                     occurrences in the current range
                   </div>
+                  {detailPersonMatchingGroups.length > 0 ? (
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {detailPersonMatchingGroups.map((group) => {
+                        const colorOption = getPersonGroupColorOption(
+                          group.colorIndex,
+                        );
+
+                        return (
+                          <span
+                            key={group.id}
+                            className="rounded-full border px-3 py-1 text-[11px] font-semibold"
+                            style={{
+                              backgroundColor:
+                                colorOption?.softColor ?? "rgba(148, 163, 184, 0.14)",
+                              borderColor:
+                                colorOption?.borderColor ?? "rgba(148, 163, 184, 0.28)",
+                              color: colorOption?.textColor ?? "#475569",
+                            }}
+                          >
+                            {group.name}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  ) : null}
                   <button
                     type="button"
                     onClick={() => onTogglePerson(detailPerson.id)}
@@ -1132,12 +1214,6 @@ export function SocialGraphView({
             <p className="mt-3 text-sm text-amber-800">
               Tag filters remain selected globally but are not applied to the
               social graph yet.
-            </p>
-          ) : null}
-          {selectedPersonGroups.length > 0 ? (
-            <p className="mt-3 text-sm text-amber-800">
-              Person-group filters are forwarded by the shell but are not applied
-              by the social graph yet.
             </p>
           ) : null}
         </div>

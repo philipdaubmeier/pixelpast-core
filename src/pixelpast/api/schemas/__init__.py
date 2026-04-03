@@ -67,6 +67,7 @@ from pixelpast.api.schemas.manage_data import (
 from pixelpast.api.schemas.social_graph import (
     SocialGraphLink,
     SocialGraphPerson,
+    SocialGraphPersonGroup,
     SocialGraphResponse,
 )
 
@@ -123,5 +124,6 @@ __all__ = [
     "SavePersonsCatalogRequest",
     "SocialGraphLink",
     "SocialGraphPerson",
+    "SocialGraphPersonGroup",
     "SocialGraphResponse",
 ]

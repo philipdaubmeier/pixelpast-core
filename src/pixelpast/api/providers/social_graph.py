@@ -9,6 +9,7 @@ from typing import Final, Protocol
 from pixelpast.api.schemas import (
     SocialGraphLink,
     SocialGraphPerson,
+    SocialGraphPersonGroup,
     SocialGraphResponse,
 )
 from pixelpast.persistence.repositories import (
@@ -22,6 +23,7 @@ class SocialGraphFilters:
     """Supported server-owned filters for social-graph requests."""
 
     person_ids: tuple[int, ...] = ()
+    person_group_ids: tuple[int, ...] = ()
     max_people_per_asset: int = 10
 
 
@@ -62,6 +64,7 @@ class DatabaseSocialGraphProjectionProvider:
                 start_date=start,
                 end_date=end,
                 person_ids=filters.person_ids,
+                person_group_ids=filters.person_group_ids,
                 max_people_per_asset=filters.max_people_per_asset,
             )
         )
@@ -81,6 +84,9 @@ class DemoSocialGraphProjectionProvider:
         """Return the bounded demo social-graph payload."""
 
         del start, end, today
+
+        if filters.person_group_ids:
+            return SocialGraphResponse(persons=[], links=[])
 
         qualifying_person_ids = (
             {
@@ -128,6 +134,14 @@ def build_social_graph_response(
                 id=person.id,
                 name=person.name,
                 occurrence_count=person.occurrence_count,
+                matching_groups=[
+                    SocialGraphPersonGroup(
+                        id=group.id,
+                        name=group.name,
+                        color_index=group.color_index,
+                    )
+                    for group in person.matching_groups
+                ],
             )
             for person in snapshot.persons
         ],
@@ -143,10 +157,10 @@ def build_social_graph_response(
 
 
 _DEMO_PERSONS: Final[tuple[SocialGraphPerson, ...]] = (
-    SocialGraphPerson(id=1, name="Anna", occurrence_count=14),
-    SocialGraphPerson(id=2, name="Milo", occurrence_count=9),
-    SocialGraphPerson(id=3, name="Luca", occurrence_count=6),
-    SocialGraphPerson(id=4, name="Nora", occurrence_count=4),
+    SocialGraphPerson(id=1, name="Anna", occurrence_count=14, matching_groups=[]),
+    SocialGraphPerson(id=2, name="Milo", occurrence_count=9, matching_groups=[]),
+    SocialGraphPerson(id=3, name="Luca", occurrence_count=6, matching_groups=[]),
+    SocialGraphPerson(id=4, name="Nora", occurrence_count=4, matching_groups=[]),
 )
 
 _DEMO_LINKS: Final[tuple[SocialGraphLink, ...]] = (

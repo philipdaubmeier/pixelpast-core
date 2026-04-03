@@ -26,9 +26,28 @@ SOCIAL_GRAPH_SUCCESS_EXAMPLES = {
         "summary": "Social graph for a filtered travel window",
         "value": {
             "persons": [
-                {"id": 7, "name": "Anna Becker", "occurrence_count": 12},
-                {"id": 12, "name": "Milo Tan", "occurrence_count": 8},
-                {"id": 19, "name": "Nora Rossi", "occurrence_count": 5},
+                {
+                    "id": 7,
+                    "name": "Anna Becker",
+                    "occurrence_count": 12,
+                    "matching_groups": [
+                        {"id": 2, "name": "Travel Circle", "color_index": 4}
+                    ],
+                },
+                {
+                    "id": 12,
+                    "name": "Milo Tan",
+                    "occurrence_count": 8,
+                    "matching_groups": [
+                        {"id": 4, "name": "Immediate Family", "color_index": 2}
+                    ],
+                },
+                {
+                    "id": 19,
+                    "name": "Nora Rossi",
+                    "occurrence_count": 5,
+                    "matching_groups": [],
+                },
             ],
             "links": [
                 {"person_ids": [7, 12], "weight": 6, "affinity": 0.75},
@@ -45,7 +64,7 @@ SOCIAL_GRAPH_BAD_REQUEST_EXAMPLES = {
         "value": {
             "detail": (
                 "unsupported social graph filters: filename_query, tag_paths; "
-                "supported filters: start, end, person_ids, max_people_per_asset"
+                "supported filters: start, end, person_ids, person_group_ids, max_people_per_asset"
             )
         },
     },
@@ -123,6 +142,20 @@ def get_social_graph(
             "anna": {
                 "summary": "Seed the graph with Anna Becker",
                 "value": 7,
+            }
+        },
+    ),
+    person_group_ids: list[int] = Query(
+        default=[],
+        description=(
+            "Repeatable person-group identifiers. Only persons belonging to at "
+            "least one selected group remain in the projected graph when this "
+            "filter is present."
+        ),
+        openapi_examples={
+            "family": {
+                "summary": "Project the family slice only",
+                "value": 4,
             }
         },
     ),
@@ -229,11 +262,12 @@ def get_social_graph(
         get_social_graph_projection_provider
     ),
 ) -> SocialGraphResponse:
-    """Return the social graph filtered by date range and person selection only."""
+    """Return the social graph filtered by date range plus supported selections."""
 
     validate_optional_range(start=start, end=end)
     filters = build_social_graph_filters(
         person_ids=person_ids,
+        person_group_ids=person_group_ids,
         max_people_per_asset=max_people_per_asset,
         tag_paths=tag_paths,
         location_geometry=location_geometry,

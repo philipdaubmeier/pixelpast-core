@@ -26,6 +26,11 @@ export const socialGraphApi = {
         id: String(person.id),
         name: person.name,
         occurrenceCount: person.occurrence_count,
+        matchingGroups: person.matching_groups.map((group) => ({
+          id: String(group.id),
+          name: group.name,
+          colorIndex: group.color_index,
+        })),
       })),
       links: response.links.map((link) => ({
         personIds: [String(link.person_ids[0]), String(link.person_ids[1])],

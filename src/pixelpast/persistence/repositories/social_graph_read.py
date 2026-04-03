@@ -6,11 +6,18 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import date
 from math import sqrt
+from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from pixelpast.persistence.models import Asset, AssetPerson, Person
+from pixelpast.persistence.models import (
+    Asset,
+    AssetPerson,
+    Person,
+    PersonGroup,
+    PersonGroupMember,
+)
 from pixelpast.persistence.repositories.daily_aggregates import _apply_datetime_range
 
 
@@ -24,12 +31,22 @@ class PersonAssetMembershipSnapshot:
 
 
 @dataclass(slots=True, frozen=True)
+class SocialGraphPersonGroupSnapshot:
+    """Serializable person-group metadata available for one person node."""
+
+    id: int
+    name: str
+    color_index: int | None
+
+
+@dataclass(slots=True, frozen=True)
 class SocialGraphPersonSnapshot:
     """Serializable social-graph node snapshot."""
 
     id: int
     name: str
     occurrence_count: int
+    matching_groups: list[SocialGraphPersonGroupSnapshot]
 
 
 @dataclass(slots=True, frozen=True)
@@ -61,17 +78,31 @@ class SocialGraphReadRepository:
         start_date: date | None = None,
         end_date: date | None = None,
         person_ids: tuple[int, ...] = (),
+        person_group_ids: tuple[int, ...] = (),
         max_people_per_asset: int = 10,
     ) -> SocialGraphReadSnapshot:
         """Return a stable social-graph projection for qualifying assets."""
+
+        filtered_person_ids = self._list_selected_group_member_ids(
+            person_group_ids=person_group_ids
+        )
+        if person_group_ids and not filtered_person_ids:
+            return SocialGraphReadSnapshot(persons=[], links=[])
 
         memberships = self._list_person_asset_memberships(
             start_date=start_date,
             end_date=end_date,
             person_ids=person_ids,
+            filtered_person_ids=filtered_person_ids,
             max_people_per_asset=max_people_per_asset,
         )
-        persons = self._count_person_occurrences(memberships=memberships)
+        matching_groups_by_person_id = self._list_matching_groups_by_person_id(
+            person_ids={membership.person_id for membership in memberships}
+        )
+        persons = self._count_person_occurrences(
+            memberships=memberships,
+            matching_groups_by_person_id=matching_groups_by_person_id,
+        )
         occurrence_count_by_person_id = {
             person.id: person.occurrence_count
             for person in persons
@@ -90,6 +121,7 @@ class SocialGraphReadRepository:
         start_date: date | None,
         end_date: date | None,
         person_ids: tuple[int, ...],
+        filtered_person_ids: set[int] | None,
         max_people_per_asset: int,
     ) -> list[PersonAssetMembershipSnapshot]:
         """Load all qualifying canonical person memberships across assets."""
@@ -122,6 +154,8 @@ class SocialGraphReadRepository:
                 .distinct()
             )
             statement = statement.where(AssetPerson.asset_id.in_(qualifying_asset_ids))
+        if filtered_person_ids is not None:
+            statement = statement.where(Person.id.in_(filtered_person_ids))
 
         rows = self._session.execute(statement)
         return [
@@ -133,10 +167,66 @@ class SocialGraphReadRepository:
             for asset_id, person_id, person_name in rows
         ]
 
+    def _list_selected_group_member_ids(
+        self,
+        *,
+        person_group_ids: tuple[int, ...],
+    ) -> set[int] | None:
+        """Return the canonical person ids matching the selected group filter."""
+
+        if not person_group_ids:
+            return None
+
+        statement = select(PersonGroupMember.person_id).where(
+            PersonGroupMember.group_id.in_(person_group_ids)
+        )
+        return set(self._session.execute(statement).scalars())
+
+    def _list_matching_groups_by_person_id(
+        self,
+        *,
+        person_ids: set[int],
+    ) -> dict[int, list[SocialGraphPersonGroupSnapshot]]:
+        """Return deterministic matching person-group metadata for projected nodes."""
+
+        if not person_ids:
+            return {}
+
+        statement = (
+            select(
+                PersonGroupMember.person_id,
+                PersonGroup.id,
+                PersonGroup.name,
+                PersonGroup.metadata_json,
+            )
+            .join(PersonGroup, PersonGroup.id == PersonGroupMember.group_id)
+            .where(PersonGroupMember.person_id.in_(person_ids))
+            .order_by(
+                PersonGroupMember.person_id,
+                func.lower(PersonGroup.name),
+                PersonGroup.id,
+            )
+        )
+        matching_groups_by_person_id: dict[int, list[SocialGraphPersonGroupSnapshot]] = (
+            defaultdict(list)
+        )
+        for person_id, group_id, group_name, metadata_json in self._session.execute(
+            statement
+        ):
+            matching_groups_by_person_id[person_id].append(
+                SocialGraphPersonGroupSnapshot(
+                    id=group_id,
+                    name=group_name,
+                    color_index=_normalize_person_group_color_index(metadata_json),
+                )
+            )
+        return dict(matching_groups_by_person_id)
+
     def _count_person_occurrences(
         self,
         *,
         memberships: list[PersonAssetMembershipSnapshot],
+        matching_groups_by_person_id: dict[int, list[SocialGraphPersonGroupSnapshot]],
     ) -> list[SocialGraphPersonSnapshot]:
         """Count how often each person appears on qualifying assets."""
 
@@ -149,6 +239,7 @@ class SocialGraphReadRepository:
                 id=person_id,
                 name=person_name,
                 occurrence_count=occurrence_count,
+                matching_groups=matching_groups_by_person_id.get(person_id, []),
             )
             for (person_id, person_name), occurrence_count in sorted(
                 person_counts.items(),
@@ -190,6 +281,24 @@ class SocialGraphReadRepository:
                 key=lambda item: item[0],
             )
         ]
+
+
+def _normalize_person_group_color_index(metadata_json: Any) -> int | None:
+    """Return the persisted positive UI color index when present."""
+
+    if not isinstance(metadata_json, dict):
+        return None
+    ui_metadata = metadata_json.get("ui")
+    if not isinstance(ui_metadata, dict):
+        return None
+    color_index = ui_metadata.get("color_index")
+    if (
+        not isinstance(color_index, int)
+        or isinstance(color_index, bool)
+        or color_index <= 0
+    ):
+        return None
+    return color_index
 
 
 def _calculate_context_affinity(

@@ -5,7 +5,14 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from pixelpast.api.providers.social_graph import build_social_graph_response
-from pixelpast.persistence.models import Asset, AssetPerson, Person, Source
+from pixelpast.persistence.models import (
+    Asset,
+    AssetPerson,
+    Person,
+    PersonGroup,
+    PersonGroupMember,
+    Source,
+)
 from pixelpast.persistence.repositories import SocialGraphReadRepository
 from pixelpast.shared.runtime import create_runtime_context, initialize_database
 from pixelpast.shared.settings import Settings
@@ -45,6 +52,7 @@ def test_social_graph_projection_keeps_isolated_qualifying_person_without_links(
                     "id": 1,
                     "name": "Anna",
                     "occurrence_count": 1,
+                    "matching_groups": [],
                 }
             ],
             "links": [],
@@ -102,8 +110,18 @@ def test_social_graph_projection_counts_repeated_pair_co_occurrence_across_asset
 
         assert response.model_dump() == {
             "persons": [
-                {"id": 1, "name": "Anna", "occurrence_count": 2},
-                {"id": 2, "name": "Ben", "occurrence_count": 2},
+                {
+                    "id": 1,
+                    "name": "Anna",
+                    "occurrence_count": 2,
+                    "matching_groups": [],
+                },
+                {
+                    "id": 2,
+                    "name": "Ben",
+                    "occurrence_count": 2,
+                    "matching_groups": [],
+                },
             ],
             "links": [
                 {"person_ids": [1, 2], "weight": 2, "affinity": 0.5},
@@ -165,9 +183,24 @@ def test_social_graph_projection_orders_pairs_stably_and_treats_links_as_unorder
 
         assert response.model_dump() == {
             "persons": [
-                {"id": 2, "name": "Anna", "occurrence_count": 2},
-                {"id": 3, "name": "Ben", "occurrence_count": 1},
-                {"id": 1, "name": "Zoe", "occurrence_count": 2},
+                {
+                    "id": 2,
+                    "name": "Anna",
+                    "occurrence_count": 2,
+                    "matching_groups": [],
+                },
+                {
+                    "id": 3,
+                    "name": "Ben",
+                    "occurrence_count": 1,
+                    "matching_groups": [],
+                },
+                {
+                    "id": 1,
+                    "name": "Zoe",
+                    "occurrence_count": 2,
+                    "matching_groups": [],
+                },
             ],
             "links": [
                 {"person_ids": [1, 2], "weight": 2, "affinity": 0.5},
@@ -296,11 +329,179 @@ def test_social_graph_projection_excludes_assets_above_people_cutoff() -> None:
 
         assert response.model_dump() == {
             "persons": [
-                {"id": 1, "name": "Person 1", "occurrence_count": 1},
-                {"id": 2, "name": "Person 2", "occurrence_count": 1},
+                {
+                    "id": 1,
+                    "name": "Person 1",
+                    "occurrence_count": 1,
+                    "matching_groups": [],
+                },
+                {
+                    "id": 2,
+                    "name": "Person 2",
+                    "occurrence_count": 1,
+                    "matching_groups": [],
+                },
             ],
             "links": [
                 {"person_ids": [1, 2], "weight": 1, "affinity": 0.333333},
+            ],
+        }
+    finally:
+        runtime.engine.dispose()
+
+
+def test_social_graph_projection_exposes_matching_groups_in_deterministic_order() -> None:
+    runtime = _create_runtime()
+    try:
+        with runtime.session_factory() as session:
+            photo_source = _create_photo_source(session)
+            anna = Person(name="Anna", aliases=None, metadata_json=None)
+            ben = Person(name="Ben", aliases=None, metadata_json=None)
+            session.add_all([anna, ben])
+            session.flush()
+            alpha_group = PersonGroup(
+                name="alpha",
+                type="manual",
+                path=None,
+                metadata_json={"ui": {"color_index": 0}},
+            )
+            family_group = PersonGroup(
+                name="Family",
+                type="manual",
+                path=None,
+                metadata_json={"ui": {"color_index": 2}},
+            )
+            session.add_all([alpha_group, family_group])
+            session.flush()
+            asset = Asset(
+                source_id=photo_source.id,
+                external_id="asset-1",
+                media_type="photo",
+                timestamp=datetime(2024, 1, 2, 9, 0, tzinfo=UTC),
+                summary=None,
+                latitude=None,
+                longitude=None,
+                creator_person_id=None,
+                metadata_json={},
+            )
+            session.add(asset)
+            session.flush()
+            session.add_all(
+                [
+                    AssetPerson(asset_id=asset.id, person_id=anna.id),
+                    AssetPerson(asset_id=asset.id, person_id=ben.id),
+                    PersonGroupMember(group_id=family_group.id, person_id=anna.id),
+                    PersonGroupMember(group_id=alpha_group.id, person_id=anna.id),
+                ]
+            )
+            session.commit()
+
+            response = build_social_graph_response(
+                SocialGraphReadRepository(session).read_projection()
+            )
+
+        assert response.model_dump()["persons"] == [
+            {
+                "id": 1,
+                "name": "Anna",
+                "occurrence_count": 1,
+                "matching_groups": [
+                    {"id": 1, "name": "alpha", "color_index": None},
+                    {"id": 2, "name": "Family", "color_index": 2},
+                ],
+            },
+            {
+                "id": 2,
+                "name": "Ben",
+                "occurrence_count": 1,
+                "matching_groups": [],
+            },
+        ]
+    finally:
+        runtime.engine.dispose()
+
+
+def test_social_graph_projection_filters_memberships_by_selected_person_groups() -> None:
+    runtime = _create_runtime()
+    try:
+        with runtime.session_factory() as session:
+            photo_source = _create_photo_source(session)
+            anna = Person(name="Anna", aliases=None, metadata_json=None)
+            ben = Person(name="Ben", aliases=None, metadata_json=None)
+            zoe = Person(name="Zoe", aliases=None, metadata_json=None)
+            session.add_all([anna, ben, zoe])
+            session.flush()
+            family_group = PersonGroup(
+                name="Family",
+                type="manual",
+                path=None,
+                metadata_json={"ui": {"color_index": 2}},
+            )
+            session.add(family_group)
+            session.flush()
+            first_asset = Asset(
+                source_id=photo_source.id,
+                external_id="asset-1",
+                media_type="photo",
+                timestamp=datetime(2024, 1, 2, 9, 0, tzinfo=UTC),
+                summary=None,
+                latitude=None,
+                longitude=None,
+                creator_person_id=None,
+                metadata_json={},
+            )
+            second_asset = Asset(
+                source_id=photo_source.id,
+                external_id="asset-2",
+                media_type="photo",
+                timestamp=datetime(2024, 1, 3, 9, 0, tzinfo=UTC),
+                summary=None,
+                latitude=None,
+                longitude=None,
+                creator_person_id=None,
+                metadata_json={},
+            )
+            session.add_all([first_asset, second_asset])
+            session.flush()
+            session.add_all(
+                [
+                    AssetPerson(asset_id=first_asset.id, person_id=anna.id),
+                    AssetPerson(asset_id=first_asset.id, person_id=ben.id),
+                    AssetPerson(asset_id=second_asset.id, person_id=anna.id),
+                    AssetPerson(asset_id=second_asset.id, person_id=zoe.id),
+                    PersonGroupMember(group_id=family_group.id, person_id=anna.id),
+                    PersonGroupMember(group_id=family_group.id, person_id=ben.id),
+                ]
+            )
+            session.commit()
+
+            response = build_social_graph_response(
+                SocialGraphReadRepository(session).read_projection(
+                    person_group_ids=(family_group.id,),
+                )
+            )
+
+        assert response.model_dump() == {
+            "persons": [
+                {
+                    "id": 1,
+                    "name": "Anna",
+                    "occurrence_count": 2,
+                    "matching_groups": [
+                        {"id": 1, "name": "Family", "color_index": 2},
+                    ],
+                },
+                {
+                    "id": 2,
+                    "name": "Ben",
+                    "occurrence_count": 1,
+                    "matching_groups": [
+                        {"id": 1, "name": "Family", "color_index": 2},
+                    ],
+                },
+            ],
+            "links": [
+                {"person_ids": [1, 2], "weight": 1, "affinity": 0.235702},
             ],
         }
     finally:

@@ -71,6 +71,7 @@ from pixelpast.persistence.repositories.social_graph_read import (
     PersonAssetMembershipSnapshot,
     SocialGraphLinkSnapshot,
     SocialGraphPersonSnapshot,
+    SocialGraphPersonGroupSnapshot,
     SocialGraphReadRepository,
     SocialGraphReadSnapshot,
 )
@@ -154,6 +155,7 @@ __all__ = [
     "PersonAssetMembershipSnapshot",
     "SocialGraphLinkSnapshot",
     "SocialGraphPersonSnapshot",
+    "SocialGraphPersonGroupSnapshot",
     "SocialGraphReadRepository",
     "SocialGraphReadSnapshot",
     "SourceRepository",

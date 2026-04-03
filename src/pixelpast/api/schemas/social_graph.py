@@ -5,12 +5,21 @@ from __future__ import annotations
 from pydantic import BaseModel
 
 
+class SocialGraphPersonGroup(BaseModel):
+    """Matching person-group metadata exposed for one social-graph node."""
+
+    id: int
+    name: str
+    color_index: int | None = None
+
+
 class SocialGraphPerson(BaseModel):
     """Person node exposed by the social-graph API contract."""
 
     id: int
     name: str
     occurrence_count: int
+    matching_groups: list[SocialGraphPersonGroup]
 
 
 class SocialGraphLink(BaseModel):

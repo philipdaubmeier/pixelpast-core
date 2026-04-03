@@ -3,6 +3,11 @@ export type ApiSocialGraphResponse = {
     id: number;
     name: string;
     occurrence_count: number;
+    matching_groups: Array<{
+      id: number;
+      name: string;
+      color_index: number | null;
+    }>;
   }>;
   links: Array<{
     person_ids: [number, number];
