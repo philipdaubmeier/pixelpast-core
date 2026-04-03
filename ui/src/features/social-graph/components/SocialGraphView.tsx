@@ -868,67 +868,23 @@ function SocialGraphCanvas({
     <div className="grid h-full min-h-0 gap-3 xl:grid-cols-[minmax(0,1.35fr)_minmax(19rem,0.65fr)]">
       <PanelCard
         title="Social Graph"
-        description="ForceAtlas2 clusters context-affinity links. Drag pans, wheel zooms, and hover reveals local structure."
-        actions={
-          <button
-            type="button"
-            onClick={() => {
-              setResetSequence((currentValue) => currentValue + 1);
-            }}
-            className="rounded-full border border-[color:var(--pp-border)] bg-white/80 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-white"
-          >
-            Reset view
-          </button>
-        }
       >
         <div className="flex h-full min-h-0 flex-col gap-4">
-          <div className="grid gap-3 sm:grid-cols-6">
-            <SocialGraphPeopleCutoffControl
-              maxPeoplePerAsset={maxPeoplePerAsset}
-              onChangeMaxPeoplePerAsset={onChangeMaxPeoplePerAsset}
-            />
-            <div className="rounded-3xl border border-[color:var(--pp-border)] bg-white/80 p-4">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                Persons
-              </div>
-              <div className="mt-2 text-3xl font-semibold text-slate-950">
-                {graph.persons.length}
-              </div>
-            </div>
-            <div className="rounded-3xl border border-[color:var(--pp-border)] bg-white/80 p-4">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                Links
-              </div>
-              <div className="mt-2 text-3xl font-semibold text-slate-950">
-                {graph.links.length}
-              </div>
-            </div>
-            <div className="rounded-3xl border border-[color:var(--pp-border)] bg-white/80 p-4">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                Person Filters
-              </div>
-              <div className="mt-2 text-3xl font-semibold text-slate-950">
-                {selectedPersons.length}
-              </div>
-            </div>
-            <div className="rounded-3xl border border-[color:var(--pp-border)] bg-white/80 p-4">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                Group Filters
-              </div>
-              <div className="mt-2 text-3xl font-semibold text-slate-950">
-                {selectedPersonGroups.length}
-              </div>
-            </div>
-            <div className="rounded-3xl border border-[color:var(--pp-border)] bg-white/80 p-4">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                Zoom
-              </div>
-              <div className="mt-2 text-3xl font-semibold text-slate-950">
+          <div className="subtle-grid relative min-h-[22rem] flex-1 overflow-hidden rounded-[2rem] border border-[color:var(--pp-border)] bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.95),_rgba(244,234,219,0.92)_54%,_rgba(229,214,190,0.95))]">
+            <div className="absolute right-4 top-4 z-10 flex items-center gap-2">
+              <div className="rounded-full border border-[color:var(--pp-border)] bg-white/88 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-600 shadow-sm">
                 {zoomPercent}%
               </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setResetSequence((currentValue) => currentValue + 1);
+                }}
+                className="rounded-full border border-[color:var(--pp-border)] bg-white/88 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-700 transition hover:bg-white"
+              >
+                Reset zoom
+              </button>
             </div>
-          </div>
-          <div className="subtle-grid relative min-h-[22rem] flex-1 overflow-hidden rounded-[2rem] border border-[color:var(--pp-border)] bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.95),_rgba(244,234,219,0.92)_54%,_rgba(229,214,190,0.95))]">
             <SigmaContainer
               className="h-full w-full"
               style={SIGMA_STYLE}
@@ -992,11 +948,50 @@ function SocialGraphCanvas({
           </div>
         </div>
       </PanelCard>
-      <div className="grid min-h-0 gap-2">
-        <PanelCard
-          title="Focused Node"
-          description="Hover inspects the current cluster locally. Click a node to keep it pinned in the detail rail while you continue exploring."
-        >
+      <div className="grid min-h-0 gap-2 xl:grid-rows-3">
+        <PanelCard title="Graph Summary">
+          <div className="thin-scrollbar flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1">
+            <SocialGraphPeopleCutoffControl
+              maxPeoplePerAsset={maxPeoplePerAsset}
+              onChangeMaxPeoplePerAsset={onChangeMaxPeoplePerAsset}
+            />
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-2">
+              <div className="rounded-3xl border border-[color:var(--pp-border)] bg-white/80 p-4">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  Persons
+                </div>
+                <div className="mt-2 text-3xl font-semibold text-slate-950">
+                  {graph.persons.length}
+                </div>
+              </div>
+              <div className="rounded-3xl border border-[color:var(--pp-border)] bg-white/80 p-4">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  Links
+                </div>
+                <div className="mt-2 text-3xl font-semibold text-slate-950">
+                  {graph.links.length}
+                </div>
+              </div>
+              <div className="rounded-3xl border border-[color:var(--pp-border)] bg-white/80 p-4">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  Person Filters
+                </div>
+                <div className="mt-2 text-3xl font-semibold text-slate-950">
+                  {selectedPersons.length}
+                </div>
+              </div>
+              <div className="rounded-3xl border border-[color:var(--pp-border)] bg-white/80 p-4">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  Group Filters
+                </div>
+                <div className="mt-2 text-3xl font-semibold text-slate-950">
+                  {selectedPersonGroups.length}
+                </div>
+              </div>
+            </div>
+          </div>
+        </PanelCard>
+        <PanelCard title="Focused Node">
           <div className="flex min-h-0 flex-1 flex-col gap-3">
             {detailPerson !== null ? (
               <>
@@ -1085,10 +1080,7 @@ function SocialGraphCanvas({
             )}
           </div>
         </PanelCard>
-        <PanelCard
-          title="Active Nodes"
-          description="Frequent people remain easy to reselect from the side rail."
-        >
+        <PanelCard title="Active Nodes">
           <div className="thin-scrollbar flex min-h-0 flex-1 flex-wrap content-start gap-2 overflow-y-auto pr-1">
             {[...graph.persons]
               .sort(
