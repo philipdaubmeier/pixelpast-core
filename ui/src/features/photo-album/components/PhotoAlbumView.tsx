@@ -338,16 +338,21 @@ function TreeSection({
       const isExpanded = expandedIds.includes(node.id);
       const hasChildren = node.childCount > 0;
       const inlinePersonGroups = node.personGroups.slice(0, MAX_INLINE_PERSON_GROUPS);
+      const indentRem = depth * 0.65 + 0.1;
 
       return [
         <div
           key={node.id}
-          className="px-1 py-0.5"
-          style={{ paddingLeft: `${depth * 0.65 + 0.1}rem` }}
+          className="flex w-full max-w-full min-w-0 items-stretch overflow-hidden px-1 py-0.5"
         >
           <div
+            className="shrink-0"
+            style={{ width: `${indentRem}rem` }}
+            aria-hidden="true"
+          />
+          <div
             className={[
-              "rounded-xl border px-1.5 py-0.5 transition",
+              "min-w-0 flex-1 overflow-hidden rounded-xl border px-1.5 py-0.5 transition",
               isSelected
                 ? "border-slate-900 bg-slate-900/95 shadow-[0_10px_30px_rgba(15,23,42,0.12)]"
                 : "border-[color:var(--pp-border)] bg-white/65 hover:bg-white",
@@ -370,20 +375,20 @@ function TreeSection({
               >
                 {hasChildren ? (isExpanded ? "-" : "+") : "."}
               </button>
-              <div className="flex min-w-0 flex-1 items-center justify-between gap-2 rounded-lg px-1 py-0">
-                <span className="min-w-0">
+              <div className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-1 py-0">
+                <span className="min-w-0 flex-1 basis-0">
                   <button
                     type="button"
                     onClick={() => onSelectNode(node.id)}
                     className={[
-                      "block max-w-full truncate text-left text-[11px] font-medium leading-4",
+                      "block w-full truncate text-left text-[11px] font-medium leading-4",
                       isSelected ? "text-white" : "text-slate-700",
                     ].join(" ")}
                   >
                     {node.name}
                   </button>
                 </span>
-                <span className="flex shrink-0 items-center gap-1.5">
+                <span className="ml-auto flex shrink-0 items-center gap-1.5 pl-2">
                   {inlinePersonGroups.length > 0 ? (
                     <span className="flex items-center gap-1">
                       {inlinePersonGroups.map((group) => (
@@ -429,7 +434,7 @@ function TreeSection({
           No {title.toLowerCase()} are available.
         </div>
       ) : (
-        <div className="thin-scrollbar h-full overflow-y-auto">
+        <div className="thin-scrollbar h-full overflow-x-hidden overflow-y-auto pr-2">
           {renderBranch(null, 0)}
         </div>
       )}
