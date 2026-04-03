@@ -1,5 +1,6 @@
 export type ApiAlbumAppliedFilters = {
   person_ids: number[];
+  person_group_ids?: number[];
   tag_paths: string[];
   filename_query?: string;
 };
@@ -150,6 +151,7 @@ export type ApiAlbumAssetDetailResponse = {
 
 type ApiAlbumRequest = {
   personIds: string[];
+  personGroupIds: string[];
   tagPaths: string[];
 };
 
@@ -228,6 +230,7 @@ async function requestJson<T>(path: string): Promise<T> {
 function buildAlbumFilterQuery(request: ApiAlbumRequest): string {
   return buildQueryString({
     person_ids: request.personIds,
+    person_group_ids: request.personGroupIds,
     tag_paths: request.tagPaths,
   });
 }

@@ -33,6 +33,7 @@ export type ApiExplorationGridRequest = {
   end?: string;
   gridView: GridViewOption["id"];
   personIds: string[];
+  personGroupIds: string[];
   tagPaths: string[];
   locationGeometry?: string;
   distanceLatitude?: number;
@@ -73,6 +74,7 @@ export type ApiDayContextRequest = {
   end: string;
   gridView: GridViewOption["id"];
   personIds: string[];
+  personGroupIds: string[];
   tagPaths: string[];
   locationGeometry?: string;
   distanceLatitude?: number;
@@ -152,6 +154,7 @@ export const timelineTransport = {
         end: request.end,
         view_mode: request.gridView,
         person_ids: request.personIds,
+        person_group_ids: request.personGroupIds,
         tag_paths: request.tagPaths,
         location_geometry: request.locationGeometry,
         distance_latitude: request.distanceLatitude,
@@ -171,6 +174,7 @@ export const timelineTransport = {
         end: request.end,
         view_mode: request.gridView,
         person_ids: request.personIds,
+        person_group_ids: request.personGroupIds,
         tag_paths: request.tagPaths,
         location_geometry: request.locationGeometry,
         distance_latitude: request.distanceLatitude,

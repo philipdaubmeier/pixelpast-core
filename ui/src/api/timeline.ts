@@ -28,7 +28,7 @@ export type ExplorationGridProjection = {
 
 export type ExplorationGridFilters = Pick<
   PixelPastUiState,
-  "gridView" | "selectedPersons" | "selectedTags"
+  "gridView" | "selectedPersons" | "selectedPersonGroupIds" | "selectedTags"
 >;
 
 let explorationBootstrapPromise: Promise<ExplorationBootstrapProjection> | null =
@@ -141,6 +141,7 @@ export const timelineApi = {
       end: range.end,
       gridView: filters.gridView,
       personIds: filters.selectedPersons,
+      personGroupIds: filters.selectedPersonGroupIds,
       tagPaths: filters.selectedTags,
     });
 
@@ -162,6 +163,7 @@ export const timelineApi = {
       end: range.end,
       gridView: filters.gridView,
       personIds: filters.selectedPersons,
+      personGroupIds: filters.selectedPersonGroupIds,
       tagPaths: filters.selectedTags,
     });
 

@@ -2,10 +2,13 @@ import type {
   PersonProjection,
   TagProjection,
 } from "../../../projections/timeline";
+import type { PersonGroupProjection } from "../../../api/personGroups";
+import { getPersonGroupColorOption } from "../../person-groups/palette";
 
 type FilterBarProps = {
   scopeLabel: string;
   selectedPersons: PersonProjection[];
+  selectedPersonGroups: PersonGroupProjection[];
   selectedTags: TagProjection[];
   resultSummary: string;
   hasPersistentFilters: boolean;
@@ -13,6 +16,7 @@ type FilterBarProps = {
   transportError: string | null;
   hoverLabel: string;
   onRemovePerson: (personId: string) => void;
+  onRemovePersonGroup: (groupId: string) => void;
   onRemoveTag: (tagPath: string) => void;
   onClear: () => void;
 };
@@ -20,6 +24,7 @@ type FilterBarProps = {
 export function FilterBar({
   scopeLabel,
   selectedPersons,
+  selectedPersonGroups,
   selectedTags,
   resultSummary,
   hasPersistentFilters,
@@ -27,6 +32,7 @@ export function FilterBar({
   transportError,
   hoverLabel,
   onRemovePerson,
+  onRemovePersonGroup,
   onRemoveTag,
   onClear,
 }: FilterBarProps) {
@@ -60,6 +66,29 @@ export function FilterBar({
           Person: {person.name} x
         </button>
       ))}
+      {selectedPersonGroups.map((group) => {
+        const colorOption = getPersonGroupColorOption(group.colorIndex);
+
+        return (
+          <button
+            key={group.id}
+            type="button"
+            onClick={() => onRemovePersonGroup(group.id)}
+            className="flex items-center gap-2 rounded-full border border-[color:var(--pp-border)] bg-white px-3 py-1.5 text-[12px] text-slate-700 transition hover:border-slate-900 hover:text-slate-900"
+          >
+            <span
+              className="h-2.5 w-2.5 rounded-full border"
+              style={{
+                backgroundColor:
+                  colorOption?.color ?? "rgba(98, 80, 46, 0.16)",
+                borderColor:
+                  colorOption?.borderColor ?? "rgba(98, 80, 46, 0.18)",
+              }}
+            />
+            <span>Group: {group.name} x</span>
+          </button>
+        );
+      })}
       {selectedTags.map((tag) => (
         <button
           key={tag.path}

@@ -4,6 +4,7 @@ import { socialGraphTransport } from "./socialGraphTransport";
 
 export type SocialGraphFilters = {
   selectedPersons: string[];
+  selectedPersonGroupIds: string[];
   maxPeoplePerAsset: number;
 };
 
@@ -17,6 +18,7 @@ export const socialGraphApi = {
       end: range.end,
       maxPeoplePerAsset: filters.maxPeoplePerAsset,
       personIds: filters.selectedPersons,
+      personGroupIds: filters.selectedPersonGroupIds,
     });
 
     return {

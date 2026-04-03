@@ -33,6 +33,7 @@ import type {
 import type { SocialGraphProjection } from "../projections/socialGraph";
 import { getGridViewColorToken } from "../projections/timeline";
 import { useUiState } from "../state/UiStateContext";
+import type { PersonGroupProjection } from "../api/personGroups";
 
 type HoverContextStatus = "idle" | "loading" | "ready" | "error";
 type LoadState = "loading" | "ready" | "error";
@@ -41,6 +42,9 @@ type AppShellProps = {
   heatmapDays: HeatmapDayProjection[];
   gridViews: GridViewOption[];
   persons: PersonProjection[];
+  personGroups: PersonGroupProjection[];
+  personGroupCatalogState: LoadState;
+  personGroupCatalogError: string | null;
   tags: TagProjection[];
   timelineState: LoadState;
   timelineError: string | null;
@@ -49,6 +53,7 @@ type AppShellProps = {
   hoverContextStatus: HoverContextStatus;
   hoverContextError: string | null;
   onVisibleRangesChange: (ranges: DateRange[]) => void;
+  onRefreshPersonGroups: () => void;
   socialGraphState: LoadState;
   socialGraphError: string | null;
   socialGraph: SocialGraphProjection | null;
@@ -114,7 +119,9 @@ function TimelineMainContent({
   );
   const activeGridColorToken = getGridViewColorToken(gridViews, state.gridView);
   const hasPersistentFilters =
-    state.selectedPersons.length > 0 || state.selectedTags.length > 0;
+    state.selectedPersons.length > 0 ||
+    state.selectedPersonGroupIds.length > 0 ||
+    state.selectedTags.length > 0;
 
   return (
     <MainSplitLayout
@@ -179,6 +186,9 @@ export function AppShell({
   heatmapDays,
   gridViews,
   persons,
+  personGroups,
+  personGroupCatalogState,
+  personGroupCatalogError,
   tags,
   timelineState,
   timelineError,
@@ -187,6 +197,7 @@ export function AppShell({
   hoverContextStatus,
   hoverContextError,
   onVisibleRangesChange,
+  onRefreshPersonGroups,
   socialGraphState,
   socialGraphError,
   socialGraph,
@@ -209,6 +220,7 @@ export function AppShell({
     setGridView,
     setMainView,
     togglePerson,
+    togglePersonGroup,
     toggleTag,
   } = useUiState();
 
@@ -220,8 +232,26 @@ export function AppShell({
     () => resolveSelectedTags(state.selectedTags, tags),
     [state.selectedTags, tags],
   );
+  const selectedPersonGroups = useMemo(() => {
+    const groupsById = new Map(personGroups.map((group) => [group.id, group]));
+
+    return state.selectedPersonGroupIds.map((groupId) => {
+      const group = groupsById.get(groupId);
+
+      return (
+        group ?? {
+          id: groupId,
+          name: `Group ${groupId}`,
+          memberCount: 0,
+          colorIndex: null,
+        }
+      );
+    });
+  }, [personGroups, state.selectedPersonGroupIds]);
   const hasPersistentFilters =
-    state.selectedPersons.length > 0 || state.selectedTags.length > 0;
+    state.selectedPersons.length > 0 ||
+    state.selectedPersonGroupIds.length > 0 ||
+    state.selectedTags.length > 0;
   const activeGridView =
     gridViews.find((gridView) => gridView.id === state.gridView) ?? null;
   const matchingDayCount = useMemo(
@@ -238,7 +268,11 @@ export function AppShell({
         activeGridView={state.gridView}
         activeGridViewLabel={activeGridView?.label ?? state.gridView}
         selectedPersons={selectedPersons}
+        selectedPersonGroups={selectedPersonGroups}
         selectedTags={selectedTags}
+        personGroups={personGroups}
+        personGroupCatalogState={personGroupCatalogState}
+        personGroupCatalogError={personGroupCatalogError}
         resultSummary={
           state.mainView === "day_grid"
             ? `${matchingDayCount} matching day${matchingDayCount === 1 ? "" : "s"}`
@@ -273,10 +307,19 @@ export function AppShell({
         onSelectMainView={setMainView}
         onSelectGridView={setGridView}
         onTogglePerson={togglePerson}
+        onTogglePersonGroup={togglePersonGroup}
         onToggleTag={toggleTag}
         onClearSelections={clearSelections}
         isManageDataOpen={isManageDataOpen}
-        onToggleManageData={() => setManageDataOpen((currentValue) => !currentValue)}
+        onToggleManageData={() =>
+          setManageDataOpen((currentValue) => {
+            const nextValue = !currentValue;
+            if (!nextValue) {
+              onRefreshPersonGroups();
+            }
+            return nextValue;
+          })
+        }
       />
       {state.mainView === "day_grid" ? (
         <MainContentFrame mainView="day_grid">
@@ -298,6 +341,7 @@ export function AppShell({
             selectedPersons={selectedPersons}
             selectedTags={selectedTags}
             selectedPersonIds={state.selectedPersons}
+            selectedPersonGroupIds={state.selectedPersonGroupIds}
             selectedTagPaths={state.selectedTags}
             hasPersistentFilters={hasPersistentFilters}
             selection={albumSelection}
@@ -330,6 +374,7 @@ export function AppShell({
             graph={socialGraph}
             maxPeoplePerAsset={socialGraphMaxPeoplePerAsset}
             selectedPersons={selectedPersons}
+            selectedPersonGroups={selectedPersonGroups}
             selectedTags={selectedTags}
             onChangeMaxPeoplePerAsset={onChangeSocialGraphMaxPeoplePerAsset}
             onTogglePerson={togglePerson}
@@ -338,7 +383,10 @@ export function AppShell({
       )}
       <ManageDataOverlay
         isOpen={isManageDataOpen}
-        onClose={() => setManageDataOpen(false)}
+        onClose={() => {
+          setManageDataOpen(false);
+          onRefreshPersonGroups();
+        }}
       />
     </main>
   );

@@ -16,6 +16,7 @@ import {
 } from "@react-sigma/core";
 import { useWorkerLayoutForceAtlas2 } from "@react-sigma/layout-forceatlas2";
 import { UndirectedGraph } from "graphology";
+import type { PersonGroupProjection } from "../../../api/personGroups";
 import { PanelCard } from "../../../components/PanelCard";
 import type { PersonProjection, TagProjection } from "../../../projections/timeline";
 import type {
@@ -30,6 +31,7 @@ type SocialGraphViewProps = {
   graph: SocialGraphProjection | null;
   maxPeoplePerAsset: number;
   selectedPersons: PersonProjection[];
+  selectedPersonGroups: PersonGroupProjection[];
   selectedTags: TagProjection[];
   onChangeMaxPeoplePerAsset: (value: number) => void;
   onTogglePerson: (personId: string) => void;
@@ -676,12 +678,14 @@ function SocialGraphCanvas({
   graph,
   maxPeoplePerAsset,
   selectedPersons,
+  selectedPersonGroups,
   onChangeMaxPeoplePerAsset,
   onTogglePerson,
 }: {
   graph: SocialGraphProjection;
   maxPeoplePerAsset: number;
   selectedPersons: PersonProjection[];
+  selectedPersonGroups: PersonGroupProjection[];
   onChangeMaxPeoplePerAsset: (value: number) => void;
   onTogglePerson: (personId: string) => void;
 }) {
@@ -844,10 +848,18 @@ function SocialGraphCanvas({
             </div>
             <div className="rounded-3xl border border-[color:var(--pp-border)] bg-white/80 p-4">
               <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                Selected
+                Person Filters
               </div>
               <div className="mt-2 text-3xl font-semibold text-slate-950">
                 {selectedPersons.length}
+              </div>
+            </div>
+            <div className="rounded-3xl border border-[color:var(--pp-border)] bg-white/80 p-4">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Group Filters
+              </div>
+              <div className="mt-2 text-3xl font-semibold text-slate-950">
+                {selectedPersonGroups.length}
               </div>
             </div>
             <div className="rounded-3xl border border-[color:var(--pp-border)] bg-white/80 p-4">
@@ -915,9 +927,9 @@ function SocialGraphCanvas({
                 "Hover a node or link to inspect the current cluster and its strongest local ties."
               )}
             </div>
-            {selectedPersons.length > 0 ? (
+            {selectedPersons.length > 0 || selectedPersonGroups.length > 0 ? (
               <div className="rounded-2xl border border-amber-200 bg-amber-50/90 px-4 py-3 text-sm text-amber-900">
-                Selected persons remain global filters across main views.
+                Person and group selections remain global filters across main views.
               </div>
             ) : null}
           </div>
@@ -1042,6 +1054,7 @@ export function SocialGraphView({
   graph,
   maxPeoplePerAsset,
   selectedPersons,
+  selectedPersonGroups,
   selectedTags,
   onChangeMaxPeoplePerAsset,
   onTogglePerson,
@@ -1058,7 +1071,7 @@ export function SocialGraphView({
           </h1>
           <p className="mt-3 text-sm text-slate-600">
             The shell is requesting canonical co-occurrence data for the current
-            time range and persistent person selection.
+            time range and persistent filter selection.
           </p>
           <div className="mt-5 max-w-xl">
             <SocialGraphPeopleCutoffControl
@@ -1121,6 +1134,12 @@ export function SocialGraphView({
               social graph yet.
             </p>
           ) : null}
+          {selectedPersonGroups.length > 0 ? (
+            <p className="mt-3 text-sm text-amber-800">
+              Person-group filters are forwarded by the shell but are not applied
+              by the social graph yet.
+            </p>
+          ) : null}
         </div>
       </section>
     );
@@ -1131,6 +1150,7 @@ export function SocialGraphView({
       graph={graph}
       maxPeoplePerAsset={maxPeoplePerAsset}
       selectedPersons={selectedPersons}
+      selectedPersonGroups={selectedPersonGroups}
       onChangeMaxPeoplePerAsset={onChangeMaxPeoplePerAsset}
       onTogglePerson={onTogglePerson}
     />

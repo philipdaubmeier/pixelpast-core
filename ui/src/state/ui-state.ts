@@ -32,6 +32,7 @@ export type PixelPastUiState = {
   mainView: MainView;
   gridView: GridView;
   selectedPersons: string[];
+  selectedPersonGroupIds: string[];
   selectedTags: string[];
   selectedGeoFilter: GeoFilter | null;
   selectedDateRange: DateRange | null;
@@ -39,7 +40,11 @@ export type PixelPastUiState = {
 
 export type PersistentUiState = Pick<
   PixelPastUiState,
-  "mainView" | "gridView" | "selectedPersons" | "selectedTags"
+  | "mainView"
+  | "gridView"
+  | "selectedPersons"
+  | "selectedPersonGroupIds"
+  | "selectedTags"
 >;
 
 export const defaultUiState: PixelPastUiState = {
@@ -48,6 +53,7 @@ export const defaultUiState: PixelPastUiState = {
   mainView: "day_grid",
   gridView: "activity",
   selectedPersons: [],
+  selectedPersonGroupIds: [],
   selectedTags: [],
   selectedGeoFilter: null,
   selectedDateRange: null,

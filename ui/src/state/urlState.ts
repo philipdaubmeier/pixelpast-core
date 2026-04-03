@@ -31,6 +31,7 @@ export function readPersistentUiState(search: string): PersistentUiState {
           : defaultUiState.mainView,
     gridView: gridViewParam?.trim() || defaultUiState.gridView,
     selectedPersons: parseList(params.get("persons")),
+    selectedPersonGroupIds: parseList(params.get("personGroups")),
     selectedTags: parseList(params.get("tags")),
   };
 }
@@ -48,6 +49,10 @@ export function writePersistentUiState(state: PersistentUiState): string {
 
   if (state.selectedPersons.length > 0) {
     params.set("persons", state.selectedPersons.join(","));
+  }
+
+  if (state.selectedPersonGroupIds.length > 0) {
+    params.set("personGroups", state.selectedPersonGroupIds.join(","));
   }
 
   if (state.selectedTags.length > 0) {

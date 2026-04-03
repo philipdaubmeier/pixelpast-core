@@ -23,6 +23,7 @@ type UiStateContextValue = {
   setMainView: (mainView: MainView) => void;
   setGridView: (gridView: GridView) => void;
   togglePerson: (personId: string) => void;
+  togglePersonGroup: (personGroupId: string) => void;
   toggleTag: (tagPath: string) => void;
   clearSelections: () => void;
 };
@@ -48,12 +49,19 @@ export function UiStateProvider({ children }: PropsWithChildren) {
       mainView: state.mainView,
       gridView: state.gridView,
       selectedPersons: state.selectedPersons,
+      selectedPersonGroupIds: state.selectedPersonGroupIds,
       selectedTags: state.selectedTags,
     });
     const nextUrl = `${window.location.pathname}${nextSearch}${window.location.hash}`;
 
     window.history.replaceState(null, "", nextUrl);
-  }, [state.gridView, state.mainView, state.selectedPersons, state.selectedTags]);
+  }, [
+    state.gridView,
+    state.mainView,
+    state.selectedPersonGroupIds,
+    state.selectedPersons,
+    state.selectedTags,
+  ]);
 
   useEffect(() => {
     function handlePopState() {
@@ -144,10 +152,28 @@ export function UiStateProvider({ children }: PropsWithChildren) {
     });
   }, []);
 
+  const togglePersonGroup = useCallback((personGroupId: string) => {
+    setState((currentState) => {
+      const nextSelection = currentState.selectedPersonGroupIds.includes(
+        personGroupId,
+      )
+        ? currentState.selectedPersonGroupIds.filter(
+            (candidate) => candidate !== personGroupId,
+          )
+        : [...currentState.selectedPersonGroupIds, personGroupId];
+
+      return {
+        ...currentState,
+        selectedPersonGroupIds: nextSelection,
+      };
+    });
+  }, []);
+
   const clearSelections = useCallback(() => {
     setState((currentState) => {
       if (
         currentState.selectedPersons.length === 0 &&
+        currentState.selectedPersonGroupIds.length === 0 &&
         currentState.selectedTags.length === 0
       ) {
         return currentState;
@@ -156,6 +182,7 @@ export function UiStateProvider({ children }: PropsWithChildren) {
       return {
         ...currentState,
         selectedPersons: [],
+        selectedPersonGroupIds: [],
         selectedTags: [],
       };
     });
@@ -168,6 +195,7 @@ export function UiStateProvider({ children }: PropsWithChildren) {
     setMainView,
     setGridView,
     togglePerson,
+    togglePersonGroup,
     toggleTag,
     clearSelections,
   }), [
@@ -178,6 +206,7 @@ export function UiStateProvider({ children }: PropsWithChildren) {
     setMainView,
     state,
     togglePerson,
+    togglePersonGroup,
     toggleTag,
   ]);
 

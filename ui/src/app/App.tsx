@@ -1,4 +1,5 @@
 import { startTransition, useEffect, useRef, useState } from "react";
+import { personGroupsApi, type PersonGroupProjection } from "../api/personGroups";
 import { socialGraphApi } from "../api/socialGraph";
 import { timelineApi } from "../api/timeline";
 import type { SocialGraphProjection } from "../projections/socialGraph";
@@ -83,6 +84,13 @@ function AppBootstrap() {
   const [shellError, setShellError] = useState<string | null>(null);
   const [timelineState, setTimelineState] = useState<ViewLoadState>("loading");
   const [timelineError, setTimelineError] = useState<string | null>(null);
+  const [personGroupCatalogState, setPersonGroupCatalogState] =
+    useState<ViewLoadState>("loading");
+  const [personGroupCatalogError, setPersonGroupCatalogError] = useState<
+    string | null
+  >(null);
+  const [personGroupCatalogRefreshToken, setPersonGroupCatalogRefreshToken] =
+    useState(0);
   const [socialGraphState, setSocialGraphState] = useState<ViewLoadState>("loading");
   const [socialGraphError, setSocialGraphError] = useState<string | null>(null);
   const [socialGraphMaxPeoplePerAsset, setSocialGraphMaxPeoplePerAsset] =
@@ -91,6 +99,7 @@ function AppBootstrap() {
   const [heatmapDays, setHeatmapDays] = useState<HeatmapDayProjection[]>([]);
   const [gridViews, setGridViews] = useState<GridViewOption[]>([]);
   const [persons, setPersons] = useState<PersonProjection[]>([]);
+  const [personGroups, setPersonGroups] = useState<PersonGroupProjection[]>([]);
   const [tags, setTags] = useState<TagProjection[]>([]);
   const [socialGraph, setSocialGraph] = useState<SocialGraphProjection | null>(
     null,
@@ -112,6 +121,7 @@ function AppBootstrap() {
   const dayContextScope = JSON.stringify({
     gridView: state.gridView,
     selectedPersons: [...state.selectedPersons].sort(),
+    selectedPersonGroupIds: [...state.selectedPersonGroupIds].sort(),
     selectedTags: [...state.selectedTags].sort(),
   });
 
@@ -160,6 +170,51 @@ function AppBootstrap() {
   }, []);
 
   useEffect(() => {
+    if (shellState !== "ready") {
+      return;
+    }
+
+    let cancelled = false;
+
+    startTransition(() => {
+      setPersonGroupCatalogState("loading");
+      setPersonGroupCatalogError(null);
+    });
+
+    void personGroupsApi
+      .getCatalog()
+      .then((nextPersonGroups) => {
+        if (!isMountedRef.current || cancelled) {
+          return;
+        }
+
+        startTransition(() => {
+          setPersonGroups(nextPersonGroups);
+          setPersonGroupCatalogState("ready");
+          setPersonGroupCatalogError(null);
+        });
+      })
+      .catch((error: unknown) => {
+        if (!isMountedRef.current || cancelled) {
+          return;
+        }
+
+        startTransition(() => {
+          setPersonGroupCatalogState("error");
+          setPersonGroupCatalogError(
+            error instanceof Error
+              ? error.message
+              : "Unable to load person groups.",
+          );
+        });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [personGroupCatalogRefreshToken, shellState]);
+
+  useEffect(() => {
     if (shellState !== "ready" || gridViews.length === 0) {
       return;
     }
@@ -196,6 +251,7 @@ function AppBootstrap() {
         const grid = await timelineApi.getExplorationGrid(explorationRange, {
           gridView: state.gridView,
           selectedPersons: state.selectedPersons,
+          selectedPersonGroupIds: state.selectedPersonGroupIds,
           selectedTags: state.selectedTags,
         });
 
@@ -236,6 +292,7 @@ function AppBootstrap() {
     shellState,
     state.gridView,
     state.mainView,
+    state.selectedPersonGroupIds,
     state.selectedPersons,
     state.selectedTags,
   ]);
@@ -262,6 +319,7 @@ function AppBootstrap() {
         const graph = await socialGraphApi.getSocialGraph(explorationRange, {
           maxPeoplePerAsset: socialGraphMaxPeoplePerAsset,
           selectedPersons: state.selectedPersons,
+          selectedPersonGroupIds: state.selectedPersonGroupIds,
         });
 
         if (
@@ -299,6 +357,7 @@ function AppBootstrap() {
     shellState,
     socialGraphMaxPeoplePerAsset,
     state.mainView,
+    state.selectedPersonGroupIds,
     state.selectedPersons,
   ]);
 
@@ -352,6 +411,7 @@ function AppBootstrap() {
           const response = await timelineApi.getDayContextRange(range, {
             gridView: state.gridView,
             selectedPersons: state.selectedPersons,
+            selectedPersonGroupIds: state.selectedPersonGroupIds,
             selectedTags: state.selectedTags,
           });
 
@@ -412,6 +472,7 @@ function AppBootstrap() {
     shellState,
     state.gridView,
     state.mainView,
+    state.selectedPersonGroupIds,
     state.selectedPersons,
     state.selectedTags,
     visibleRanges,
@@ -470,6 +531,9 @@ function AppBootstrap() {
       heatmapDays={heatmapDays}
       gridViews={gridViews}
       persons={persons}
+      personGroups={personGroups}
+      personGroupCatalogState={personGroupCatalogState}
+      personGroupCatalogError={personGroupCatalogError}
       tags={tags}
       timelineState={timelineState}
       timelineError={timelineState === "error" ? timelineError : null}
@@ -478,6 +542,9 @@ function AppBootstrap() {
       hoverContextStatus={hoverContextStatus}
       hoverContextError={hoverContextStatus === "error" ? hoverContextError : null}
       onVisibleRangesChange={setVisibleRanges}
+      onRefreshPersonGroups={() =>
+        setPersonGroupCatalogRefreshToken((currentValue) => currentValue + 1)
+      }
       socialGraphState={socialGraphState}
       socialGraphError={socialGraphState === "error" ? socialGraphError : null}
       socialGraph={socialGraph}

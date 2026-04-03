@@ -119,6 +119,7 @@ export type AlbumAssetDetailProjection = {
 
 type AlbumApiFilters = {
   selectedPersons: string[];
+  selectedPersonGroupIds: string[];
   selectedTags: string[];
 };
 
@@ -249,6 +250,7 @@ export const albumApi = {
   async getFolderTree(filters: AlbumApiFilters): Promise<AlbumTreeNodeProjection[]> {
     const response = await albumTransport.getFolderTree({
       personIds: filters.selectedPersons,
+      personGroupIds: filters.selectedPersonGroupIds,
       tagPaths: filters.selectedTags,
     });
 
@@ -260,6 +262,7 @@ export const albumApi = {
   ): Promise<AlbumTreeNodeProjection[]> {
     const response = await albumTransport.getCollectionTree({
       personIds: filters.selectedPersons,
+      personGroupIds: filters.selectedPersonGroupIds,
       tagPaths: filters.selectedTags,
     });
 
@@ -273,6 +276,7 @@ export const albumApi = {
     return mapListing(
       await albumTransport.getFolderAssets(folderId, {
         personIds: filters.selectedPersons,
+        personGroupIds: filters.selectedPersonGroupIds,
         tagPaths: filters.selectedTags,
       }),
     );
@@ -285,6 +289,7 @@ export const albumApi = {
     return mapListing(
       await albumTransport.getCollectionAssets(collectionId, {
         personIds: filters.selectedPersons,
+        personGroupIds: filters.selectedPersonGroupIds,
         tagPaths: filters.selectedTags,
       }),
     );
@@ -297,6 +302,7 @@ export const albumApi = {
     return mapContext(
       await albumTransport.getFolderContext(folderId, {
         personIds: filters.selectedPersons,
+        personGroupIds: filters.selectedPersonGroupIds,
         tagPaths: filters.selectedTags,
       }),
     );
@@ -309,6 +315,7 @@ export const albumApi = {
     return mapContext(
       await albumTransport.getCollectionContext(collectionId, {
         personIds: filters.selectedPersons,
+        personGroupIds: filters.selectedPersonGroupIds,
         tagPaths: filters.selectedTags,
       }),
     );

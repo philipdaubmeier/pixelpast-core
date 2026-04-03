@@ -29,6 +29,7 @@ type PhotoAlbumViewProps = {
   selectedPersons: PersonProjection[];
   selectedTags: TagProjection[];
   selectedPersonIds: string[];
+  selectedPersonGroupIds: string[];
   selectedTagPaths: string[];
   hasPersistentFilters: boolean;
   selection: AlbumNodeSelection | null;
@@ -439,6 +440,7 @@ export function PhotoAlbumView({
   selectedPersons,
   selectedTags,
   selectedPersonIds,
+  selectedPersonGroupIds,
   selectedTagPaths,
   hasPersistentFilters,
   selection,
@@ -488,6 +490,7 @@ export function PhotoAlbumView({
     void albumApi
       .getFolderTree({
         selectedPersons: selectedPersonIds,
+        selectedPersonGroupIds,
         selectedTags: selectedTagPaths,
       })
       .then((nextFolderNodes) => {
@@ -518,7 +521,7 @@ export function PhotoAlbumView({
     return () => {
       cancelled = true;
     };
-  }, [selectedPersonIds, selectedTagPaths]);
+  }, [selectedPersonGroupIds, selectedPersonIds, selectedTagPaths]);
 
   useEffect(() => {
     let cancelled = false;
@@ -531,6 +534,7 @@ export function PhotoAlbumView({
     void albumApi
       .getCollectionTree({
         selectedPersons: selectedPersonIds,
+        selectedPersonGroupIds,
         selectedTags: selectedTagPaths,
       })
       .then((nextCollectionNodes) => {
@@ -561,7 +565,7 @@ export function PhotoAlbumView({
     return () => {
       cancelled = true;
     };
-  }, [selectedPersonIds, selectedTagPaths]);
+  }, [selectedPersonGroupIds, selectedPersonIds, selectedTagPaths]);
 
   useEffect(() => {
     const stillValidSelection =
@@ -613,20 +617,24 @@ export function PhotoAlbumView({
       selection.kind === "folder"
         ? albumApi.getFolderListing(selection.id, {
             selectedPersons: selectedPersonIds,
+            selectedPersonGroupIds,
             selectedTags: selectedTagPaths,
           })
         : albumApi.getCollectionListing(selection.id, {
             selectedPersons: selectedPersonIds,
+            selectedPersonGroupIds,
             selectedTags: selectedTagPaths,
           });
     const contextRequest =
       selection.kind === "folder"
         ? albumApi.getFolderContext(selection.id, {
             selectedPersons: selectedPersonIds,
+            selectedPersonGroupIds,
             selectedTags: selectedTagPaths,
           })
         : albumApi.getCollectionContext(selection.id, {
             selectedPersons: selectedPersonIds,
+            selectedPersonGroupIds,
             selectedTags: selectedTagPaths,
           });
 
@@ -672,6 +680,7 @@ export function PhotoAlbumView({
     };
   }, [
     onSelectedAssetChange,
+    selectedPersonGroupIds,
     selectedPersonIds,
     selectedTagPaths,
     selection,

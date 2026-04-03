@@ -1,4 +1,5 @@
 import logoUrl from "../../assets/pixelpast-logo.svg";
+import type { PersonGroupProjection } from "../../api/personGroups";
 import { FilterBar } from "../../features/timeline/components/FilterBar";
 import { GridViewSelector } from "../../features/timeline/components/GridViewSelector";
 import type {
@@ -8,6 +9,7 @@ import type {
 } from "../../projections/timeline";
 import type { GridView, MainView } from "../../state/ui-state";
 import { MainViewNavigation } from "./MainViewNavigation";
+import { PersonGroupFilterControl } from "./PersonGroupFilterControl";
 
 type TopBarProps = {
   mainView: MainView;
@@ -15,7 +17,11 @@ type TopBarProps = {
   activeGridView: GridView;
   activeGridViewLabel: string;
   selectedPersons: PersonProjection[];
+  selectedPersonGroups: PersonGroupProjection[];
   selectedTags: TagProjection[];
+  personGroups: PersonGroupProjection[];
+  personGroupCatalogState: "loading" | "ready" | "error";
+  personGroupCatalogError: string | null;
   resultSummary: string;
   hasPersistentFilters: boolean;
   transportState: "loading" | "ready" | "error";
@@ -24,6 +30,7 @@ type TopBarProps = {
   onSelectMainView: (mainView: MainView) => void;
   onSelectGridView: (gridView: GridView) => void;
   onTogglePerson: (personId: string) => void;
+  onTogglePersonGroup: (groupId: string) => void;
   onToggleTag: (tagPath: string) => void;
   onClearSelections: () => void;
   isManageDataOpen: boolean;
@@ -36,7 +43,11 @@ export function TopBar({
   activeGridView,
   activeGridViewLabel,
   selectedPersons,
+  selectedPersonGroups,
   selectedTags,
+  personGroups,
+  personGroupCatalogState,
+  personGroupCatalogError,
   resultSummary,
   hasPersistentFilters,
   transportState,
@@ -45,6 +56,7 @@ export function TopBar({
   onSelectMainView,
   onSelectGridView,
   onTogglePerson,
+  onTogglePersonGroup,
   onToggleTag,
   onClearSelections,
   isManageDataOpen,
@@ -64,6 +76,14 @@ export function TopBar({
               activeMainView={mainView}
               onSelect={onSelectMainView}
             />
+            <PersonGroupFilterControl
+              groups={personGroups}
+              selectedGroupIds={selectedPersonGroups.map((group) => group.id)}
+              state={personGroupCatalogState}
+              error={personGroupCatalogError}
+              onToggleGroup={onTogglePersonGroup}
+              onClear={onClearSelections}
+            />
             <FilterBar
               scopeLabel={
                 mainView === "day_grid"
@@ -73,6 +93,7 @@ export function TopBar({
                     : "Social Graph"
               }
               selectedPersons={selectedPersons}
+              selectedPersonGroups={selectedPersonGroups}
               selectedTags={selectedTags}
               resultSummary={resultSummary}
               hasPersistentFilters={hasPersistentFilters}
@@ -80,6 +101,7 @@ export function TopBar({
               transportError={transportError}
               hoverLabel={hoverLabel}
               onRemovePerson={onTogglePerson}
+              onRemovePersonGroup={onTogglePersonGroup}
               onRemoveTag={onToggleTag}
               onClear={onClearSelections}
             />

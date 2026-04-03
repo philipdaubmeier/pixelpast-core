@@ -16,6 +16,7 @@ export type ApiSocialGraphRequest = {
   end?: string;
   maxPeoplePerAsset: number;
   personIds: string[];
+  personGroupIds: string[];
 };
 
 function normalizeConfiguredApiBaseUrl(value: string): string {
@@ -87,6 +88,7 @@ export const socialGraphTransport = {
         end: request.end,
         max_people_per_asset: String(request.maxPeoplePerAsset),
         person_ids: request.personIds,
+        person_group_ids: request.personGroupIds,
       })}`,
     );
   },
