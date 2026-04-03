@@ -21,6 +21,7 @@ export type AlbumTreeNodeProjection = {
   childCount: number;
   assetCount: number;
   collectionType: string | null;
+  personGroups: AlbumPersonGroupRelevanceProjection[];
 };
 
 export type AlbumSelectionProjection = {
@@ -34,6 +35,16 @@ export type AlbumSelectionProjection = {
   path: string;
   assetCount: number;
   collectionType: string | null;
+};
+
+export type AlbumPersonGroupRelevanceProjection = {
+  groupId: string;
+  groupName: string;
+  colorIndex: number | null;
+  matchedPersonCount: number;
+  groupPersonCount: number;
+  matchedAssetCount: number;
+  matchedCreatorPersonCount: number;
 };
 
 export type AlbumAssetProjection = {
@@ -68,6 +79,7 @@ export type AlbumContextAssetProjection = {
 
 export type AlbumContextProjection = {
   selection: AlbumSelectionProjection;
+  personGroups: AlbumPersonGroupRelevanceProjection[];
   persons: AlbumContextPersonProjection[];
   tags: AlbumContextTagProjection[];
   mapPoints: Array<
@@ -152,6 +164,15 @@ function mapTreeNode(
     childCount: node.child_count,
     assetCount: node.asset_count,
     collectionType: "collection_type" in node ? node.collection_type : null,
+    personGroups: node.person_groups.map((group) => ({
+      groupId: String(group.group_id),
+      groupName: group.group_name,
+      colorIndex: group.color_index ?? null,
+      matchedPersonCount: group.matched_person_count,
+      groupPersonCount: group.group_person_count,
+      matchedAssetCount: group.matched_asset_count,
+      matchedCreatorPersonCount: group.matched_creator_person_count,
+    })),
   };
 }
 
@@ -174,6 +195,15 @@ function mapListing(
 function mapContext(response: ApiAlbumContextResponse): AlbumContextProjection {
   return {
     selection: mapSelection(response.selection),
+    personGroups: response.person_groups.map((group) => ({
+      groupId: String(group.group_id),
+      groupName: group.group_name,
+      colorIndex: group.color_index ?? null,
+      matchedPersonCount: group.matched_person_count,
+      groupPersonCount: group.group_person_count,
+      matchedAssetCount: group.matched_asset_count,
+      matchedCreatorPersonCount: group.matched_creator_person_count,
+    })),
     persons: response.persons.map((person) => ({
       id: String(person.id),
       name: person.name,

@@ -353,6 +353,7 @@ export function AppShell({
             onExpandedFolderIdsChange={setExpandedFolderIds}
             onExpandedCollectionIdsChange={setExpandedCollectionIds}
             onTogglePerson={togglePerson}
+            onTogglePersonGroup={togglePersonGroup}
             onToggleTag={toggleTag}
             onChromeStateChange={(nextState) =>
               setAlbumChromeState((currentState) =>

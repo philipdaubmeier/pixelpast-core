@@ -21,6 +21,7 @@ import type {
 import { MapPanel } from "../../context/components/MapPanel";
 import { PersonsPanel } from "../../context/components/PersonsPanel";
 import { TagsPanel } from "../../context/components/TagsPanel";
+import { getPersonGroupColorOption } from "../../person-groups/palette";
 import type { AlbumChromeState, AlbumNodeSelection } from "../types";
 
 type LoadState = "loading" | "ready" | "error";
@@ -41,9 +42,12 @@ type PhotoAlbumViewProps = {
   onExpandedFolderIdsChange: (ids: number[]) => void;
   onExpandedCollectionIdsChange: (ids: number[]) => void;
   onTogglePerson: (personId: string) => void;
+  onTogglePersonGroup: (groupId: string) => void;
   onToggleTag: (tagPath: string) => void;
   onChromeStateChange: (state: AlbumChromeState) => void;
 };
+
+const MAX_INLINE_PERSON_GROUPS = 3;
 
 function formatTimestamp(value: string): string {
   const parsed = new Date(value);
@@ -201,6 +205,77 @@ function resolveActiveTransportState(
   };
 }
 
+function formatPersonGroupSummary(
+  group: AlbumTreeNodeProjection["personGroups"][number],
+): string {
+  return `${group.matchedPersonCount} / ${group.groupPersonCount} people | ${group.matchedAssetCount} asset${
+    group.matchedAssetCount === 1 ? "" : "s"
+  }`;
+}
+
+function PersonGroupChip({
+  group,
+  active,
+  onToggle,
+}: {
+  group: AlbumTreeNodeProjection["personGroups"][number];
+  active: boolean;
+  onToggle: (groupId: string) => void;
+}) {
+  const colorOption = getPersonGroupColorOption(group.colorIndex);
+
+  return (
+    <button
+      type="button"
+      onClick={() => onToggle(group.groupId)}
+      title={`${group.groupName} | ${formatPersonGroupSummary(group)}`}
+      className={[
+        "inline-flex max-w-full items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium transition",
+        active
+          ? "border-slate-900 bg-slate-900 text-white shadow-[0_8px_20px_rgba(15,23,42,0.16)]"
+          : "bg-white/90 text-slate-700 hover:bg-white",
+      ].join(" ")}
+      style={
+        active
+          ? undefined
+          : colorOption === null
+            ? undefined
+            : {
+                borderColor: colorOption.borderColor,
+                backgroundColor: colorOption.softColor,
+                color: colorOption.textColor,
+              }
+      }
+    >
+      <span
+        className={[
+          "h-1.5 w-1.5 shrink-0 rounded-full",
+          active ? "bg-white" : "",
+        ].join(" ")}
+        style={active ? undefined : { backgroundColor: colorOption?.color ?? "#7c6f64" }}
+      />
+      <span className="max-w-[7rem] truncate">{group.groupName}</span>
+    </button>
+  );
+}
+
+function PersonGroupOverflowChip({
+  hiddenGroups,
+}: {
+  hiddenGroups: AlbumTreeNodeProjection["personGroups"];
+}) {
+  return (
+    <span
+      title={hiddenGroups
+        .map((group) => `${group.groupName} | ${formatPersonGroupSummary(group)}`)
+        .join("\n")}
+      className="inline-flex items-center rounded-full border border-dashed border-[color:var(--pp-border)] bg-white/75 px-2 py-0.5 text-[10px] font-medium text-slate-500"
+    >
+      +{hiddenGroups.length}
+    </span>
+  );
+}
+
 function TreeSection({
   title,
   nodes,
@@ -208,6 +283,8 @@ function TreeSection({
   expandedIds,
   onToggleExpanded,
   onSelectNode,
+  selectedPersonGroupIds,
+  onTogglePersonGroup,
   state,
   error,
 }: {
@@ -217,9 +294,15 @@ function TreeSection({
   expandedIds: number[];
   onToggleExpanded: (nodeId: number) => void;
   onSelectNode: (nodeId: number) => void;
+  selectedPersonGroupIds: string[];
+  onTogglePersonGroup: (groupId: string) => void;
   state: LoadState;
   error: string | null;
 }) {
+  const selectedPersonGroupIdSet = useMemo(
+    () => new Set(selectedPersonGroupIds),
+    [selectedPersonGroupIds],
+  );
   const childrenByParentId = useMemo(() => {
     const nextValue = new Map<number | null, AlbumTreeNodeProjection[]>();
     for (const node of nodes) {
@@ -240,46 +323,93 @@ function TreeSection({
       const isSelected = node.id === selectedNodeId;
       const isExpanded = expandedIds.includes(node.id);
       const hasChildren = node.childCount > 0;
+      const inlinePersonGroups = node.personGroups.slice(0, MAX_INLINE_PERSON_GROUPS);
+      const hiddenPersonGroups = node.personGroups.slice(MAX_INLINE_PERSON_GROUPS);
 
       return [
         <div
           key={node.id}
-          className="flex items-center gap-1 px-1 py-0.5"
+          className="px-1 py-0.5"
           style={{ paddingLeft: `${depth * 0.65 + 0.1}rem` }}
         >
-          <button
-            type="button"
-            onClick={() => (hasChildren ? onToggleExpanded(node.id) : undefined)}
-            disabled={!hasChildren}
-            className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-white text-[10px] text-slate-500 transition hover:text-slate-800 disabled:cursor-default disabled:opacity-55"
-            aria-label={hasChildren ? `Toggle ${node.name}` : `${node.name} has no children`}
-          >
-            {hasChildren ? (isExpanded ? "-" : "+") : "."}
-          </button>
-          <button
-            type="button"
-            onClick={() => onSelectNode(node.id)}
+          <div
             className={[
-              "flex min-w-0 flex-1 items-center justify-between gap-2 rounded-xl border px-2 py-1 text-left transition",
+              "rounded-xl border px-1.5 py-1 transition",
               isSelected
-                ? "border-slate-900 bg-slate-900 text-white shadow-[0_10px_30px_rgba(15,23,42,0.12)]"
-                : "border-[color:var(--pp-border)] bg-white/65 text-slate-700 hover:bg-white",
+                ? "border-slate-900 bg-slate-900/95 shadow-[0_10px_30px_rgba(15,23,42,0.12)]"
+                : "border-[color:var(--pp-border)] bg-white/65 hover:bg-white",
             ].join(" ")}
           >
-            <span className="min-w-0">
-              <span className="block truncate text-[11px] font-medium leading-4">
-                {node.name}
-              </span>
-            </span>
-            <span
-              className={[
-                "shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
-                isSelected ? "bg-white/15 text-white" : "bg-stone-100 text-slate-600",
-              ].join(" ")}
-            >
-              {node.assetCount}
-            </span>
-          </button>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => (hasChildren ? onToggleExpanded(node.id) : undefined)}
+                disabled={!hasChildren}
+                className={[
+                  "flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[10px] transition disabled:cursor-default disabled:opacity-55",
+                  isSelected
+                    ? "bg-white/10 text-white hover:text-white"
+                    : "bg-white text-slate-500 hover:text-slate-800",
+                ].join(" ")}
+                aria-label={
+                  hasChildren ? `Toggle ${node.name}` : `${node.name} has no children`
+                }
+              >
+                {hasChildren ? (isExpanded ? "-" : "+") : "."}
+              </button>
+              <button
+                type="button"
+                onClick={() => onSelectNode(node.id)}
+                className="flex min-w-0 flex-1 items-center justify-between gap-2 rounded-lg px-1 py-0.5 text-left"
+              >
+                <span className="min-w-0">
+                  <span
+                    className={[
+                      "block truncate text-[11px] font-medium leading-4",
+                      isSelected ? "text-white" : "text-slate-700",
+                    ].join(" ")}
+                  >
+                    {node.name}
+                  </span>
+                </span>
+                <span
+                  className={[
+                    "shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
+                    isSelected ? "bg-white/15 text-white" : "bg-stone-100 text-slate-600",
+                  ].join(" ")}
+                >
+                  {node.assetCount}
+                </span>
+              </button>
+            </div>
+            {node.personGroups.length > 0 ? (
+              <div className="mt-1.5 flex flex-wrap items-center gap-1 pl-5">
+                {inlinePersonGroups.map((group) => (
+                  <PersonGroupChip
+                    key={group.groupId}
+                    group={group}
+                    active={selectedPersonGroupIdSet.has(group.groupId)}
+                    onToggle={onTogglePersonGroup}
+                  />
+                ))}
+                {hiddenPersonGroups.length > 0 ? (
+                  <PersonGroupOverflowChip hiddenGroups={hiddenPersonGroups} />
+                ) : null}
+              </div>
+            ) : null}
+            {isSelected && node.personGroups.length > 0 ? (
+              <div
+                className={[
+                  "mt-1 pl-5 text-[10px]",
+                  isSelected ? "text-white/70" : "text-slate-500",
+                ].join(" ")}
+              >
+                {node.personGroups[0].matchedPersonCount} /{" "}
+                {node.personGroups[0].groupPersonCount} people in the top matching
+                group
+              </div>
+            ) : null}
+          </div>
         </div>,
         ...(hasChildren && isExpanded ? renderBranch(node.id, depth + 1) : []),
       ];
@@ -452,6 +582,7 @@ export function PhotoAlbumView({
   onExpandedFolderIdsChange,
   onExpandedCollectionIdsChange,
   onTogglePerson,
+  onTogglePersonGroup,
   onToggleTag,
   onChromeStateChange,
 }: PhotoAlbumViewProps) {
@@ -793,6 +924,7 @@ export function PhotoAlbumView({
       : null;
   const activeSelectionLabel =
     listing?.selection.name ?? context?.selection.name ?? null;
+  const activeSelectionPersonGroups = context?.personGroups ?? [];
   const activeTransportState = useMemo(
     () =>
       resolveActiveTransportState([
@@ -858,6 +990,8 @@ export function PhotoAlbumView({
             onSelectionChange({ kind: "folder", id: nodeId });
             onSelectedAssetChange(null);
           }}
+          selectedPersonGroupIds={selectedPersonGroupIds}
+          onTogglePersonGroup={onTogglePersonGroup}
           state={folderTreeState}
           error={folderTreeError}
         />
@@ -875,13 +1009,33 @@ export function PhotoAlbumView({
             onSelectionChange({ kind: "collection", id: nodeId });
             onSelectedAssetChange(null);
           }}
+          selectedPersonGroupIds={selectedPersonGroupIds}
+          onTogglePersonGroup={onTogglePersonGroup}
           state={collectionTreeState}
           error={collectionTreeError}
         />
       </aside>
 
       <section className="panel-surface flex min-h-0 flex-col overflow-hidden p-1.5 lg:p-2">
-        <div className="flex items-center justify-end pb-1">
+        <div className="flex items-start justify-between gap-3 pb-1">
+          <div className="min-w-0 flex-1">
+            {activeSelectionPersonGroups.length > 0 ? (
+              <div className="flex flex-wrap items-center gap-1">
+                {activeSelectionPersonGroups.map((group) => (
+                  <PersonGroupChip
+                    key={group.groupId}
+                    group={group}
+                    active={selectedPersonGroupIds.includes(group.groupId)}
+                    onToggle={onTogglePersonGroup}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="text-xs text-slate-500">
+                Relevant person groups for the current album selection appear here.
+              </div>
+            )}
+          </div>
           {selectedAssetId !== null ? (
             <button
               type="button"

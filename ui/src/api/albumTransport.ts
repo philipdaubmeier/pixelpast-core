@@ -15,10 +15,21 @@ export type ApiAlbumFolderNode = {
   path: string;
   child_count: number;
   asset_count: number;
+  person_groups: ApiAlbumPersonGroupRelevance[];
 };
 
 export type ApiAlbumCollectionNode = ApiAlbumFolderNode & {
   collection_type: string;
+};
+
+export type ApiAlbumPersonGroupRelevance = {
+  group_id: number;
+  group_name: string;
+  color_index?: number;
+  matched_person_count: number;
+  group_person_count: number;
+  matched_asset_count: number;
+  matched_creator_person_count: number;
 };
 
 export type ApiAlbumSelection = {
@@ -76,6 +87,7 @@ export type ApiAlbumContextResponse = {
   supported_filters: string[];
   applied_filters: ApiAlbumAppliedFilters;
   selection: ApiAlbumSelection;
+  person_groups: ApiAlbumPersonGroupRelevance[];
   persons: ApiAlbumContextPerson[];
   tags: ApiAlbumContextTag[];
   map_points: ApiAlbumContextMapPoint[];
