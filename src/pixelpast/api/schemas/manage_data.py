@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from typing import Annotated
+
+from pydantic import BaseModel, Field, StrictInt
 
 
 class PersonCatalogEntry(BaseModel):
@@ -42,6 +44,16 @@ class PersonGroupCatalogEntry(BaseModel):
     id: int
     name: str
     member_count: int
+    ui: "PersonGroupUiEntry" = Field(default_factory=lambda: PersonGroupUiEntry())
+
+
+PositiveColorIndex = Annotated[StrictInt, Field(gt=0)]
+
+
+class PersonGroupUiEntry(BaseModel):
+    """Explicit UI-owned person-group metadata exposed through the API."""
+
+    color_index: PositiveColorIndex | None = None
 
 
 class PersonGroupCatalogWriteEntry(BaseModel):
@@ -49,6 +61,7 @@ class PersonGroupCatalogWriteEntry(BaseModel):
 
     id: int | None = Field(default=None)
     name: str = Field(min_length=1)
+    ui: PersonGroupUiEntry = Field(default_factory=PersonGroupUiEntry)
 
 
 class PersonGroupAlbumAggregateRulesEntry(BaseModel):
@@ -85,6 +98,7 @@ class PersonGroupMembershipGroupEntry(BaseModel):
     id: int
     name: str
     member_count: int
+    ui: PersonGroupUiEntry = Field(default_factory=PersonGroupUiEntry)
     album_aggregate_rules: PersonGroupAlbumAggregateRulesEntry = Field(
         default_factory=PersonGroupAlbumAggregateRulesEntry
     )

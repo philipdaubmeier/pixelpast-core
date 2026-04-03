@@ -8,6 +8,7 @@ from pixelpast.api.schemas.manage_data import (
     PersonGroupAlbumAggregateRulesEntry,
     PersonGroupCatalogEntry,
     PersonGroupCatalogWriteEntry,
+    PersonGroupUiEntry,
     PersonGroupMembershipGroupEntry,
     PersonGroupMembershipMemberEntry,
     PersonGroupMembershipResponse,
@@ -84,6 +85,7 @@ class ManageDataCatalogService:
                     id=snapshot.id,
                     name=snapshot.name,
                     member_count=snapshot.member_count,
+                    ui=PersonGroupUiEntry(color_index=snapshot.color_index),
                 )
                 for snapshot in self._person_group_repository.list_catalog()
             ]
@@ -129,6 +131,7 @@ class ManageDataCatalogService:
                 id=group_snapshot.id,
                 name=group_snapshot.name,
                 member_count=group_snapshot.member_count,
+                ui=PersonGroupUiEntry(color_index=group_snapshot.color_index),
                 album_aggregate_rules=PersonGroupAlbumAggregateRulesEntry(
                     ignored_person_ids=list(group_snapshot.ignored_person_ids)
                 ),
@@ -290,6 +293,7 @@ def _normalize_person_group_write_entry(
         id=row.id or 0,
         name=name,
         member_count=0,
+        color_index=row.ui.color_index,
         ignored_person_ids=[],
     )
 

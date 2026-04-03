@@ -22,6 +22,9 @@ export type ApiPersonGroupsCatalogResponse = {
     id: number;
     name: string;
     member_count: number;
+    ui: {
+      color_index: number | null;
+    };
   }>;
 };
 
@@ -29,6 +32,9 @@ export type ApiSavePersonGroupsCatalogRequest = {
   person_groups: Array<{
     id?: number;
     name: string;
+    ui: {
+      color_index: number | null;
+    };
   }>;
   delete_ids: number[];
 };
@@ -38,6 +44,9 @@ export type ApiPersonGroupMembershipResponse = {
     id: number;
     name: string;
     member_count: number;
+    ui: {
+      color_index: number | null;
+    };
     album_aggregate_rules: {
       ignored_person_ids: number[];
     };

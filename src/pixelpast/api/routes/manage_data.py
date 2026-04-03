@@ -86,8 +86,18 @@ PERSON_GROUPS_CATALOG_EXAMPLES = {
         "summary": "Loaded manual person-group catalog",
         "value": {
             "person_groups": [
-                {"id": 3, "name": "Immediate Family", "member_count": 4},
-                {"id": 8, "name": "Berlin Friends", "member_count": 7},
+                {
+                    "id": 3,
+                    "name": "Immediate Family",
+                    "member_count": 4,
+                    "ui": {"color_index": 2},
+                },
+                {
+                    "id": 8,
+                    "name": "Berlin Friends",
+                    "member_count": 7,
+                    "ui": {"color_index": None},
+                },
             ]
         },
     }
@@ -98,8 +108,8 @@ SAVE_PERSON_GROUPS_EXAMPLES = {
         "summary": "Create, update, and delete manual groups",
         "value": {
             "person_groups": [
-                {"id": 3, "name": "Immediate Family"},
-                {"name": "Travel Buddies"},
+                {"id": 3, "name": "Immediate Family", "ui": {"color_index": 2}},
+                {"name": "Travel Buddies", "ui": {"color_index": 5}},
             ],
             "delete_ids": [8],
         },
@@ -114,6 +124,7 @@ PERSON_GROUP_MEMBERSHIP_EXAMPLES = {
                 "id": 3,
                 "name": "Immediate Family",
                 "member_count": 2,
+                "ui": {"color_index": 2},
                 "album_aggregate_rules": {
                     "ignored_person_ids": [7],
                 },

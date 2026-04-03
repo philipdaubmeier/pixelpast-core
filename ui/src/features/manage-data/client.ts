@@ -28,6 +28,7 @@ function toDraftPersonGroupsCatalog(
     id: String(group.id),
     name: group.name,
     memberCount: group.member_count,
+    colorIndex: group.ui.color_index,
   }));
 }
 
@@ -38,6 +39,7 @@ function toDraftPersonGroupMembership(
     groupId: String(response.person_group.id),
     groupName: response.person_group.name,
     memberCount: response.person_group.member_count,
+    groupColorIndex: response.person_group.ui.color_index,
     albumAggregateIgnoredPersonIds: (
       response.person_group.album_aggregate_rules?.ignored_person_ids ?? []
     ).map((personId) => String(personId)),
@@ -95,6 +97,9 @@ export const manageDataClient = {
       person_groups: rows.map((row) => ({
         id: toPersistedIdentifier(row.id),
         name: row.name,
+        ui: {
+          color_index: row.colorIndex,
+        },
       })),
       delete_ids: deleteIds,
     });

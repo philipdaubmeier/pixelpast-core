@@ -30,6 +30,7 @@ class PersonGroupCatalogSnapshot:
     id: int
     name: str
     member_count: int
+    color_index: int | None
     ignored_person_ids: list[int]
 
 
@@ -146,6 +147,7 @@ class ManageDataPersonGroupRepository:
                 id=group_id,
                 name=name,
                 member_count=member_count,
+                color_index=_normalize_person_group_color_index(metadata_json),
                 ignored_person_ids=_normalize_album_aggregate_ignored_person_ids(
                     metadata_json
                 ),
@@ -187,6 +189,7 @@ class ManageDataPersonGroupRepository:
             id=snapshot_group_id,
             name=name,
             member_count=member_count,
+            color_index=_normalize_person_group_color_index(metadata_json),
             ignored_person_ids=_normalize_album_aggregate_ignored_person_ids(
                 metadata_json
             ),
@@ -237,6 +240,10 @@ class ManageDataPersonGroupRepository:
                 group = existing_groups_by_id[row.id]
                 group.name = row.name
                 group.type = MANUAL_PERSON_GROUP_TYPE
+                group.metadata_json = _with_person_group_color_index(
+                    group.metadata_json,
+                    row.color_index,
+                )
                 continue
 
             self._session.add(
@@ -244,7 +251,7 @@ class ManageDataPersonGroupRepository:
                     name=row.name,
                     type=MANUAL_PERSON_GROUP_TYPE,
                     path=None,
-                    metadata_json={},
+                    metadata_json=_with_person_group_color_index({}, row.color_index),
                 )
             )
 
@@ -347,6 +354,46 @@ def _normalize_album_aggregate_ignored_person_ids(
             if isinstance(value, int) and not isinstance(value, bool)
         ]
     )
+
+
+def _normalize_person_group_color_index(metadata_json: Any) -> int | None:
+    if not isinstance(metadata_json, dict):
+        return None
+    ui_metadata = metadata_json.get("ui")
+    if not isinstance(ui_metadata, dict):
+        return None
+    color_index = ui_metadata.get("color_index")
+    if (
+        not isinstance(color_index, int)
+        or isinstance(color_index, bool)
+        or color_index <= 0
+    ):
+        return None
+    return color_index
+
+
+def _with_person_group_color_index(
+    metadata_json: Any,
+    color_index: int | None,
+) -> dict[str, Any]:
+    normalized_metadata = dict(metadata_json) if isinstance(metadata_json, dict) else {}
+    ui_metadata = (
+        dict(normalized_metadata.get("ui"))
+        if isinstance(normalized_metadata.get("ui"), dict)
+        else {}
+    )
+
+    if color_index is None:
+        ui_metadata.pop("color_index", None)
+    else:
+        ui_metadata["color_index"] = color_index
+
+    if ui_metadata:
+        normalized_metadata["ui"] = ui_metadata
+    else:
+        normalized_metadata.pop("ui", None)
+
+    return normalized_metadata
 
 
 def _normalize_member_identifier_list(person_ids: list[int]) -> list[int]:

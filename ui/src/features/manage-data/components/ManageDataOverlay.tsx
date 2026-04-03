@@ -1068,6 +1068,7 @@ export function ManageDataOverlay(props: {
           id: createTemporaryId("group"),
           name: "",
           memberCount: 0,
+          colorIndex: null,
         },
       ],
     }));

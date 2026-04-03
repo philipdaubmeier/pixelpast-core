@@ -17,9 +17,12 @@ def test_manage_data_client_maps_person_groups_catalog_and_delete_contract() -> 
     assert "manageDataTransport.getPersonGroupsCatalog()" in source
     assert "manageDataTransport.savePersonGroupsCatalog" in source
     assert "memberCount: group.member_count" in source
+    assert "colorIndex: group.ui.color_index" in source
+    assert "color_index: row.colorIndex" in source
     assert "delete_ids: deleteIds" in source
     assert "getPersonGroupMembership(groupId)" in source
     assert "savePersonGroupMembership(groupId" in source
+    assert "groupColorIndex: response.person_group.ui.color_index" in source
     assert "albumAggregateIgnoredPersonIds" in source
     assert "ignored_person_ids" in source
 

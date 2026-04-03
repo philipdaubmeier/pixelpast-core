@@ -11,6 +11,7 @@ export type PersonGroupCatalogDraftRow = {
   id: string;
   name: string;
   memberCount: number;
+  colorIndex: number | null;
 };
 
 export type PersonGroupMembershipDraftMember = {
@@ -24,6 +25,7 @@ export type PersonGroupMembershipDraft = {
   groupId: string;
   groupName: string;
   memberCount: number;
+  groupColorIndex: number | null;
   members: PersonGroupMembershipDraftMember[];
   albumAggregateIgnoredPersonIds: string[];
 };

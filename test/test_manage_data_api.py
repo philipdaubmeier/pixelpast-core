@@ -251,8 +251,18 @@ def test_manage_data_person_groups_save_supports_member_counts_and_cleanup() -> 
         assert list_response.status_code == 200
         assert list_response.json() == {
             "person_groups": [
-                {"id": 2, "name": "Berlin Friends", "member_count": 1},
-                {"id": 1, "name": "Immediate Family", "member_count": 2},
+                {
+                    "id": 2,
+                    "name": "Berlin Friends",
+                    "member_count": 1,
+                    "ui": {"color_index": None},
+                },
+                {
+                    "id": 1,
+                    "name": "Immediate Family",
+                    "member_count": 2,
+                    "ui": {"color_index": None},
+                },
             ]
         }
 
@@ -261,8 +271,12 @@ def test_manage_data_person_groups_save_supports_member_counts_and_cleanup() -> 
                 "/api/manage-data/person-groups",
                 json={
                     "person_groups": [
-                        {"id": 1, "name": "Immediate Family Core"},
-                        {"name": "Travel Buddies"},
+                        {
+                            "id": 1,
+                            "name": "Immediate Family Core",
+                            "ui": {"color_index": 2},
+                        },
+                        {"name": "Travel Buddies", "ui": {"color_index": None}},
                     ],
                     "delete_ids": [2],
                 },
@@ -271,8 +285,18 @@ def test_manage_data_person_groups_save_supports_member_counts_and_cleanup() -> 
         assert save_response.status_code == 200
         assert save_response.json() == {
             "person_groups": [
-                {"id": 1, "name": "Immediate Family Core", "member_count": 2},
-                {"id": 2, "name": "Travel Buddies", "member_count": 0},
+                {
+                    "id": 1,
+                    "name": "Immediate Family Core",
+                    "member_count": 2,
+                    "ui": {"color_index": 2},
+                },
+                {
+                    "id": 2,
+                    "name": "Travel Buddies",
+                    "member_count": 0,
+                    "ui": {"color_index": None},
+                },
             ]
         }
 
@@ -288,6 +312,8 @@ def test_manage_data_person_groups_save_supports_member_counts_and_cleanup() -> 
             (1, "Immediate Family Core", MANUAL_PERSON_GROUP_TYPE),
             (2, "Travel Buddies", MANUAL_PERSON_GROUP_TYPE),
         ]
+        assert stored_groups[0].metadata_json == {"seeded": True, "ui": {"color_index": 2}}
+        assert stored_groups[1].metadata_json == {}
         assert [(link.group_id, link.person_id) for link in stored_memberships] == [
             (1, 1),
             (1, 2),
@@ -348,6 +374,7 @@ def test_manage_data_person_group_membership_contract_replaces_member_set() -> N
                 "id": 1,
                 "name": "Travel Buddies",
                 "member_count": 2,
+                "ui": {"color_index": None},
                 "album_aggregate_rules": {"ignored_person_ids": []},
             },
             "members": [
@@ -381,6 +408,7 @@ def test_manage_data_person_group_membership_contract_replaces_member_set() -> N
                 "id": 1,
                 "name": "Travel Buddies",
                 "member_count": 2,
+                "ui": {"color_index": None},
                 "album_aggregate_rules": {"ignored_person_ids": [1, 3]},
             },
             "members": [
@@ -439,6 +467,118 @@ def test_manage_data_person_group_membership_contract_replaces_member_set() -> N
                 "album aggregate ignored person ids must be members of the person group"
             )
         }
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_manage_data_person_groups_color_index_round_trips_and_preserves_other_metadata() -> None:
+    workspace_root = _create_workspace_dir(prefix="manage-data-person-groups-color-index")
+    runtime = None
+    try:
+        runtime = _create_runtime(workspace_root=workspace_root)
+        with runtime.session_factory() as session:
+            group = PersonGroup(
+                name="Immediate Family",
+                type=MANUAL_PERSON_GROUP_TYPE,
+                path=None,
+                metadata_json={
+                    "album_aggregate": {"ignored_person_ids": [7]},
+                    "seeded": True,
+                },
+            )
+            malformed_group = PersonGroup(
+                name="Malformed Group",
+                type=MANUAL_PERSON_GROUP_TYPE,
+                path=None,
+                metadata_json={"ui": {"color_index": 0}},
+            )
+            session.add_all([group, malformed_group])
+            session.commit()
+
+        app = create_app(settings=runtime.settings)
+        with TestClient(app) as client:
+            list_response = client.get("/api/manage-data/person-groups")
+
+        assert list_response.status_code == 200
+        assert list_response.json() == {
+            "person_groups": [
+                {
+                    "id": 1,
+                    "name": "Immediate Family",
+                    "member_count": 0,
+                    "ui": {"color_index": None},
+                },
+                {
+                    "id": 2,
+                    "name": "Malformed Group",
+                    "member_count": 0,
+                    "ui": {"color_index": None},
+                },
+            ]
+        }
+
+        with TestClient(app) as client:
+            save_response = client.put(
+                "/api/manage-data/person-groups",
+                json={
+                    "person_groups": [
+                        {
+                            "id": 1,
+                            "name": "Immediate Family",
+                            "ui": {"color_index": 3},
+                        },
+                        {
+                            "id": 2,
+                            "name": "Malformed Group",
+                            "ui": {"color_index": None},
+                        },
+                    ],
+                    "delete_ids": [],
+                },
+            )
+
+        assert save_response.status_code == 200
+        assert save_response.json()["person_groups"][0]["ui"] == {"color_index": 3}
+
+        with runtime.session_factory() as session:
+            stored_groups = session.query(PersonGroup).order_by(PersonGroup.id).all()
+
+        assert stored_groups[0].metadata_json == {
+            "album_aggregate": {"ignored_person_ids": [7]},
+            "seeded": True,
+            "ui": {"color_index": 3},
+        }
+        assert stored_groups[1].metadata_json == {}
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_manage_data_person_groups_save_rejects_invalid_color_index_shape() -> None:
+    workspace_root = _create_workspace_dir(prefix="manage-data-person-groups-invalid-color")
+    runtime = None
+    try:
+        runtime = _create_runtime(workspace_root=workspace_root)
+        app = create_app(settings=runtime.settings)
+
+        with TestClient(app) as client:
+            response = client.put(
+                "/api/manage-data/person-groups",
+                json={
+                    "person_groups": [
+                        {
+                            "name": "Immediate Family",
+                            "ui": {"color_index": 0},
+                        }
+                    ],
+                    "delete_ids": [],
+                },
+            )
+
+        assert response.status_code == 422
     finally:
         if runtime is not None:
             runtime.engine.dispose()
