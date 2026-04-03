@@ -7,6 +7,7 @@ from pixelpast.api.schemas import (
     AlbumContextAssetItem,
     AlbumContextMapPoint,
     AlbumContextPerson,
+    AlbumPersonGroupRelevance,
     AlbumContextResponse,
     AlbumContextSummaryCounts,
     AlbumContextTag,
@@ -30,6 +31,7 @@ from pixelpast.persistence.repositories.album_navigation_read import (
     AlbumContextAssetSnapshot,
     AlbumContextMapPointSnapshot,
     AlbumContextPersonSnapshot,
+    AlbumPersonGroupRelevanceSnapshot,
     AlbumContextSnapshot,
     AlbumContextTagSnapshot,
     AlbumCollectionTreeNodeSnapshot,
@@ -39,7 +41,13 @@ from pixelpast.persistence.repositories.album_navigation_read import (
     AlbumQueryFilters,
 )
 
-SUPPORTED_ALBUM_FILTERS: tuple[str, ...] = ("person_ids", "tag_paths", "filename_query")
+SUPPORTED_NAVIGATION_FILTERS: tuple[str, ...] = (
+    "person_ids",
+    "person_group_ids",
+    "tag_paths",
+    "filename_query",
+)
+SUPPORTED_LISTING_FILTERS: tuple[str, ...] = ("person_ids", "tag_paths", "filename_query")
 
 
 class AlbumNavigationQueryService:
@@ -52,7 +60,7 @@ class AlbumNavigationQueryService:
         """Return the filtered physical folder tree."""
 
         return AlbumFoldersTreeResponse(
-            supported_filters=list(SUPPORTED_ALBUM_FILTERS),
+            supported_filters=list(SUPPORTED_NAVIGATION_FILTERS),
             applied_filters=_to_applied_filters(filters),
             nodes=[
                 _to_folder_tree_node(node)
@@ -68,7 +76,7 @@ class AlbumNavigationQueryService:
         """Return the filtered semantic collection tree."""
 
         return AlbumCollectionsTreeResponse(
-            supported_filters=list(SUPPORTED_ALBUM_FILTERS),
+            supported_filters=list(SUPPORTED_NAVIGATION_FILTERS),
             applied_filters=_to_applied_filters(filters),
             nodes=[
                 _to_collection_tree_node(node)
@@ -149,6 +157,7 @@ class AlbumNavigationQueryService:
 def _to_applied_filters(filters: AlbumQueryFilters) -> AlbumAppliedFilters:
     return AlbumAppliedFilters(
         person_ids=list(filters.person_ids),
+        person_group_ids=list(filters.person_group_ids) or None,
         tag_paths=list(filters.tag_paths),
         filename_query=filters.filename_query,
     )
@@ -165,6 +174,7 @@ def _to_folder_tree_node(node: AlbumFolderTreeNodeSnapshot) -> AlbumFolderTreeNo
         path=node.path,
         child_count=node.child_count,
         asset_count=node.asset_count,
+        person_groups=[_to_person_group_relevance(group) for group in node.person_groups],
     )
 
 
@@ -182,6 +192,7 @@ def _to_collection_tree_node(
         collection_type=node.collection_type,
         child_count=node.child_count,
         asset_count=node.asset_count,
+        person_groups=[_to_person_group_relevance(group) for group in node.person_groups],
     )
 
 
@@ -191,7 +202,7 @@ def _to_asset_listing_response(
     filters: AlbumQueryFilters,
 ) -> AlbumAssetListingResponse:
     return AlbumAssetListingResponse(
-        supported_filters=list(SUPPORTED_ALBUM_FILTERS),
+        supported_filters=list(SUPPORTED_LISTING_FILTERS),
         applied_filters=_to_applied_filters(filters),
         selection=AlbumSelection(
             node_kind=snapshot.selection.node_kind,
@@ -257,7 +268,7 @@ def _to_context_response(
     filters: AlbumQueryFilters,
 ) -> AlbumContextResponse:
     return AlbumContextResponse(
-        supported_filters=list(SUPPORTED_ALBUM_FILTERS),
+        supported_filters=list(SUPPORTED_NAVIGATION_FILTERS),
         applied_filters=_to_applied_filters(filters),
         selection=AlbumSelection(
             node_kind=snapshot.selection.node_kind,
@@ -271,6 +282,7 @@ def _to_context_response(
             asset_count=snapshot.selection.asset_count,
             collection_type=snapshot.selection.collection_type,
         ),
+        person_groups=[_to_person_group_relevance(group) for group in snapshot.person_groups],
         persons=[_to_context_person(person) for person in snapshot.persons],
         tags=[_to_context_tag(tag) for tag in snapshot.tags],
         map_points=[_to_context_map_point(point) for point in snapshot.map_points],
@@ -337,4 +349,18 @@ def _to_context_map_point(
         latitude=point.latitude,
         longitude=point.longitude,
         asset_count=point.asset_count,
+    )
+
+
+def _to_person_group_relevance(
+    group: AlbumPersonGroupRelevanceSnapshot,
+) -> AlbumPersonGroupRelevance:
+    return AlbumPersonGroupRelevance(
+        group_id=group.group_id,
+        group_name=group.group_name,
+        color_index=group.color_index,
+        matched_person_count=group.matched_person_count,
+        group_person_count=group.group_person_count,
+        matched_asset_count=group.matched_asset_count,
+        matched_creator_person_count=group.matched_creator_person_count,
     )

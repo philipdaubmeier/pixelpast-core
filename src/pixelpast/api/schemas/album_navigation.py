@@ -9,8 +9,21 @@ class AlbumAppliedFilters(BaseModel):
     """Explicit supported filter state applied to an album response."""
 
     person_ids: list[int] = Field(default_factory=list)
+    person_group_ids: list[int] | None = None
     tag_paths: list[str] = Field(default_factory=list)
     filename_query: str | None = None
+
+
+class AlbumPersonGroupRelevance(BaseModel):
+    """Derived person-group relevance summary for one album node."""
+
+    group_id: int
+    group_name: str
+    color_index: int | None = None
+    matched_person_count: int
+    group_person_count: int
+    matched_asset_count: int
+    matched_creator_person_count: int
 
 
 class AlbumFolderTreeNode(BaseModel):
@@ -25,6 +38,7 @@ class AlbumFolderTreeNode(BaseModel):
     path: str
     child_count: int
     asset_count: int
+    person_groups: list[AlbumPersonGroupRelevance] = Field(default_factory=list)
 
 
 class AlbumCollectionTreeNode(BaseModel):
@@ -40,6 +54,7 @@ class AlbumCollectionTreeNode(BaseModel):
     collection_type: str
     child_count: int
     asset_count: int
+    person_groups: list[AlbumPersonGroupRelevance] = Field(default_factory=list)
 
 
 class AlbumFoldersTreeResponse(BaseModel):
@@ -161,6 +176,7 @@ class AlbumContextResponse(BaseModel):
     supported_filters: list[str]
     applied_filters: AlbumAppliedFilters
     selection: AlbumSelection
+    person_groups: list[AlbumPersonGroupRelevance] = Field(default_factory=list)
     persons: list[AlbumContextPerson] = Field(default_factory=list)
     tags: list[AlbumContextTag] = Field(default_factory=list)
     map_points: list[AlbumContextMapPoint] = Field(default_factory=list)

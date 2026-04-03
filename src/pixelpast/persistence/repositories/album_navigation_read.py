@@ -6,17 +6,20 @@ from dataclasses import dataclass
 from pathlib import PurePath
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from pixelpast.persistence.models import (
     Asset,
     AssetCollection,
     AssetCollectionItem,
+    AssetCollectionPersonGroup,
     AssetFolder,
+    AssetFolderPersonGroup,
     AssetPerson,
     AssetTag,
     Person,
+    PersonGroup,
     Source,
     Tag,
 )
@@ -27,8 +30,22 @@ class AlbumQueryFilters:
     """Normalized supported persistent filters for album reads."""
 
     person_ids: tuple[int, ...] = ()
+    person_group_ids: tuple[int, ...] = ()
     tag_paths: tuple[str, ...] = ()
     filename_query: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class AlbumPersonGroupRelevanceSnapshot:
+    """Serializable derived person-group relevance for one album node."""
+
+    group_id: int
+    group_name: str
+    color_index: int | None
+    matched_person_count: int
+    group_person_count: int
+    matched_asset_count: int
+    matched_creator_person_count: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,6 +61,7 @@ class AlbumFolderTreeNodeSnapshot:
     path: str
     child_count: int
     asset_count: int
+    person_groups: tuple[AlbumPersonGroupRelevanceSnapshot, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,6 +78,7 @@ class AlbumCollectionTreeNodeSnapshot:
     collection_type: str
     child_count: int
     asset_count: int
+    person_groups: tuple[AlbumPersonGroupRelevanceSnapshot, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -171,6 +190,7 @@ class AlbumContextSnapshot:
     """Serializable stable album context for one selected folder or collection."""
 
     selection: AlbumSelectionSnapshot
+    person_groups: tuple[AlbumPersonGroupRelevanceSnapshot, ...]
     persons: tuple[AlbumContextPersonSnapshot, ...]
     tags: tuple[AlbumContextTagSnapshot, ...]
     map_points: tuple[AlbumContextMapPointSnapshot, ...]
@@ -287,7 +307,17 @@ class AlbumNavigationReadRepository:
         """Return the physical folder tree with filtered descendant asset counts."""
 
         nodes = self._list_folder_nodes()
+        person_groups_by_folder_id = self._list_folder_person_groups_by_node_id()
         counts = self._count_assets_by_folder_subtree(filters=filters, nodes=nodes)
+        if filters.person_group_ids:
+            nodes = [
+                node
+                for node in nodes
+                if any(
+                    group.group_id in filters.person_group_ids
+                    for group in person_groups_by_folder_id.get(node.id, ())
+                )
+            ]
         child_counts = _count_children_by_parent_id(node.parent_id for node in nodes)
         ordered_nodes = sorted(
             nodes,
@@ -309,6 +339,7 @@ class AlbumNavigationReadRepository:
                 path=node.path,
                 child_count=child_counts.get(node.id, 0),
                 asset_count=counts.get(node.id, 0),
+                person_groups=person_groups_by_folder_id.get(node.id, ()),
             )
             for node in ordered_nodes
         )
@@ -321,7 +352,17 @@ class AlbumNavigationReadRepository:
         """Return the semantic collection tree with filtered asset counts."""
 
         nodes = self._list_collection_nodes()
+        person_groups_by_collection_id = self._list_collection_person_groups_by_node_id()
         counts = self._count_assets_by_collection_subtree(filters=filters, nodes=nodes)
+        if filters.person_group_ids:
+            nodes = [
+                node
+                for node in nodes
+                if any(
+                    group.group_id in filters.person_group_ids
+                    for group in person_groups_by_collection_id.get(node.id, ())
+                )
+            ]
         child_counts = _count_children_by_parent_id(node.parent_id for node in nodes)
         ordered_nodes = sorted(
             nodes,
@@ -344,6 +385,7 @@ class AlbumNavigationReadRepository:
                 collection_type=node.collection_type,
                 child_count=child_counts.get(node.id, 0),
                 asset_count=counts.get(node.id, 0),
+                person_groups=person_groups_by_collection_id.get(node.id, ()),
             )
             for node in ordered_nodes
         )
@@ -446,12 +488,18 @@ class AlbumNavigationReadRepository:
     ) -> AlbumContextSnapshot | None:
         """Return the stable context for one selected folder subtree."""
 
+        if filters.person_group_ids and not self._folder_matches_selected_person_groups(
+            folder_id=folder_id,
+            person_group_ids=filters.person_group_ids,
+        ):
+            return None
         listing = self.get_folder_asset_listing(folder_id=folder_id, filters=filters)
         if listing is None:
             return None
         return self._build_context_snapshot(
             selection=listing.selection,
             assets=tuple(self._list_assets_from_listing(listing)),
+            person_groups=self._list_person_groups_for_folder(folder_id=folder_id),
         )
 
     def get_collection_context(
@@ -462,6 +510,11 @@ class AlbumNavigationReadRepository:
     ) -> AlbumContextSnapshot | None:
         """Return the stable context for one selected collection subtree."""
 
+        if filters.person_group_ids and not self._collection_matches_selected_person_groups(
+            collection_id=collection_id,
+            person_group_ids=filters.person_group_ids,
+        ):
+            return None
         listing = self.get_collection_asset_listing(
             collection_id=collection_id,
             filters=filters,
@@ -471,6 +524,7 @@ class AlbumNavigationReadRepository:
         return self._build_context_snapshot(
             selection=listing.selection,
             assets=tuple(self._list_assets_from_listing(listing)),
+            person_groups=self._list_person_groups_for_collection(collection_id=collection_id),
         )
 
     def get_asset_detail(self, *, asset_id: int) -> AlbumAssetDetailSnapshot | None:
@@ -614,6 +668,120 @@ class AlbumNavigationReadRepository:
             ) in rows
         ]
 
+    def _list_folder_person_groups_by_node_id(
+        self,
+    ) -> dict[int, tuple[AlbumPersonGroupRelevanceSnapshot, ...]]:
+        rows = self._session.execute(
+            select(
+                AssetFolderPersonGroup.folder_id,
+                PersonGroup.id,
+                PersonGroup.name,
+                PersonGroup.metadata_json,
+                AssetFolderPersonGroup.matched_person_count,
+                AssetFolderPersonGroup.group_person_count,
+                AssetFolderPersonGroup.matched_asset_count,
+                AssetFolderPersonGroup.matched_creator_person_count,
+            )
+            .join(PersonGroup, PersonGroup.id == AssetFolderPersonGroup.group_id)
+            .order_by(
+                AssetFolderPersonGroup.folder_id,
+                AssetFolderPersonGroup.matched_person_count.desc(),
+                AssetFolderPersonGroup.matched_asset_count.desc(),
+                func.lower(PersonGroup.name),
+                PersonGroup.id,
+            )
+        )
+        grouped_rows: dict[int, list[AlbumPersonGroupRelevanceSnapshot]] = {}
+        for (
+            folder_id,
+            group_id,
+            group_name,
+            metadata_json,
+            matched_person_count,
+            group_person_count,
+            matched_asset_count,
+            matched_creator_person_count,
+        ) in rows:
+            grouped_rows.setdefault(folder_id, []).append(
+                AlbumPersonGroupRelevanceSnapshot(
+                    group_id=group_id,
+                    group_name=group_name,
+                    color_index=_normalize_person_group_color_index(metadata_json),
+                    matched_person_count=matched_person_count,
+                    group_person_count=group_person_count,
+                    matched_asset_count=matched_asset_count,
+                    matched_creator_person_count=matched_creator_person_count,
+                )
+            )
+        return {
+            folder_id: tuple(group_rows)
+            for folder_id, group_rows in grouped_rows.items()
+        }
+
+    def _list_collection_person_groups_by_node_id(
+        self,
+    ) -> dict[int, tuple[AlbumPersonGroupRelevanceSnapshot, ...]]:
+        rows = self._session.execute(
+            select(
+                AssetCollectionPersonGroup.collection_id,
+                PersonGroup.id,
+                PersonGroup.name,
+                PersonGroup.metadata_json,
+                AssetCollectionPersonGroup.matched_person_count,
+                AssetCollectionPersonGroup.group_person_count,
+                AssetCollectionPersonGroup.matched_asset_count,
+                AssetCollectionPersonGroup.matched_creator_person_count,
+            )
+            .join(PersonGroup, PersonGroup.id == AssetCollectionPersonGroup.group_id)
+            .order_by(
+                AssetCollectionPersonGroup.collection_id,
+                AssetCollectionPersonGroup.matched_person_count.desc(),
+                AssetCollectionPersonGroup.matched_asset_count.desc(),
+                func.lower(PersonGroup.name),
+                PersonGroup.id,
+            )
+        )
+        grouped_rows: dict[int, list[AlbumPersonGroupRelevanceSnapshot]] = {}
+        for (
+            collection_id,
+            group_id,
+            group_name,
+            metadata_json,
+            matched_person_count,
+            group_person_count,
+            matched_asset_count,
+            matched_creator_person_count,
+        ) in rows:
+            grouped_rows.setdefault(collection_id, []).append(
+                AlbumPersonGroupRelevanceSnapshot(
+                    group_id=group_id,
+                    group_name=group_name,
+                    color_index=_normalize_person_group_color_index(metadata_json),
+                    matched_person_count=matched_person_count,
+                    group_person_count=group_person_count,
+                    matched_asset_count=matched_asset_count,
+                    matched_creator_person_count=matched_creator_person_count,
+                )
+            )
+        return {
+            collection_id: tuple(group_rows)
+            for collection_id, group_rows in grouped_rows.items()
+        }
+
+    def _list_person_groups_for_folder(
+        self,
+        *,
+        folder_id: int,
+    ) -> tuple[AlbumPersonGroupRelevanceSnapshot, ...]:
+        return self._list_folder_person_groups_by_node_id().get(folder_id, ())
+
+    def _list_person_groups_for_collection(
+        self,
+        *,
+        collection_id: int,
+    ) -> tuple[AlbumPersonGroupRelevanceSnapshot, ...]:
+        return self._list_collection_person_groups_by_node_id().get(collection_id, ())
+
     def _list_filtered_assets(self, *, filters: AlbumQueryFilters) -> list[_AssetRow]:
         assets = self._list_all_assets()
         if not assets:
@@ -754,6 +922,28 @@ class AlbumNavigationReadRepository:
             memberships.setdefault(asset_id, set()).add(collection_id)
         return memberships
 
+    def _folder_matches_selected_person_groups(
+        self,
+        *,
+        folder_id: int,
+        person_group_ids: tuple[int, ...],
+    ) -> bool:
+        return any(
+            group.group_id in person_group_ids
+            for group in self._list_person_groups_for_folder(folder_id=folder_id)
+        )
+
+    def _collection_matches_selected_person_groups(
+        self,
+        *,
+        collection_id: int,
+        person_group_ids: tuple[int, ...],
+    ) -> bool:
+        return any(
+            group.group_id in person_group_ids
+            for group in self._list_person_groups_for_collection(collection_id=collection_id)
+        )
+
     def _count_assets_by_folder_subtree(
         self,
         *,
@@ -819,6 +1009,7 @@ class AlbumNavigationReadRepository:
         *,
         selection: AlbumSelectionSnapshot,
         assets: tuple[_AssetRow, ...],
+        person_groups: tuple[AlbumPersonGroupRelevanceSnapshot, ...],
     ) -> AlbumContextSnapshot:
         asset_ids = [asset.id for asset in assets]
         person_links_by_asset = self._list_person_links_by_asset(asset_ids=asset_ids)
@@ -834,6 +1025,7 @@ class AlbumNavigationReadRepository:
         map_points, map_point_ids_by_asset = self._list_context_map_points(assets=assets)
         return AlbumContextSnapshot(
             selection=selection,
+            person_groups=person_groups,
             persons=persons,
             tags=tags,
             map_points=map_points,
@@ -1209,3 +1401,19 @@ def _extract_filename(value: str) -> str:
     if not normalized:
         return ""
     return PurePath(normalized).name or normalized
+
+
+def _normalize_person_group_color_index(metadata_json: Any) -> int | None:
+    if not isinstance(metadata_json, dict):
+        return None
+    ui_metadata = metadata_json.get("ui")
+    if not isinstance(ui_metadata, dict):
+        return None
+    color_index = ui_metadata.get("color_index")
+    if (
+        not isinstance(color_index, int)
+        or isinstance(color_index, bool)
+        or color_index <= 0
+    ):
+        return None
+    return color_index

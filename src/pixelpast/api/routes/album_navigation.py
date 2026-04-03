@@ -31,9 +31,15 @@ ALBUM_FOLDERS_TREE_EXAMPLES = {
     "photo_import_folders": {
         "summary": "Physical folder tree with filtered aggregate counts",
         "value": {
-            "supported_filters": ["person_ids", "tag_paths", "filename_query"],
+            "supported_filters": [
+                "person_ids",
+                "person_group_ids",
+                "tag_paths",
+                "filename_query",
+            ],
             "applied_filters": {
                 "person_ids": [7],
+                "person_group_ids": [3],
                 "tag_paths": ["travel/italy"],
                 "filename_query": "IMG_1042",
             },
@@ -48,6 +54,17 @@ ALBUM_FOLDERS_TREE_EXAMPLES = {
                     "path": "photos",
                     "child_count": 2,
                     "asset_count": 6,
+                    "person_groups": [
+                        {
+                            "group_id": 3,
+                            "group_name": "Family",
+                            "color_index": 2,
+                            "matched_person_count": 4,
+                            "group_person_count": 5,
+                            "matched_asset_count": 6,
+                            "matched_creator_person_count": 2,
+                        }
+                    ],
                 },
                 {
                     "id": 3,
@@ -59,6 +76,17 @@ ALBUM_FOLDERS_TREE_EXAMPLES = {
                     "path": "photos/Italy",
                     "child_count": 0,
                     "asset_count": 4,
+                    "person_groups": [
+                        {
+                            "group_id": 3,
+                            "group_name": "Family",
+                            "color_index": 2,
+                            "matched_person_count": 2,
+                            "group_person_count": 5,
+                            "matched_asset_count": 4,
+                            "matched_creator_person_count": 1,
+                        }
+                    ],
                 },
             ],
         },
@@ -69,9 +97,15 @@ ALBUM_COLLECTIONS_TREE_EXAMPLES = {
     "lightroom_collections": {
         "summary": "Semantic collection tree with filtered aggregate counts",
         "value": {
-            "supported_filters": ["person_ids", "tag_paths", "filename_query"],
+            "supported_filters": [
+                "person_ids",
+                "person_group_ids",
+                "tag_paths",
+                "filename_query",
+            ],
             "applied_filters": {
                 "person_ids": [],
+                "person_group_ids": [5],
                 "tag_paths": ["travel"],
                 "filename_query": None,
             },
@@ -87,6 +121,17 @@ ALBUM_COLLECTIONS_TREE_EXAMPLES = {
                     "collection_type": "collection",
                     "child_count": 1,
                     "asset_count": 12,
+                    "person_groups": [
+                        {
+                            "group_id": 5,
+                            "group_name": "Friends",
+                            "color_index": 4,
+                            "matched_person_count": 3,
+                            "group_person_count": 4,
+                            "matched_asset_count": 12,
+                            "matched_creator_person_count": 1,
+                        }
+                    ],
                 }
             ],
         },
@@ -133,9 +178,15 @@ ALBUM_CONTEXT_EXAMPLES = {
     "folder_stable_context": {
         "summary": "Stable album context with per-asset hover highlights",
         "value": {
-            "supported_filters": ["person_ids", "tag_paths", "filename_query"],
+            "supported_filters": [
+                "person_ids",
+                "person_group_ids",
+                "tag_paths",
+                "filename_query",
+            ],
             "applied_filters": {
                 "person_ids": [1],
+                "person_group_ids": [3],
                 "tag_paths": ["travel/italy"],
                 "filename_query": None,
             },
@@ -151,6 +202,17 @@ ALBUM_CONTEXT_EXAMPLES = {
                 "asset_count": 2,
                 "collection_type": None,
             },
+            "person_groups": [
+                {
+                    "group_id": 3,
+                    "group_name": "Family",
+                    "color_index": 2,
+                    "matched_person_count": 2,
+                    "group_person_count": 5,
+                    "matched_asset_count": 2,
+                    "matched_creator_person_count": 1,
+                }
+            ],
             "persons": [
                 {
                     "id": 7,
@@ -247,7 +309,7 @@ ALBUM_BAD_REQUEST_EXAMPLES = {
         "value": {
             "detail": (
                 "unsupported album filters: distance_latitude, location_geometry; "
-                "supported filters: person_ids, tag_paths, filename_query"
+                "supported filters: person_ids, person_group_ids, tag_paths, filename_query"
             )
         },
     },
@@ -333,6 +395,13 @@ def get_album_folder_tree(
             "counts only when linked to at least one selected person."
         ),
     ),
+    person_group_ids: list[int] = Query(
+        default=[],
+        description=(
+            "Repeatable person-group identifiers. Folder nodes remain visible "
+            "only when they carry derived relevance for at least one selected group."
+        ),
+    ),
     tag_paths: list[str] = Query(
         default=[],
         description=(
@@ -375,6 +444,7 @@ def get_album_folder_tree(
 
     filters = _build_album_filters(
         person_ids=person_ids,
+        person_group_ids=person_group_ids,
         tag_paths=tag_paths,
         location_geometry=location_geometry,
         distance_latitude=distance_latitude,
@@ -420,6 +490,7 @@ def get_album_folder_tree(
 )
 def get_album_collection_tree(
     person_ids: list[int] = Query(default=[]),
+    person_group_ids: list[int] = Query(default=[]),
     tag_paths: list[str] = Query(default=[]),
     location_geometry: str | None = Query(default=None),
     distance_latitude: float | None = Query(default=None, ge=-90, le=90),
@@ -432,6 +503,7 @@ def get_album_collection_tree(
 
     filters = _build_album_filters(
         person_ids=person_ids,
+        person_group_ids=person_group_ids,
         tag_paths=tag_paths,
         location_geometry=location_geometry,
         distance_latitude=distance_latitude,
@@ -545,6 +617,7 @@ def get_album_folder_asset_listing(
 def get_album_folder_context(
     folder_id: int,
     person_ids: list[int] = Query(default=[]),
+    person_group_ids: list[int] = Query(default=[]),
     tag_paths: list[str] = Query(default=[]),
     location_geometry: str | None = Query(default=None),
     distance_latitude: float | None = Query(default=None, ge=-90, le=90),
@@ -557,6 +630,7 @@ def get_album_folder_context(
 
     filters = _build_album_filters(
         person_ids=person_ids,
+        person_group_ids=person_group_ids,
         tag_paths=tag_paths,
         location_geometry=location_geometry,
         distance_latitude=distance_latitude,
@@ -680,6 +754,7 @@ def get_album_collection_asset_listing(
 def get_album_collection_context(
     collection_id: int,
     person_ids: list[int] = Query(default=[]),
+    person_group_ids: list[int] = Query(default=[]),
     tag_paths: list[str] = Query(default=[]),
     location_geometry: str | None = Query(default=None),
     distance_latitude: float | None = Query(default=None, ge=-90, le=90),
@@ -692,6 +767,7 @@ def get_album_collection_context(
 
     filters = _build_album_filters(
         person_ids=person_ids,
+        person_group_ids=person_group_ids,
         tag_paths=tag_paths,
         location_geometry=location_geometry,
         distance_latitude=distance_latitude,
@@ -750,6 +826,7 @@ def get_album_asset_detail(
 def _build_album_filters(
     *,
     person_ids: list[int],
+    person_group_ids: list[int] | None = None,
     tag_paths: list[str],
     location_geometry: str | None,
     distance_latitude: float | None,
@@ -773,12 +850,13 @@ def _build_album_filters(
             detail=(
                 "unsupported album filters: "
                 + ", ".join(sorted(unsupported_filters))
-                + "; supported filters: person_ids, tag_paths, filename_query"
+                + "; supported filters: person_ids, person_group_ids, tag_paths, filename_query"
             ),
         )
 
     return AlbumQueryFilters(
         person_ids=tuple(sorted(set(person_ids))),
+        person_group_ids=tuple(sorted(set(person_group_ids or []))),
         tag_paths=tuple(sorted(set(tag_paths))),
         filename_query=filename_query.strip() if filename_query is not None else None,
     )

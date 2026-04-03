@@ -24,6 +24,7 @@ from pixelpast.persistence.repositories.album_navigation_read import (
     AlbumFaceRegionSnapshot,
     AlbumFolderTreeNodeSnapshot,
     AlbumNavigationReadRepository,
+    AlbumPersonGroupRelevanceSnapshot,
     AlbumQueryFilters,
     AlbumSelectionSnapshot,
 )
@@ -92,6 +93,7 @@ __all__ = [
     "AssetMediaRepository",
     "AlbumNavigationRepository",
     "AlbumNavigationReadRepository",
+    "AlbumPersonGroupRelevanceSnapshot",
     "AlbumAssetDetailSnapshot",
     "AlbumAggregateAssetEvidenceInput",
     "AlbumAggregateCollectionMembershipInput",

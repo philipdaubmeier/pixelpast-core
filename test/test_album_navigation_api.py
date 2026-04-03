@@ -14,10 +14,14 @@ from pixelpast.persistence.models import (
     Asset,
     AssetCollection,
     AssetCollectionItem,
+    AssetCollectionPersonGroup,
     AssetFolder,
+    AssetFolderPersonGroup,
     AssetPerson,
     AssetTag,
     Person,
+    PersonGroup,
+    PersonGroupMember,
     Source,
     Tag,
 )
@@ -41,9 +45,15 @@ def test_album_folder_tree_lists_stable_nodes_with_filtered_counts() -> None:
 
         assert response.status_code == 200
         assert response.json() == {
-            "supported_filters": ["person_ids", "tag_paths", "filename_query"],
+            "supported_filters": [
+                "person_ids",
+                "person_group_ids",
+                "tag_paths",
+                "filename_query",
+            ],
             "applied_filters": {
                 "person_ids": [1],
+                "person_group_ids": None,
                 "tag_paths": ["travel/italy"],
                 "filename_query": None,
             },
@@ -58,6 +68,26 @@ def test_album_folder_tree_lists_stable_nodes_with_filtered_counts() -> None:
                     "path": "photos",
                     "child_count": 1,
                     "asset_count": 1,
+                    "person_groups": [
+                        {
+                            "group_id": 1,
+                            "group_name": "Family",
+                            "color_index": 2,
+                            "matched_person_count": 2,
+                            "group_person_count": 2,
+                            "matched_asset_count": 2,
+                            "matched_creator_person_count": 1,
+                        },
+                        {
+                            "group_id": 2,
+                            "group_name": "Friends",
+                            "color_index": 5,
+                            "matched_person_count": 1,
+                            "group_person_count": 1,
+                            "matched_asset_count": 1,
+                            "matched_creator_person_count": 0,
+                        },
+                    ],
                 },
                 {
                     "id": 2,
@@ -69,6 +99,26 @@ def test_album_folder_tree_lists_stable_nodes_with_filtered_counts() -> None:
                     "path": "photos/2024",
                     "child_count": 2,
                     "asset_count": 1,
+                    "person_groups": [
+                        {
+                            "group_id": 1,
+                            "group_name": "Family",
+                            "color_index": 2,
+                            "matched_person_count": 2,
+                            "group_person_count": 2,
+                            "matched_asset_count": 2,
+                            "matched_creator_person_count": 1,
+                        },
+                        {
+                            "group_id": 2,
+                            "group_name": "Friends",
+                            "color_index": 5,
+                            "matched_person_count": 1,
+                            "group_person_count": 1,
+                            "matched_asset_count": 1,
+                            "matched_creator_person_count": 0,
+                        },
+                    ],
                 },
                 {
                     "id": 4,
@@ -80,6 +130,17 @@ def test_album_folder_tree_lists_stable_nodes_with_filtered_counts() -> None:
                     "path": "photos/2024/Home",
                     "child_count": 0,
                     "asset_count": 0,
+                    "person_groups": [
+                        {
+                            "group_id": 1,
+                            "group_name": "Family",
+                            "color_index": 2,
+                            "matched_person_count": 1,
+                            "group_person_count": 2,
+                            "matched_asset_count": 1,
+                            "matched_creator_person_count": 0,
+                        }
+                    ],
                 },
                 {
                     "id": 3,
@@ -91,6 +152,26 @@ def test_album_folder_tree_lists_stable_nodes_with_filtered_counts() -> None:
                     "path": "photos/2024/Trip",
                     "child_count": 0,
                     "asset_count": 1,
+                    "person_groups": [
+                        {
+                            "group_id": 1,
+                            "group_name": "Family",
+                            "color_index": 2,
+                            "matched_person_count": 1,
+                            "group_person_count": 2,
+                            "matched_asset_count": 1,
+                            "matched_creator_person_count": 1,
+                        },
+                        {
+                            "group_id": 2,
+                            "group_name": "Friends",
+                            "color_index": 5,
+                            "matched_person_count": 1,
+                            "group_person_count": 1,
+                            "matched_asset_count": 1,
+                            "matched_creator_person_count": 0,
+                        },
+                    ],
                 },
             ],
         }
@@ -113,9 +194,15 @@ def test_album_collection_tree_lists_stable_nodes_with_deduplicated_counts() -> 
 
         assert response.status_code == 200
         assert response.json() == {
-            "supported_filters": ["person_ids", "tag_paths", "filename_query"],
+            "supported_filters": [
+                "person_ids",
+                "person_group_ids",
+                "tag_paths",
+                "filename_query",
+            ],
             "applied_filters": {
                 "person_ids": [],
+                "person_group_ids": None,
                 "tag_paths": [],
                 "filename_query": None,
             },
@@ -131,6 +218,17 @@ def test_album_collection_tree_lists_stable_nodes_with_deduplicated_counts() -> 
                     "collection_type": "collection",
                     "child_count": 0,
                     "asset_count": 1,
+                    "person_groups": [
+                        {
+                            "group_id": 1,
+                            "group_name": "Family",
+                            "color_index": 2,
+                            "matched_person_count": 1,
+                            "group_person_count": 2,
+                            "matched_asset_count": 1,
+                            "matched_creator_person_count": 0,
+                        }
+                    ],
                 },
                 {
                     "id": 2,
@@ -143,6 +241,17 @@ def test_album_collection_tree_lists_stable_nodes_with_deduplicated_counts() -> 
                     "collection_type": "collection",
                     "child_count": 1,
                     "asset_count": 1,
+                    "person_groups": [
+                        {
+                            "group_id": 1,
+                            "group_name": "Family",
+                            "color_index": 2,
+                            "matched_person_count": 1,
+                            "group_person_count": 2,
+                            "matched_asset_count": 1,
+                            "matched_creator_person_count": 1,
+                        }
+                    ],
                 },
                 {
                     "id": 3,
@@ -155,6 +264,17 @@ def test_album_collection_tree_lists_stable_nodes_with_deduplicated_counts() -> 
                     "collection_type": "collection",
                     "child_count": 0,
                     "asset_count": 1,
+                    "person_groups": [
+                        {
+                            "group_id": 1,
+                            "group_name": "Family",
+                            "color_index": 2,
+                            "matched_person_count": 1,
+                            "group_person_count": 2,
+                            "matched_asset_count": 1,
+                            "matched_creator_person_count": 1,
+                        }
+                    ],
                 },
             ],
         }
@@ -303,7 +423,12 @@ def test_album_folder_context_returns_stable_people_tags_and_hover_links() -> No
 
         assert response.status_code == 200
         assert response.json() == {
-            "supported_filters": ["person_ids", "tag_paths", "filename_query"],
+            "supported_filters": [
+                "person_ids",
+                "person_group_ids",
+                "tag_paths",
+                "filename_query",
+            ],
             "applied_filters": {
                 "person_ids": [],
                 "tag_paths": [],
@@ -319,6 +444,26 @@ def test_album_folder_context_returns_stable_people_tags_and_hover_links() -> No
                 "path": "photos/2024",
                 "asset_count": 3,
             },
+            "person_groups": [
+                {
+                    "group_id": 1,
+                    "group_name": "Family",
+                    "color_index": 2,
+                    "matched_person_count": 2,
+                    "group_person_count": 2,
+                    "matched_asset_count": 2,
+                    "matched_creator_person_count": 1,
+                },
+                {
+                    "group_id": 2,
+                    "group_name": "Friends",
+                    "color_index": 5,
+                    "matched_person_count": 1,
+                    "group_person_count": 1,
+                    "matched_asset_count": 1,
+                    "matched_creator_person_count": 0,
+                },
+            ],
             "persons": [
                 {
                     "id": 1,
@@ -388,7 +533,12 @@ def test_album_collection_context_supports_filters_and_map_points() -> None:
 
         assert response.status_code == 200
         assert response.json() == {
-            "supported_filters": ["person_ids", "tag_paths", "filename_query"],
+            "supported_filters": [
+                "person_ids",
+                "person_group_ids",
+                "tag_paths",
+                "filename_query",
+            ],
             "applied_filters": {
                 "person_ids": [1],
                 "tag_paths": ["travel/italy"],
@@ -404,6 +554,17 @@ def test_album_collection_context_supports_filters_and_map_points() -> None:
                 "asset_count": 1,
                 "collection_type": "collection",
             },
+            "person_groups": [
+                {
+                    "group_id": 1,
+                    "group_name": "Family",
+                    "color_index": 2,
+                    "matched_person_count": 1,
+                    "group_person_count": 2,
+                    "matched_asset_count": 1,
+                    "matched_creator_person_count": 1,
+                }
+            ],
             "persons": [
                 {
                     "id": 1,
@@ -444,6 +605,155 @@ def test_album_collection_context_supports_filters_and_map_points() -> None:
         shutil.rmtree(workspace_root, ignore_errors=True)
 
 
+def test_album_folder_tree_filters_nodes_by_person_group_relevance() -> None:
+    workspace_root = _create_workspace_dir(prefix="album-folder-group-filter")
+    runtime = None
+    try:
+        runtime = _create_runtime(workspace_root=workspace_root)
+        _seed_album_navigation_data(runtime)
+
+        app = create_app(settings=runtime.settings)
+        with TestClient(app) as client:
+            response = client.get("/api/albums/folders", params=[("person_group_ids", 2)])
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "supported_filters": [
+                "person_ids",
+                "person_group_ids",
+                "tag_paths",
+                "filename_query",
+            ],
+            "applied_filters": {
+                "person_ids": [],
+                "person_group_ids": [2],
+                "tag_paths": [],
+                "filename_query": None,
+            },
+            "nodes": [
+                {
+                    "id": 1,
+                    "source_id": 1,
+                    "source_name": "Photos",
+                    "source_type": "photos",
+                    "parent_id": None,
+                    "name": "photos",
+                    "path": "photos",
+                    "child_count": 1,
+                    "asset_count": 3,
+                    "person_groups": [
+                        {
+                            "group_id": 1,
+                            "group_name": "Family",
+                            "color_index": 2,
+                            "matched_person_count": 2,
+                            "group_person_count": 2,
+                            "matched_asset_count": 2,
+                            "matched_creator_person_count": 1,
+                        },
+                        {
+                            "group_id": 2,
+                            "group_name": "Friends",
+                            "color_index": 5,
+                            "matched_person_count": 1,
+                            "group_person_count": 1,
+                            "matched_asset_count": 1,
+                            "matched_creator_person_count": 0,
+                        },
+                    ],
+                },
+                {
+                    "id": 2,
+                    "source_id": 1,
+                    "source_name": "Photos",
+                    "source_type": "photos",
+                    "parent_id": 1,
+                    "name": "2024",
+                    "path": "photos/2024",
+                    "child_count": 1,
+                    "asset_count": 3,
+                    "person_groups": [
+                        {
+                            "group_id": 1,
+                            "group_name": "Family",
+                            "color_index": 2,
+                            "matched_person_count": 2,
+                            "group_person_count": 2,
+                            "matched_asset_count": 2,
+                            "matched_creator_person_count": 1,
+                        },
+                        {
+                            "group_id": 2,
+                            "group_name": "Friends",
+                            "color_index": 5,
+                            "matched_person_count": 1,
+                            "group_person_count": 1,
+                            "matched_asset_count": 1,
+                            "matched_creator_person_count": 0,
+                        },
+                    ],
+                },
+                {
+                    "id": 3,
+                    "source_id": 1,
+                    "source_name": "Photos",
+                    "source_type": "photos",
+                    "parent_id": 2,
+                    "name": "Trip",
+                    "path": "photos/2024/Trip",
+                    "child_count": 0,
+                    "asset_count": 2,
+                    "person_groups": [
+                        {
+                            "group_id": 1,
+                            "group_name": "Family",
+                            "color_index": 2,
+                            "matched_person_count": 1,
+                            "group_person_count": 2,
+                            "matched_asset_count": 1,
+                            "matched_creator_person_count": 1,
+                        },
+                        {
+                            "group_id": 2,
+                            "group_name": "Friends",
+                            "color_index": 5,
+                            "matched_person_count": 1,
+                            "group_person_count": 1,
+                            "matched_asset_count": 1,
+                            "matched_creator_person_count": 0,
+                        },
+                    ],
+                },
+            ],
+        }
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_album_folder_context_returns_404_when_person_group_filter_excludes_node() -> None:
+    workspace_root = _create_workspace_dir(prefix="album-folder-context-group-filter")
+    runtime = None
+    try:
+        runtime = _create_runtime(workspace_root=workspace_root)
+        _seed_album_navigation_data(runtime)
+
+        app = create_app(settings=runtime.settings)
+        with TestClient(app) as client:
+            response = client.get(
+                "/api/albums/folders/4/context",
+                params=[("person_group_ids", 2)],
+            )
+
+        assert response.status_code == 404
+        assert response.json() == {"detail": "album folder 4 does not exist"}
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
 def test_album_routes_reject_unsupported_global_filters() -> None:
     workspace_root = _create_workspace_dir(prefix="album-unsupported-filters")
     runtime = None
@@ -462,7 +772,7 @@ def test_album_routes_reject_unsupported_global_filters() -> None:
         assert response.json() == {
             "detail": (
                 "unsupported album filters: distance_latitude, location_geometry; "
-                "supported filters: person_ids, tag_paths, filename_query"
+                "supported filters: person_ids, person_group_ids, tag_paths, filename_query"
             )
         }
     finally:
@@ -632,13 +942,42 @@ def _seed_album_navigation_data(runtime) -> None:
         )
         anna = Person(name="Anna Becker", aliases=[], path="family/anna", metadata_json=None)
         milo = Person(name="Milo Tan", aliases=[], path="friends/milo", metadata_json=None)
+        family_group = PersonGroup(
+            name="Family",
+            type="manual",
+            path="groups/family",
+            metadata_json={"ui": {"color_index": 2}},
+        )
+        friends_group = PersonGroup(
+            name="Friends",
+            type="manual",
+            path="groups/friends",
+            metadata_json={"ui": {"color_index": 5}},
+        )
         travel_tag = Tag(label="Travel", path="travel", metadata_json=None)
         italy_tag = Tag(label="Italy", path="travel/italy", metadata_json=None)
         home_tag = Tag(label="Home", path="home", metadata_json=None)
         session.add_all(
-            [photos_source, lightroom_source, anna, milo, travel_tag, italy_tag, home_tag]
+            [
+                photos_source,
+                lightroom_source,
+                anna,
+                milo,
+                family_group,
+                friends_group,
+                travel_tag,
+                italy_tag,
+                home_tag,
+            ]
         )
         session.flush()
+        session.add_all(
+            [
+                PersonGroupMember(group_id=family_group.id, person_id=anna.id),
+                PersonGroupMember(group_id=family_group.id, person_id=milo.id),
+                PersonGroupMember(group_id=friends_group.id, person_id=milo.id),
+            ]
+        )
 
         folder_root = AssetFolder(
             source_id=photos_source.id,
@@ -837,6 +1176,90 @@ def _seed_album_navigation_data(runtime) -> None:
                 AssetCollectionItem(
                     collection_id=collection_italy.id,
                     asset_id=lightroom_assets[1].id,
+                ),
+            ]
+        )
+        session.add_all(
+            [
+                AssetFolderPersonGroup(
+                    folder_id=folder_root.id,
+                    group_id=family_group.id,
+                    matched_person_count=2,
+                    group_person_count=2,
+                    matched_asset_count=2,
+                    matched_creator_person_count=1,
+                ),
+                AssetFolderPersonGroup(
+                    folder_id=folder_root.id,
+                    group_id=friends_group.id,
+                    matched_person_count=1,
+                    group_person_count=1,
+                    matched_asset_count=1,
+                    matched_creator_person_count=0,
+                ),
+                AssetFolderPersonGroup(
+                    folder_id=folder_year.id,
+                    group_id=family_group.id,
+                    matched_person_count=2,
+                    group_person_count=2,
+                    matched_asset_count=2,
+                    matched_creator_person_count=1,
+                ),
+                AssetFolderPersonGroup(
+                    folder_id=folder_year.id,
+                    group_id=friends_group.id,
+                    matched_person_count=1,
+                    group_person_count=1,
+                    matched_asset_count=1,
+                    matched_creator_person_count=0,
+                ),
+                AssetFolderPersonGroup(
+                    folder_id=folder_trip.id,
+                    group_id=family_group.id,
+                    matched_person_count=1,
+                    group_person_count=2,
+                    matched_asset_count=1,
+                    matched_creator_person_count=1,
+                ),
+                AssetFolderPersonGroup(
+                    folder_id=folder_trip.id,
+                    group_id=friends_group.id,
+                    matched_person_count=1,
+                    group_person_count=1,
+                    matched_asset_count=1,
+                    matched_creator_person_count=0,
+                ),
+                AssetFolderPersonGroup(
+                    folder_id=folder_home.id,
+                    group_id=family_group.id,
+                    matched_person_count=1,
+                    group_person_count=2,
+                    matched_asset_count=1,
+                    matched_creator_person_count=0,
+                ),
+                AssetCollectionPersonGroup(
+                    collection_id=collection_portraits.id,
+                    group_id=family_group.id,
+                    matched_person_count=1,
+                    group_person_count=2,
+                    matched_asset_count=1,
+                    matched_creator_person_count=0,
+                ),
+                AssetCollectionPersonGroup(
+                    collection_id=collection_trips.id,
+                    group_id=family_group.id,
+                    matched_person_count=1,
+                    group_person_count=2,
+                    matched_asset_count=1,
+                    matched_creator_person_count=1,
+                ),
+                AssetCollectionPersonGroup(
+                    collection_id=collection_italy.id,
+                    group_id=family_group.id,
+                    matched_person_count=1,
+                    group_person_count=2,
+                    matched_asset_count=1,
+                    matched_creator_person_count=1,
                 ),
             ]
         )
