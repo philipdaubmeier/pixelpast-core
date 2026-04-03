@@ -343,13 +343,10 @@ function TreeSection({
       return [
         <div
           key={node.id}
-          className="flex w-full max-w-full min-w-0 items-stretch overflow-hidden px-1 py-0.5"
+          className="grid w-full max-w-full min-w-0 overflow-hidden px-1 py-0.5"
+          style={{ gridTemplateColumns: `${indentRem}rem minmax(0, 1fr)` }}
         >
-          <div
-            className="shrink-0"
-            style={{ width: `${indentRem}rem` }}
-            aria-hidden="true"
-          />
+          <div aria-hidden="true" />
           <div
             className={[
               "min-w-0 flex-1 overflow-hidden rounded-xl border px-1.5 py-0.5 transition",
