@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from collections.abc import Iterable
 from typing import Any
 
 from sqlalchemy import delete, func, select
@@ -160,6 +161,8 @@ class PersonGroupCollectionRelevanceSnapshot:
 class AlbumAggregateRepository:
     """Repository for album aggregate canonical loading, persistence, and reads."""
 
+    _SQLITE_BATCH_SIZE = 400
+
     def __init__(self, session: Session) -> None:
         self._session = session
 
@@ -232,14 +235,18 @@ class AlbumAggregateRepository:
             return ()
 
         asset_ids = [asset_id for asset_id, _, _ in asset_rows]
-        person_rows = self._session.execute(
-            select(AssetPerson.asset_id, AssetPerson.person_id)
-            .where(AssetPerson.asset_id.in_(asset_ids))
-            .order_by(AssetPerson.asset_id, AssetPerson.person_id)
-        )
         person_ids_by_asset_id: dict[int, list[int]] = {asset_id: [] for asset_id in asset_ids}
-        for asset_id, person_id in person_rows:
-            person_ids_by_asset_id.setdefault(asset_id, []).append(person_id)
+        for asset_id_batch in _iter_album_aggregate_batches(
+            asset_ids,
+            batch_size=self._SQLITE_BATCH_SIZE,
+        ):
+            person_rows = self._session.execute(
+                select(AssetPerson.asset_id, AssetPerson.person_id)
+                .where(AssetPerson.asset_id.in_(asset_id_batch))
+                .order_by(AssetPerson.asset_id, AssetPerson.person_id)
+            )
+            for asset_id, person_id in person_rows:
+                person_ids_by_asset_id.setdefault(asset_id, []).append(person_id)
 
         return tuple(
             AlbumAggregateAssetEvidenceInput(
@@ -288,14 +295,18 @@ class AlbumAggregateRepository:
             return ()
 
         group_ids = [group_id for group_id, _, _, _ in group_rows]
-        member_rows = self._session.execute(
-            select(PersonGroupMember.group_id, PersonGroupMember.person_id)
-            .where(PersonGroupMember.group_id.in_(group_ids))
-            .order_by(PersonGroupMember.group_id, PersonGroupMember.person_id)
-        )
         person_ids_by_group_id: dict[int, list[int]] = {group_id: [] for group_id in group_ids}
-        for group_id, person_id in member_rows:
-            person_ids_by_group_id.setdefault(group_id, []).append(person_id)
+        for group_id_batch in _iter_album_aggregate_batches(
+            group_ids,
+            batch_size=self._SQLITE_BATCH_SIZE,
+        ):
+            member_rows = self._session.execute(
+                select(PersonGroupMember.group_id, PersonGroupMember.person_id)
+                .where(PersonGroupMember.group_id.in_(group_id_batch))
+                .order_by(PersonGroupMember.group_id, PersonGroupMember.person_id)
+            )
+            for group_id, person_id in member_rows:
+                person_ids_by_group_id.setdefault(group_id, []).append(person_id)
 
         return tuple(
             AlbumAggregatePersonGroupInput(
@@ -322,33 +333,41 @@ class AlbumAggregateRepository:
         self._session.execute(delete(AssetCollectionPersonGroup))
 
         if folder_rows:
-            self._session.add_all(
-                [
-                    AssetFolderPersonGroup(
-                        folder_id=row.folder_id,
-                        group_id=row.group_id,
-                        matched_person_count=row.matched_person_count,
-                        group_person_count=row.group_person_count,
-                        matched_asset_count=row.matched_asset_count,
-                        matched_creator_person_count=row.matched_creator_person_count,
-                    )
-                    for row in folder_rows
-                ]
-            )
+            for folder_row_batch in _iter_album_aggregate_batches(
+                folder_rows,
+                batch_size=self._SQLITE_BATCH_SIZE,
+            ):
+                self._session.add_all(
+                    [
+                        AssetFolderPersonGroup(
+                            folder_id=row.folder_id,
+                            group_id=row.group_id,
+                            matched_person_count=row.matched_person_count,
+                            group_person_count=row.group_person_count,
+                            matched_asset_count=row.matched_asset_count,
+                            matched_creator_person_count=row.matched_creator_person_count,
+                        )
+                        for row in folder_row_batch
+                    ]
+                )
         if collection_rows:
-            self._session.add_all(
-                [
-                    AssetCollectionPersonGroup(
-                        collection_id=row.collection_id,
-                        group_id=row.group_id,
-                        matched_person_count=row.matched_person_count,
-                        group_person_count=row.group_person_count,
-                        matched_asset_count=row.matched_asset_count,
-                        matched_creator_person_count=row.matched_creator_person_count,
-                    )
-                    for row in collection_rows
-                ]
-            )
+            for collection_row_batch in _iter_album_aggregate_batches(
+                collection_rows,
+                batch_size=self._SQLITE_BATCH_SIZE,
+            ):
+                self._session.add_all(
+                    [
+                        AssetCollectionPersonGroup(
+                            collection_id=row.collection_id,
+                            group_id=row.group_id,
+                            matched_person_count=row.matched_person_count,
+                            group_person_count=row.group_person_count,
+                            matched_asset_count=row.matched_asset_count,
+                            matched_creator_person_count=row.matched_creator_person_count,
+                        )
+                        for row in collection_row_batch
+                    ]
+                )
         self._session.flush()
 
     def list_person_groups_for_folder(
@@ -593,3 +612,20 @@ def _normalize_album_aggregate_ignored_person_ids(
         normalized_ids.append(value)
         seen_ids.add(value)
     return tuple(sorted(normalized_ids))
+
+
+def _iter_album_aggregate_batches(
+    values: Iterable[Any],
+    *,
+    batch_size: int,
+) -> Iterable[list[Any]]:
+    """Yield deterministic batches sized below SQLite variable limits."""
+
+    batch: list[Any] = []
+    for value in values:
+        batch.append(value)
+        if len(batch) >= batch_size:
+            yield batch
+            batch = []
+    if batch:
+        yield batch

@@ -457,6 +457,93 @@ def test_cli_derive_album_aggregate_prints_progress_and_summary(monkeypatch) -> 
             database_path.unlink()
 
 
+def test_album_aggregate_job_batches_large_in_queries_and_persistence(
+    monkeypatch,
+) -> None:
+    database_path = _build_test_database_path("album-aggregate-batching")
+    runtime = _create_runtime(database_path=database_path)
+    original_batch_size = AlbumAggregateRepository._SQLITE_BATCH_SIZE
+    monkeypatch.setattr(AlbumAggregateRepository, "_SQLITE_BATCH_SIZE", 2)
+    try:
+        initialize_database(runtime)
+        with runtime.session_factory() as session:
+            _seed_album_aggregate_scenario(session=session)
+
+            extra_people = [
+                Person(
+                    name=f"Extra Person {index}",
+                    aliases=[],
+                    path=f"people/extra-{index}",
+                    metadata_json=None,
+                )
+                for index in range(6)
+            ]
+            session.add_all(extra_people)
+            session.flush()
+
+            extra_group = PersonGroup(
+                name="Big Group",
+                type="manual",
+                path="groups/big",
+                metadata_json={},
+            )
+            session.add(extra_group)
+            session.flush()
+            session.add_all(
+                [
+                    PersonGroupMember(group_id=extra_group.id, person_id=person.id)
+                    for person in extra_people
+                ]
+            )
+
+            root_folder = session.execute(
+                select(AssetFolder).where(AssetFolder.path == "photos/2024/Trip")
+            ).scalar_one()
+            photos_source = session.execute(
+                select(Source).where(Source.type == "photos")
+            ).scalar_one()
+
+            extra_assets = [
+                Asset(
+                    short_id=f"BATCH{index:03d}",
+                    source_id=photos_source.id,
+                    external_id=f"/photos/2024/Trip/batch-{index}.jpg",
+                    media_type="photo",
+                    timestamp=_timestamp(2024, 7, 10 + index, 10),
+                    folder_id=root_folder.id,
+                    creator_person_id=None,
+                    metadata_json={"filename": f"batch-{index}.jpg"},
+                )
+                for index in range(6)
+            ]
+            session.add_all(extra_assets)
+            session.flush()
+            session.add_all(
+                [
+                    AssetPerson(asset_id=asset.id, person_id=person.id)
+                    for asset, person in zip(extra_assets, extra_people, strict=True)
+                ]
+            )
+            session.commit()
+
+        result = AlbumAggregateJob().run(runtime=runtime)
+
+        assert result.status == "completed"
+        assert result.asset_evidence_count == 10
+        assert result.person_group_count == 4
+        assert result.folder_row_count >= 8
+        assert result.collection_row_count >= 5
+    finally:
+        monkeypatch.setattr(
+            AlbumAggregateRepository,
+            "_SQLITE_BATCH_SIZE",
+            original_batch_size,
+        )
+        runtime.engine.dispose()
+        if database_path.exists():
+            database_path.unlink()
+
+
 def _seed_album_aggregate_scenario(*, session: Session) -> dict[str, dict[str, int]]:
     photos_source = Source(
         name="Photos",
