@@ -31,6 +31,7 @@ from pixelpast.persistence.models import (
     Source,
     Tag,
 )
+from pixelpast.persistence.repositories import AssetCollectionRepository
 from pixelpast.shared.runtime import create_runtime_context, initialize_database
 from pixelpast.shared.settings import Settings
 
@@ -439,6 +440,77 @@ def test_lightroom_catalog_persister_raises_asset_context_on_failure() -> None:
         assert isinstance(error_info.value.__cause__, ValueError)
         scope.close()
     finally:
+        runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_lightroom_catalog_persistence_scope_batches_collection_membership_reconciliation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime = _create_runtime()
+    workspace_root = _create_workspace_root()
+    original_batch_size = AssetCollectionRepository._SQLITE_BATCH_SIZE
+    monkeypatch.setattr(AssetCollectionRepository, "_SQLITE_BATCH_SIZE", 2)
+    try:
+        catalog_path = workspace_root / _FIXTURE_PATH.name
+        shutil.copy2(_FIXTURE_PATH, catalog_path)
+        descriptor = LightroomCatalogDescriptor(path=catalog_path)
+        lifecycle = LightroomCatalogIngestionRunCoordinator()
+
+        _insert_static_collection_membership(
+            catalog_path=catalog_path,
+            image_id=66,
+            root_collection_id=900,
+            child_collection_id=901,
+        )
+        _insert_static_collection_membership(
+            catalog_path=catalog_path,
+            image_id=67,
+            root_collection_id=900,
+            child_collection_id=902,
+            child_collection_name="Favorites",
+        )
+        _insert_static_collection_membership(
+            catalog_path=catalog_path,
+            image_id=68,
+            root_collection_id=900,
+            child_collection_id=903,
+            child_collection_name="Portraits",
+        )
+
+        candidate = _build_catalog_candidate(descriptor=descriptor)
+        lifecycle.create_run(runtime=runtime, resolved_root=catalog_path.resolve())
+        scope = LightroomCatalogIngestionPersistenceScope(
+            runtime=runtime,
+            lifecycle=lifecycle,
+            resolved_root=catalog_path.resolve(),
+        )
+
+        outcome = scope.persist(candidate=candidate)
+        scope.commit()
+        scope.close()
+
+        with runtime.session_factory() as session:
+            collection_items = list(
+                session.execute(
+                    select(AssetCollectionItem).order_by(
+                        AssetCollectionItem.collection_id,
+                        AssetCollectionItem.asset_id,
+                    )
+                ).scalars()
+            )
+
+        assert outcome == (
+            "inserted=3;updated=0;unchanged=0;missing_from_source=0;"
+            "skipped=0;persisted_asset_count=3"
+        )
+        assert len(collection_items) == 2
+    finally:
+        monkeypatch.setattr(
+            AssetCollectionRepository,
+            "_SQLITE_BATCH_SIZE",
+            original_batch_size,
+        )
         runtime.engine.dispose()
         shutil.rmtree(workspace_root, ignore_errors=True)
 

@@ -728,6 +728,8 @@ class AssetFolderRepository:
 class AssetCollectionRepository:
     """Repository for canonical semantic album-collection storage."""
 
+    _SQLITE_BATCH_SIZE = 400
+
     def __init__(self, session: Session) -> None:
         self._session = session
 
@@ -868,22 +870,37 @@ class AssetCollectionRepository:
         source_id: int,
         memberships: Iterable[tuple[int, int]],
     ) -> int:
-        self._session.execute(
-            delete(AssetCollectionItem).where(
-                AssetCollectionItem.collection_id.in_(
-                    select(AssetCollection.id).where(
-                        AssetCollection.source_id == source_id
-                    )
+        collection_ids = list(
+            self._session.execute(
+                select(AssetCollection.id)
+                .where(AssetCollection.source_id == source_id)
+                .order_by(AssetCollection.id)
+            ).scalars()
+        )
+        for collection_id_batch in _iter_repository_batches(
+            collection_ids,
+            batch_size=self._SQLITE_BATCH_SIZE,
+        ):
+            self._session.execute(
+                delete(AssetCollectionItem).where(
+                    AssetCollectionItem.collection_id.in_(collection_id_batch)
                 )
             )
-        )
+
         unique_memberships = sorted(set(memberships))
-        self._session.add_all(
-            [
-                AssetCollectionItem(collection_id=collection_id, asset_id=asset_id)
-                for collection_id, asset_id in unique_memberships
-            ]
-        )
+        for membership_batch in _iter_repository_batches(
+            unique_memberships,
+            batch_size=self._SQLITE_BATCH_SIZE,
+        ):
+            self._session.add_all(
+                [
+                    AssetCollectionItem(
+                        collection_id=collection_id,
+                        asset_id=asset_id,
+                    )
+                    for collection_id, asset_id in membership_batch
+                ]
+            )
         self._session.flush()
         return len(unique_memberships)
 
@@ -898,25 +915,57 @@ class AssetCollectionRepository:
         if not unique_asset_ids:
             return 0
 
-        self._session.execute(
-            delete(AssetCollectionItem).where(
-                AssetCollectionItem.collection_id.in_(
-                    select(AssetCollection.id).where(
-                        AssetCollection.source_id == source_id
-                    )
-                ),
-                AssetCollectionItem.asset_id.in_(unique_asset_ids),
+        collection_ids = list(
+            self._session.execute(
+                select(AssetCollection.id)
+                .where(AssetCollection.source_id == source_id)
+                .order_by(AssetCollection.id)
+            ).scalars()
+        )
+        for asset_id_batch in _iter_repository_batches(
+            unique_asset_ids,
+            batch_size=self._SQLITE_BATCH_SIZE,
+        ):
+            self._session.execute(
+                delete(AssetCollectionItem).where(
+                    AssetCollectionItem.collection_id.in_(collection_ids),
+                    AssetCollectionItem.asset_id.in_(asset_id_batch),
+                )
             )
-        )
+
         unique_memberships = sorted(set(memberships))
-        self._session.add_all(
-            [
-                AssetCollectionItem(collection_id=collection_id, asset_id=asset_id)
-                for collection_id, asset_id in unique_memberships
-            ]
-        )
+        for membership_batch in _iter_repository_batches(
+            unique_memberships,
+            batch_size=self._SQLITE_BATCH_SIZE,
+        ):
+            self._session.add_all(
+                [
+                    AssetCollectionItem(
+                        collection_id=collection_id,
+                        asset_id=asset_id,
+                    )
+                    for collection_id, asset_id in membership_batch
+                ]
+            )
         self._session.flush()
         return len(unique_memberships)
+
+
+def _iter_repository_batches(
+    values: Iterable[Any],
+    *,
+    batch_size: int,
+) -> Iterable[list[Any]]:
+    """Yield deterministic repository batches sized for SQLite variable limits."""
+
+    batch: list[Any] = []
+    for value in values:
+        batch.append(value)
+        if len(batch) >= batch_size:
+            yield batch
+            batch = []
+    if batch:
+        yield batch
 
 
 class AlbumNavigationRepository:
