@@ -719,7 +719,12 @@ def _execute_operation(
                     "reason": str(error),
                 },
             )
-            typer.secho(f"error: {error}", fg=typer.colors.RED, err=True)
+            typer.secho(
+                f"error: {_format_exception_summary(error)}",
+                fg=typer.colors.RED,
+                err=True,
+            )
+            _print_exception_causes(error)
             typer.echo(traceback.format_exc(), err=True)
             raise typer.Exit(code=ExitCode.FAILURE) from error
 
@@ -776,6 +781,40 @@ def _format_total_value(total: float | None) -> str:
     return str(int(total))
 
 
+def _format_exception_summary(error: BaseException) -> str:
+    """Return one CLI-friendly exception summary with a stable fallback."""
+
+    message = str(error).strip()
+    if message:
+        return message
+    return error.__class__.__name__
+
+
+def _print_exception_causes(error: BaseException) -> None:
+    """Render chained causes so CLI failures expose the underlying reason."""
+
+    for chained_error in _iter_exception_causes(error):
+        typer.secho(
+            f"caused by: {chained_error.__class__.__name__}: "
+            f"{_format_exception_summary(chained_error)}",
+            fg=typer.colors.RED,
+            err=True,
+        )
+
+
+def _iter_exception_causes(error: BaseException) -> Sequence[BaseException]:
+    """Return the explicit or implicit exception chain in order."""
+
+    causes: list[BaseException] = []
+    seen_error_ids: set[int] = {id(error)}
+    chained_error = error.__cause__ or error.__context__
+    while chained_error is not None and id(chained_error) not in seen_error_ids:
+        causes.append(chained_error)
+        seen_error_ids.add(id(chained_error))
+        chained_error = chained_error.__cause__ or chained_error.__context__
+    return tuple(causes)
+
+
 def _print_result_errors(result: object | None) -> None:
     """Write non-fatal operation errors to the CLI when the result exposes them."""
 
@@ -784,10 +823,10 @@ def _print_result_errors(result: object | None) -> None:
 
     transform_errors = getattr(result, "transform_errors", ())
     for transform_error in transform_errors:
-        origin = getattr(transform_error, "workbook", None) or getattr(
-            transform_error,
-            "document",
-            None,
+        origin = (
+            getattr(transform_error, "workbook", None)
+            or getattr(transform_error, "document", None)
+            or getattr(transform_error, "catalog", None)
         )
         origin_label = getattr(origin, "origin_label", None)
         message = getattr(transform_error, "message", None)

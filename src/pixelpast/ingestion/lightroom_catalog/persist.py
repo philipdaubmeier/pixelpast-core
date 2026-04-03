@@ -45,49 +45,68 @@ class LightroomCatalogAssetPersister:
     def persist_catalog(self, *, candidate: LightroomCatalogCandidate) -> list[str]:
         """Persist one Lightroom catalog candidate and reconcile album navigation."""
 
-        self._persist_collection_tree(collections=candidate.collections)
+        try:
+            self._persist_collection_tree(collections=candidate.collections)
+        except Exception as error:
+            raise RuntimeError(
+                "Failed to persist Lightroom collection tree for catalog "
+                f"'{candidate.catalog.origin_label}': {error}"
+            ) from error
 
         asset_outcomes: list[str] = []
         membership_pairs: set[tuple[int, int]] = set()
         persisted_asset_ids: set[int] = set()
         for asset in candidate.assets:
-            self.persisted_asset_count += 1
-            outcome = persist_asset_candidate(
-                source_id=self._source_id,
-                asset_repository=self._asset_repository,
-                tag_repository=self._tag_repository,
-                person_repository=self._person_repository,
-                asset=asset,
-                folder_id=self._resolve_folder_id(asset=asset),
-            )
-            asset_outcomes.append(outcome)
-            persisted_asset = self._asset_repository.get_by_source_and_external_id(
-                source_id=self._source_id,
-                external_id=asset.external_id,
-            )
-            if persisted_asset is None:
-                raise RuntimeError(
-                    "Persisted Lightroom asset could not be reloaded by external id."
+            try:
+                self.persisted_asset_count += 1
+                outcome = persist_asset_candidate(
+                    source_id=self._source_id,
+                    asset_repository=self._asset_repository,
+                    tag_repository=self._tag_repository,
+                    person_repository=self._person_repository,
+                    asset=asset,
+                    folder_id=self._resolve_folder_id(asset=asset),
                 )
-            persisted_asset_ids.add(persisted_asset.id)
-            for collection in asset.collections:
-                persisted_collection = (
-                    self._asset_collection_repository.get_by_source_and_external_id(
-                        source_id=self._source_id,
-                        external_id=str(collection.collection_id),
-                    )
+                asset_outcomes.append(outcome)
+                persisted_asset = self._asset_repository.get_by_source_and_external_id(
+                    source_id=self._source_id,
+                    external_id=asset.external_id,
                 )
-                if persisted_collection is None:
+                if persisted_asset is None:
                     raise RuntimeError(
-                        "Persisted Lightroom collection could not be reloaded by external id."
+                        "Persisted Lightroom asset could not be reloaded by external id."
                     )
-                membership_pairs.add((persisted_collection.id, persisted_asset.id))
+                persisted_asset_ids.add(persisted_asset.id)
+                for collection in asset.collections:
+                    persisted_collection = (
+                        self._asset_collection_repository.get_by_source_and_external_id(
+                            source_id=self._source_id,
+                            external_id=str(collection.collection_id),
+                        )
+                    )
+                    if persisted_collection is None:
+                        raise RuntimeError(
+                            "Persisted Lightroom collection could not be reloaded by external id."
+                        )
+                    membership_pairs.add((persisted_collection.id, persisted_asset.id))
+            except Exception as error:
+                raise RuntimeError(
+                    "Failed to persist Lightroom asset "
+                    f"'{asset.external_id}' from catalog "
+                    f"'{candidate.catalog.origin_label}': {error}"
+                ) from error
 
-        self._asset_collection_repository.replace_items_for_assets(
-            source_id=self._source_id,
-            asset_ids=persisted_asset_ids,
-            memberships=membership_pairs,
-        )
+        try:
+            self._asset_collection_repository.replace_items_for_assets(
+                source_id=self._source_id,
+                asset_ids=persisted_asset_ids,
+                memberships=membership_pairs,
+            )
+        except Exception as error:
+            raise RuntimeError(
+                "Failed to reconcile Lightroom collection memberships for catalog "
+                f"'{candidate.catalog.origin_label}': {error}"
+            ) from error
         return asset_outcomes
 
     def _resolve_folder_id(self, *, asset: LightroomAssetCandidate) -> int | None:

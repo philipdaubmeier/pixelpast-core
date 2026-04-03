@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from calendar import isleap
 from collections import defaultdict
 from collections.abc import Iterable
 from datetime import UTC, datetime
@@ -84,20 +85,23 @@ class LightroomCatalogTransformer:
             start_index=start_index,
             end_index=end_index,
         )
-        assets = tuple(
-            self.build_asset_candidate(
+        assets: list[LightroomAssetCandidate] = []
+        warning_messages: list[str] = []
+        for image_row in selected_image_rows:
+            asset_candidate, asset_warning_messages = self.build_asset_candidate(
                 image_row=image_row,
                 face_rows=face_rows_by_image.get(image_row.image_id, ()),
                 keyword_rows=keyword_rows_by_image.get(image_row.image_id, ()),
                 collection_rows=collection_rows_by_image.get(image_row.image_id, ()),
             )
-            for image_row in selected_image_rows
-        )
+            assets.append(asset_candidate)
+            warning_messages.extend(asset_warning_messages)
         return LightroomCatalogCandidate(
             catalog=catalog.descriptor,
             chosen_images=selected_image_rows,
             collections=catalog.collection_nodes,
-            assets=assets,
+            assets=tuple(assets),
+            warning_messages=tuple(warning_messages),
         )
 
     def build_asset_candidate(
@@ -107,7 +111,7 @@ class LightroomCatalogTransformer:
         face_rows: Iterable[LightroomFaceRow],
         keyword_rows: Iterable[LightroomKeywordRow],
         collection_rows: Iterable[LightroomCollectionRow],
-    ) -> LightroomAssetCandidate:
+    ) -> tuple[LightroomAssetCandidate, tuple[str, ...]]:
         """Transform one chosen Lightroom image row into one canonical asset."""
 
         xmp_payload = parse_lightroom_xmp_payload(
@@ -119,7 +123,10 @@ class LightroomCatalogTransformer:
                 f"Lightroom image {image_row.image_id} is missing XMP DocumentID."
             )
 
-        timestamp = _parse_capture_timestamp(image_row.capture_time_text)
+        timestamp, timestamp_warning = _parse_capture_timestamp(
+            image_row.capture_time_text,
+            external_id=xmp_payload.document_id,
+        )
         hierarchical_keywords = _extract_hierarchical_keywords(
             xmp_payload.hierarchical_keywords
         )
@@ -141,59 +148,98 @@ class LightroomCatalogTransformer:
             excluded_person_paths=excluded_person_paths,
         )
 
-        return LightroomAssetCandidate(
-            external_id=xmp_payload.document_id,
-            media_type=_resolve_media_type(image_row.file_name),
-            timestamp=timestamp,
-            summary=xmp_payload.title,
-            latitude=image_row.gps_latitude,
-            longitude=image_row.gps_longitude,
-            creator_name=_normalize_optional_text(image_row.creator_name),
-            tag_paths=tuple(
-                sorted(
-                    persisted_tag_paths,
-                    key=lambda value: (value.count(_HIERARCHY_SEPARATOR), value),
-                )
+        return (
+            LightroomAssetCandidate(
+                external_id=xmp_payload.document_id,
+                media_type=_resolve_media_type(image_row.file_name),
+                timestamp=timestamp,
+                summary=xmp_payload.title,
+                latitude=image_row.gps_latitude,
+                longitude=image_row.gps_longitude,
+                creator_name=_normalize_optional_text(image_row.creator_name),
+                tag_paths=tuple(
+                    sorted(
+                        persisted_tag_paths,
+                        key=lambda value: (value.count(_HIERARCHY_SEPARATOR), value),
+                    )
+                ),
+                asset_tag_paths=asset_tag_paths,
+                persons=persons,
+                folder_path=_build_folder_path(image_row.file_path),
+                collections=_build_collection_memberships(collection_rows),
+                metadata_json={
+                    "file_name": image_row.file_name,
+                    "file_path": image_row.file_path,
+                    "preserved_file_name": xmp_payload.preserved_file_name,
+                    "caption": _normalize_optional_text(image_row.caption),
+                    "camera": _normalize_optional_text(image_row.camera),
+                    "lens": _normalize_optional_text(image_row.lens),
+                    "aperture_f_number": _convert_aperture_apex(
+                        image_row.aperture_apex
+                    ),
+                    "shutter_speed_seconds": _convert_shutter_speed_apex(
+                        image_row.shutter_speed_apex
+                    ),
+                    "iso": _normalize_iso(image_row.iso_speed_rating),
+                    "rating": image_row.rating,
+                    "color_label": _normalize_optional_text(image_row.color_label),
+                    "explicit_keywords": list(explicit_keywords),
+                    "hierarchical_subjects": list(hierarchical_keywords),
+                    "linked_tag_paths": list(asset_tag_paths),
+                    "collections": _build_collection_metadata(collection_rows),
+                    "face_regions": _build_face_region_metadata(face_rows),
+                },
             ),
-            asset_tag_paths=asset_tag_paths,
-            persons=persons,
-            folder_path=_build_folder_path(image_row.file_path),
-            collections=_build_collection_memberships(collection_rows),
-            metadata_json={
-                "file_name": image_row.file_name,
-                "file_path": image_row.file_path,
-                "preserved_file_name": xmp_payload.preserved_file_name,
-                "caption": _normalize_optional_text(image_row.caption),
-                "camera": _normalize_optional_text(image_row.camera),
-                "lens": _normalize_optional_text(image_row.lens),
-                "aperture_f_number": _convert_aperture_apex(
-                    image_row.aperture_apex
-                ),
-                "shutter_speed_seconds": _convert_shutter_speed_apex(
-                    image_row.shutter_speed_apex
-                ),
-                "iso": _normalize_iso(image_row.iso_speed_rating),
-                "rating": image_row.rating,
-                "color_label": _normalize_optional_text(image_row.color_label),
-                "explicit_keywords": list(explicit_keywords),
-                "hierarchical_subjects": list(hierarchical_keywords),
-                "linked_tag_paths": list(asset_tag_paths),
-                "collections": _build_collection_metadata(collection_rows),
-                "face_regions": _build_face_region_metadata(face_rows),
-            },
+            ((timestamp_warning,) if timestamp_warning is not None else ()),
         )
 
 
-def _parse_capture_timestamp(value: str | None) -> datetime:
+def _parse_capture_timestamp(
+    value: str | None,
+    *,
+    external_id: str,
+) -> tuple[datetime, str | None]:
     if value is None:
         raise ValueError("Lightroom image is missing captureTime.")
     try:
         parsed = datetime.fromisoformat(value)
     except ValueError as error:
-        raise ValueError(f"Unsupported Lightroom captureTime value: {value!r}") from error
+        remapped_value = _remap_invalid_leap_day_capture_time(value)
+        if remapped_value is None:
+            raise ValueError(
+                f"Unsupported Lightroom captureTime value: {value!r}"
+            ) from error
+        parsed = datetime.fromisoformat(remapped_value)
+        warning_message = (
+            "Lightroom captureTime remapped for asset "
+            f"'{external_id}': {value} -> {remapped_value}"
+        )
+    else:
+        warning_message = None
     if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=UTC)
-    return parsed.astimezone(UTC)
+        return parsed.replace(tzinfo=UTC), warning_message
+    return parsed.astimezone(UTC), warning_message
+
+
+def _remap_invalid_leap_day_capture_time(value: str) -> str | None:
+    """Map non-leap-year Feb 29 timestamps to April 1 of the same year."""
+
+    if len(value) < 10:
+        return None
+    date_part = value[:10]
+    time_part = value[10:]
+    segments = date_part.split("-")
+    if len(segments) != 3:
+        return None
+    try:
+        year = int(segments[0])
+        month = int(segments[1])
+        day = int(segments[2])
+    except ValueError:
+        return None
+    if month != 2 or day != 29 or isleap(year):
+        return None
+    return f"{year:04d}-04-01{time_part}"
 
 
 def _resolve_media_type(file_name: str) -> str:

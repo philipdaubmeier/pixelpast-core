@@ -32,6 +32,11 @@ from pixelpast.ingestion.workdays_vacation.contracts import (
     WorkdaysVacationTransformError,
     WorkdaysVacationWorkbookDescriptor,
 )
+from pixelpast.ingestion.lightroom_catalog.contracts import (
+    LightroomCatalogDescriptor,
+    LightroomIngestionResult,
+    LightroomTransformError,
+)
 from pixelpast.persistence.models import (
     Asset,
     DailyAggregate,
@@ -1157,6 +1162,115 @@ def test_cli_ingest_workdays_vacation_prints_transform_errors(
             f"{workbook_path.resolve().as_posix()}: "
             "Legend color '#123456' is missing from the workbook."
         ) in result.stderr
+    finally:
+        get_settings.cache_clear()
+        if database_path.exists():
+            database_path.unlink()
+
+
+def test_cli_ingest_lightroom_catalog_prints_transform_errors(
+    monkeypatch,
+) -> None:
+    database_path = _build_test_database_path("cli-lightroom-errors")
+    monkeypatch.setenv(
+        "PIXELPAST_DATABASE_URL", f"sqlite:///{database_path.as_posix()}"
+    )
+    get_settings.cache_clear()
+
+    catalog_path = Path("test") / "assets" / "broken-lightroom.lrcat"
+    fake_result = LightroomIngestionResult(
+        run_id=7,
+        processed_catalog_count=0,
+        processed_asset_count=0,
+        persisted_asset_count=0,
+        error_count=1,
+        status="partial_failure",
+        transform_errors=(
+            LightroomTransformError(
+                catalog=LightroomCatalogDescriptor(path=catalog_path),
+                message="Image row 48291 is missing a document id.",
+            ),
+        ),
+    )
+    monkeypatch.setattr(cli_main_module, "run_ingest_source", lambda **_: fake_result)
+
+    try:
+        result = runner.invoke(app, ["ingest", "lightroom_catalog"])
+        assert result.exit_code == 0
+        assert (
+            "error: "
+            f"{catalog_path.resolve().as_posix()}: "
+            "Image row 48291 is missing a document id."
+        ) in result.stderr
+    finally:
+        get_settings.cache_clear()
+        if database_path.exists():
+            database_path.unlink()
+
+
+def test_cli_ingest_lightroom_catalog_prints_warning_messages(
+    monkeypatch,
+) -> None:
+    database_path = _build_test_database_path("cli-lightroom-warnings")
+    monkeypatch.setenv(
+        "PIXELPAST_DATABASE_URL", f"sqlite:///{database_path.as_posix()}"
+    )
+    get_settings.cache_clear()
+
+    fake_result = LightroomIngestionResult(
+        run_id=8,
+        processed_catalog_count=1,
+        processed_asset_count=1,
+        persisted_asset_count=1,
+        error_count=0,
+        status="completed",
+        warning_messages=(
+            "Lightroom captureTime remapped for asset "
+            "'ABC123': 2022-02-29T19:22:34 -> 2022-04-01T19:22:34",
+        ),
+    )
+    monkeypatch.setattr(cli_main_module, "run_ingest_source", lambda **_: fake_result)
+
+    try:
+        result = runner.invoke(app, ["ingest", "lightroom_catalog"])
+        assert result.exit_code == 0
+        assert (
+            "warning: Lightroom captureTime remapped for asset "
+            "'ABC123': 2022-02-29T19:22:34 -> 2022-04-01T19:22:34"
+        ) in result.stderr
+    finally:
+        get_settings.cache_clear()
+        if database_path.exists():
+            database_path.unlink()
+
+
+def test_cli_prints_unexpected_exception_cause_chain(monkeypatch) -> None:
+    database_path = _build_test_database_path("cli-unexpected-error-chain")
+    monkeypatch.setenv(
+        "PIXELPAST_DATABASE_URL", f"sqlite:///{database_path.as_posix()}"
+    )
+    get_settings.cache_clear()
+
+    def _raise_failure(**_: object) -> None:
+        try:
+            raise ValueError("sqlite row 48291 failed")
+        except ValueError as error:
+            raise RuntimeError(
+                "Failed to persist Lightroom asset 'ABC123' from catalog "
+                "'C:/catalog.lrcat': sqlite row 48291 failed"
+            ) from error
+
+    monkeypatch.setattr(cli_main_module, "run_ingest_source", _raise_failure)
+
+    try:
+        result = runner.invoke(app, ["ingest", "lightroom_catalog"])
+        assert result.exit_code == 1
+        assert (
+            "error: Failed to persist Lightroom asset 'ABC123' from catalog "
+            "'C:/catalog.lrcat': sqlite row 48291 failed"
+        ) in result.stderr
+        assert "caused by: ValueError: sqlite row 48291 failed" in result.stderr
+        assert "Traceback (most recent call last)" in result.stderr
     finally:
         get_settings.cache_clear()
         if database_path.exists():

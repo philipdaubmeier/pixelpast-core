@@ -193,6 +193,7 @@ class LightroomCatalogCandidate:
     chosen_images: tuple[LightroomChosenImageRow, ...]
     collections: tuple[LightroomCollectionNode, ...]
     assets: tuple[LightroomAssetCandidate, ...]
+    warning_messages: tuple[str, ...] = ()
 
 
 @dataclass(slots=True, frozen=True)

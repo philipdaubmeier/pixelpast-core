@@ -8,6 +8,7 @@ from dataclasses import replace
 from pathlib import Path
 from uuid import uuid4
 
+import pytest
 from sqlalchemy import select
 
 from pixelpast.ingestion.lightroom_catalog import (
@@ -394,6 +395,49 @@ def test_lightroom_catalog_persistence_scope_persists_collection_tree_and_reconc
         assert [item.asset_id for item in collection_items] == [
             assets[_SECOND_ASSET_EXTERNAL_ID].id
         ]
+    finally:
+        runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_lightroom_catalog_persister_raises_asset_context_on_failure() -> None:
+    runtime = _create_runtime()
+    workspace_root = _create_workspace_root()
+    try:
+        catalog_path = workspace_root / _FIXTURE_PATH.name
+        shutil.copy2(_FIXTURE_PATH, catalog_path)
+        descriptor = LightroomCatalogDescriptor(path=catalog_path)
+        candidate = _build_catalog_candidate(descriptor=descriptor)
+        lifecycle = LightroomCatalogIngestionRunCoordinator()
+        lifecycle.create_run(runtime=runtime, resolved_root=catalog_path.resolve())
+        scope = LightroomCatalogIngestionPersistenceScope(
+            runtime=runtime,
+            lifecycle=lifecycle,
+            resolved_root=catalog_path.resolve(),
+        )
+
+        original_upsert = scope._persister._asset_repository.upsert
+
+        def failing_upsert(*args, **kwargs):
+            external_id = kwargs.get("external_id")
+            if external_id == _FIRST_ASSET_EXTERNAL_ID:
+                raise ValueError("simulated broken asset row")
+            return original_upsert(*args, **kwargs)
+
+        scope._persister._asset_repository.upsert = failing_upsert
+
+        with pytest.raises(
+            RuntimeError,
+            match=(
+                "Failed to persist Lightroom asset "
+                f"'{_FIRST_ASSET_EXTERNAL_ID}' from catalog "
+            ),
+        ) as error_info:
+            scope.persist(candidate=candidate)
+
+        assert "simulated broken asset row" in str(error_info.value)
+        assert isinstance(error_info.value.__cause__, ValueError)
+        scope.close()
     finally:
         runtime.engine.dispose()
         shutil.rmtree(workspace_root, ignore_errors=True)

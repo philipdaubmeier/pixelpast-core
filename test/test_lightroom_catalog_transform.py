@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -292,6 +293,29 @@ def test_lightroom_transformer_creates_people_from_person_keyword_type_without_f
         ("Mona Lisa", "who|Persons|Mona Lisa"),
     )
     assert all("who|" not in path for path in candidate.tag_paths)
+
+
+def test_lightroom_transformer_remaps_invalid_non_leap_day_capture_time_to_april_first() -> None:
+    loaded_catalog = LightroomCatalogFetcher().fetch_catalogs(
+        catalogs=(LightroomCatalogDescriptor(path=_FIXTURE_PATH),)
+    )[0]
+    broken_row = replace(
+        loaded_catalog.chosen_images[0],
+        capture_time_text="2022-02-29T19:22:34",
+    )
+    adjusted_catalog = replace(
+        loaded_catalog,
+        chosen_images=(broken_row, *loaded_catalog.chosen_images[1:]),
+    )
+
+    candidate = LightroomCatalogTransformer().build_catalog_candidate(adjusted_catalog)
+
+    assert candidate.assets[0].timestamp == datetime(2022, 4, 1, 19, 22, 34, tzinfo=UTC)
+    assert candidate.warning_messages == (
+        "Lightroom captureTime remapped for asset "
+        "'3EC1FA8A05CE57D59B0BA4C353580C5F': "
+        "2022-02-29T19:22:34 -> 2022-04-01T19:22:34",
+    )
 
 
 _FIXTURE_ROW = LightroomCatalogFetcher().fetch_catalogs(

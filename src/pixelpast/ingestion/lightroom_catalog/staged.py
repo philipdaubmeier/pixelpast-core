@@ -103,6 +103,7 @@ class LightroomCatalogStagedIngestionStrategy:
         self._connector = connector
         self._start_index = start_index
         self._end_index = end_index
+        self._warning_messages: list[str] = []
 
     def discover_units(
         self,
@@ -140,7 +141,9 @@ class LightroomCatalogStagedIngestionStrategy:
         fetched_payloads: dict[LightroomCatalogDescriptor, LoadedLightroomCatalog],
     ) -> LightroomCatalogCandidate:
         del root
-        return self._connector.build_catalog_candidate(catalog=fetched_payloads[unit])
+        candidate = self._connector.build_catalog_candidate(catalog=fetched_payloads[unit])
+        self._warning_messages.extend(candidate.warning_messages)
+        return candidate
 
     def build_transform_error(
         self,
@@ -169,6 +172,7 @@ class LightroomCatalogStagedIngestionStrategy:
             persisted_asset_count=counters.persisted_asset_count,
             error_count=len(transform_errors),
             status=status,
+            warning_messages=tuple(self._warning_messages),
             transform_errors=tuple(transform_errors),
         )
 
