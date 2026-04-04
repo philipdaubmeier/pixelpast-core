@@ -20,6 +20,7 @@ from pixelpast.persistence.models import (
     AssetTag,
     Person,
     PersonGroup,
+    PersonGroupMember,
     Source,
     Tag,
 )
@@ -335,6 +336,10 @@ class AlbumNavigationReadRepository:
         person_groups_by_folder_id = self._list_folder_person_groups_by_node_id()
         counts = self._count_assets_by_folder_subtree(nodes=nodes)
         if filters.person_group_ids:
+            counts = self._count_assets_by_folder_subtree_for_person_groups(
+                nodes=nodes,
+                person_group_ids=filters.person_group_ids,
+            )
             nodes = [
                 node
                 for node in nodes
@@ -380,6 +385,10 @@ class AlbumNavigationReadRepository:
         person_groups_by_collection_id = self._list_collection_person_groups_by_node_id()
         counts = self._count_assets_by_collection_subtree(nodes=nodes)
         if filters.person_group_ids:
+            counts = self._count_assets_by_collection_subtree_for_person_groups(
+                nodes=nodes,
+                person_group_ids=filters.person_group_ids,
+            )
             nodes = [
                 node
                 for node in nodes
@@ -1068,6 +1077,27 @@ class AlbumNavigationReadRepository:
             memberships.setdefault(asset_id, set()).add(collection_id)
         return memberships
 
+    def _matching_person_group_asset_ids_subquery(
+        self,
+        *,
+        person_group_ids: tuple[int, ...],
+    ):
+        if not person_group_ids:
+            return None
+
+        selected_group_ids = sorted(set(person_group_ids))
+        person_asset_ids = select(AssetPerson.asset_id).join(
+            PersonGroupMember,
+            PersonGroupMember.person_id == AssetPerson.person_id,
+        ).where(PersonGroupMember.group_id.in_(selected_group_ids))
+        creator_asset_ids = select(Asset.id).join(
+            PersonGroupMember,
+            PersonGroupMember.person_id == Asset.creator_person_id,
+        ).where(PersonGroupMember.group_id.in_(selected_group_ids))
+        return (
+            person_asset_ids.union(creator_asset_ids).subquery()
+        )
+
     def _count_assets_by_folder_subtree(
         self,
         *,
@@ -1091,6 +1121,39 @@ class AlbumNavigationReadRepository:
                 node = nodes_by_id.get(node.parent_id) if node.parent_id is not None else None
         return counts
 
+    def _count_assets_by_folder_subtree_for_person_groups(
+        self,
+        *,
+        nodes: list[_FolderNodeRow],
+        person_group_ids: tuple[int, ...],
+    ) -> dict[int, int]:
+        if not nodes or not person_group_ids:
+            return {}
+
+        nodes_by_id = {node.id: node for node in nodes}
+        matching_asset_ids = self._matching_person_group_asset_ids_subquery(
+            person_group_ids=person_group_ids
+        )
+        if matching_asset_ids is None:
+            return {}
+
+        counts: dict[int, int] = {}
+        rows = self._session.execute(
+            select(Asset.folder_id)
+            .join(matching_asset_ids, matching_asset_ids.c.asset_id == Asset.id)
+            .where(
+                Asset.folder_id.is_not(None),
+            )
+        )
+        for (folder_id,) in rows:
+            if folder_id is None:
+                continue
+            node = nodes_by_id.get(folder_id)
+            while node is not None:
+                counts[node.id] = counts.get(node.id, 0) + 1
+                node = nodes_by_id.get(node.parent_id) if node.parent_id is not None else None
+        return counts
+
     def _count_assets_by_collection_subtree(
         self,
         *,
@@ -1107,6 +1170,48 @@ class AlbumNavigationReadRepository:
                 for (asset_id,) in self._session.execute(select(Asset.id))
             ]
         )
+        for asset_id, direct_collection_ids in memberships_by_asset_id.items():
+            for collection_id in direct_collection_ids:
+                node = nodes_by_id.get(collection_id)
+                visited_node_ids: set[int] = set()
+                while node is not None and node.id not in visited_node_ids:
+                    counted_assets_by_node_id.setdefault(node.id, set()).add(asset_id)
+                    visited_node_ids.add(node.id)
+                    node = (
+                        nodes_by_id.get(node.parent_id)
+                        if node.parent_id is not None
+                        else None
+                    )
+        return {
+            node_id: len(asset_ids)
+            for node_id, asset_ids in counted_assets_by_node_id.items()
+        }
+
+    def _count_assets_by_collection_subtree_for_person_groups(
+        self,
+        *,
+        nodes: list[_CollectionNodeRow],
+        person_group_ids: tuple[int, ...],
+    ) -> dict[int, int]:
+        if not nodes or not person_group_ids:
+            return {}
+
+        nodes_by_id = {node.id: node for node in nodes}
+        matching_asset_ids = self._matching_person_group_asset_ids_subquery(
+            person_group_ids=person_group_ids
+        )
+        if matching_asset_ids is None:
+            return {}
+
+        counted_assets_by_node_id: dict[int, set[int]] = {}
+        memberships_by_asset_id: dict[int, set[int]] = {}
+        rows = self._session.execute(
+            select(AssetCollectionItem.asset_id, AssetCollectionItem.collection_id)
+            .join(matching_asset_ids, matching_asset_ids.c.asset_id == AssetCollectionItem.asset_id)
+        )
+        for asset_id, collection_id in rows:
+            memberships_by_asset_id.setdefault(asset_id, set()).add(collection_id)
+
         for asset_id, direct_collection_ids in memberships_by_asset_id.items():
             for collection_id in direct_collection_ids:
                 node = nodes_by_id.get(collection_id)

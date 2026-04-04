@@ -8,6 +8,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from pixelpast.api.app import create_app
 from pixelpast.persistence.models import (
@@ -690,7 +691,7 @@ def test_album_folder_tree_filters_nodes_by_person_group_relevance() -> None:
                         "name": "photos",
                     "path": "photos",
                     "child_count": 1,
-                    "asset_count": 3,
+                    "asset_count": 1,
                     "person_groups": [
                         {
                             "group_id": 1,
@@ -721,7 +722,7 @@ def test_album_folder_tree_filters_nodes_by_person_group_relevance() -> None:
                     "name": "2024",
                     "path": "photos/2024",
                     "child_count": 1,
-                    "asset_count": 3,
+                    "asset_count": 1,
                     "person_groups": [
                         {
                             "group_id": 1,
@@ -752,7 +753,7 @@ def test_album_folder_tree_filters_nodes_by_person_group_relevance() -> None:
                     "name": "Trip",
                     "path": "photos/2024/Trip",
                     "child_count": 0,
-                    "asset_count": 2,
+                    "asset_count": 1,
                     "person_groups": [
                         {
                             "group_id": 1,
@@ -776,6 +777,51 @@ def test_album_folder_tree_filters_nodes_by_person_group_relevance() -> None:
                 },
             ],
         }
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_album_folder_tree_person_group_filter_recomputes_parent_asset_counts() -> None:
+    workspace_root = _create_workspace_dir(prefix="album-folder-group-filter-counts")
+    runtime = None
+    try:
+        runtime = _create_runtime(workspace_root=workspace_root)
+        _seed_album_navigation_group_filter_count_data(runtime)
+
+        app = create_app(settings=runtime.settings)
+        with TestClient(app) as client:
+            response = client.get("/api/albums/folders", params=[("person_group_ids", 1)])
+
+        assert response.status_code == 200
+        assert [node["id"] for node in response.json()["nodes"]] == [1, 2, 4, 3]
+        assert response.json()["nodes"][0]["asset_count"] == 3
+        assert response.json()["nodes"][1]["asset_count"] == 3
+        assert response.json()["nodes"][2]["asset_count"] == 1
+        assert response.json()["nodes"][3]["asset_count"] == 2
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_album_collection_tree_person_group_filter_recomputes_parent_asset_counts() -> None:
+    workspace_root = _create_workspace_dir(prefix="album-collection-group-filter-counts")
+    runtime = None
+    try:
+        runtime = _create_runtime(workspace_root=workspace_root)
+        _seed_album_navigation_group_filter_count_data(runtime)
+
+        app = create_app(settings=runtime.settings)
+        with TestClient(app) as client:
+            response = client.get("/api/albums/collections", params=[("person_group_ids", 1)])
+
+        assert response.status_code == 200
+        assert [node["id"] for node in response.json()["nodes"]] == [1, 2, 3]
+        assert response.json()["nodes"][0]["asset_count"] == 1
+        assert response.json()["nodes"][1]["asset_count"] == 1
+        assert response.json()["nodes"][2]["asset_count"] == 1
     finally:
         if runtime is not None:
             runtime.engine.dispose()
@@ -1315,6 +1361,84 @@ def _seed_album_navigation_data(runtime) -> None:
                     group_person_count=2,
                     matched_asset_count=1,
                     matched_creator_person_count=1,
+                ),
+            ]
+        )
+        session.commit()
+
+
+def _seed_album_navigation_group_filter_count_data(runtime) -> None:
+    _seed_album_navigation_data(runtime)
+    with runtime.session_factory() as session:
+        photos_source_id = session.execute(
+            select(Source.id).where(Source.name == "Photos")
+        ).scalar_one()
+        lightroom_source_id = session.execute(
+            select(Source.id).where(Source.name == "Lightroom")
+        ).scalar_one()
+        year_folder_id = session.execute(
+            select(AssetFolder.id).where(AssetFolder.path == "photos/2024")
+        ).scalar_one()
+        trips_collection_id = session.execute(
+            select(AssetCollection.id).where(AssetCollection.path == "Trips")
+        ).scalar_one()
+
+        nora = Person(name="Nora Vale", aliases=[], path="work/nora", metadata_json=None)
+        session.add(nora)
+        session.flush()
+
+        folder_work = AssetFolder(
+            source_id=photos_source_id,
+            parent_id=year_folder_id,
+            name="Work",
+            path="photos/2024/Work",
+        )
+        collection_misc = AssetCollection(
+            source_id=lightroom_source_id,
+            parent_id=trips_collection_id,
+            name="Misc",
+            path="Trips/Misc",
+            external_id="trips:misc",
+            collection_type="collection",
+            metadata_json=None,
+        )
+        session.add_all([folder_work, collection_misc])
+        session.flush()
+
+        folder_asset = Asset(
+            short_id="PHOT0006",
+            source_id=photos_source_id,
+            external_id="/library/photos/2024/Work/notes.jpg",
+            media_type="photo",
+            timestamp=_timestamp(2024, 7, 8, 9),
+            summary=None,
+            latitude=None,
+            longitude=None,
+            folder_id=folder_work.id,
+            metadata_json={"filename": "notes.jpg"},
+        )
+        collection_asset = Asset(
+            short_id="LR000006",
+            source_id=lightroom_source_id,
+            external_id="lr:trips-misc-1",
+            media_type="photo",
+            timestamp=_timestamp(2024, 8, 3, 10),
+            summary=None,
+            latitude=None,
+            longitude=None,
+            folder_id=None,
+            metadata_json={"file_name": "misc-notes.jpg"},
+        )
+        session.add_all([folder_asset, collection_asset])
+        session.flush()
+
+        session.add_all(
+            [
+                AssetPerson(asset_id=folder_asset.id, person_id=nora.id),
+                AssetPerson(asset_id=collection_asset.id, person_id=nora.id),
+                AssetCollectionItem(
+                    collection_id=collection_misc.id,
+                    asset_id=collection_asset.id,
                 ),
             ]
         )
