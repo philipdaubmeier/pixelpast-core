@@ -157,7 +157,7 @@
       "tags":
         - "album"
       "summary": "Get album folder tree"
-      "description": "Return the physical album folder tree with filtered descendant asset counts. The contract keeps source-owned folders explicit and does not collapse them into the semantic collections tree."
+      "description": "Return the physical album folder tree with structural descendant asset counts. Only person-group filtering affects tree visibility; other album filters stay local to the selected node."
       "operationId": "get_album_folder_tree_api_albums_folders_get"
       "parameters":
         -
@@ -168,10 +168,10 @@
             "type": "array"
             "items":
               "type": "integer"
-            "description": "Repeatable person identifiers. Matching assets contribute to node counts only when linked to at least one selected person."
+            "description": "Present for cross-view filter consistency, but album tree routes reject person filtering in this increment."
             "default": []
             "title": "Person Ids"
-          "description": "Repeatable person identifiers. Matching assets contribute to node counts only when linked to at least one selected person."
+          "description": "Present for cross-view filter consistency, but album tree routes reject person filtering in this increment."
         -
           "name": "person_group_ids"
           "in": "query"
@@ -192,10 +192,10 @@
             "type": "array"
             "items":
               "type": "string"
-            "description": "Repeatable normalized tag paths used to constrain descendant asset counts and later thumbnail listings."
+            "description": "Present for cross-view filter consistency, but album tree routes reject tag filtering in this increment."
             "default": []
             "title": "Tag Paths"
-          "description": "Repeatable normalized tag paths used to constrain descendant asset counts and later thumbnail listings."
+          "description": "Present for cross-view filter consistency, but album tree routes reject tag filtering in this increment."
         -
           "name": "location_geometry"
           "in": "query"
@@ -264,9 +264,9 @@
                 "minLength": 1
               -
                 "type": "null"
-            "description": "Case-insensitive filename substring applied to matching assets."
+            "description": "Present for cross-view filter consistency, but rejected here."
             "title": "Filename Query"
-          "description": "Case-insensitive filename substring applied to matching assets."
+          "description": "Present for cross-view filter consistency, but rejected here."
       "responses":
         "200":
           "description": "Physical folder navigation tree for the photo-album view."
@@ -276,21 +276,13 @@
                 "$ref": "#/components/schemas/AlbumFoldersTreeResponse"
               "examples":
                 "photo_import_folders":
-                  "summary": "Physical folder tree with filtered aggregate counts"
+                  "summary": "Physical folder tree with structural aggregate counts"
                   "value":
                     "supported_filters":
-                      - "person_ids"
                       - "person_group_ids"
-                      - "tag_paths"
-                      - "filename_query"
                     "applied_filters":
-                      "person_ids":
-                        - 7
                       "person_group_ids":
                         - 3
-                      "tag_paths":
-                        - "travel/italy"
-                      "filename_query": "IMG_1042"
                     "nodes":
                       -
                         "id": 1
@@ -343,9 +335,9 @@
                   "value":
                     "detail": "start and end must both be provided together"
                 "unsupported_filters":
-                  "summary": "Album routes reject unsupported global filters"
+                  "summary": "Album routes reject unsupported filters for each read shape"
                   "value":
-                    "detail": "unsupported album filters: distance_latitude, location_geometry; supported filters: person_ids, person_group_ids, tag_paths, filename_query"
+                    "detail": "unsupported album filters: distance_latitude, location_geometry; supported filters: person_ids, tag_paths"
               "schema":
                 "$ref": "#/components/schemas/ApiErrorResponse"
         "422":
@@ -382,7 +374,7 @@
       "tags":
         - "album"
       "summary": "Get album collection tree"
-      "description": "Return the semantic album collection tree with filtered aggregate asset counts. The contract keeps Lightroom-style collections distinct from physical folders."
+      "description": "Return the semantic album collection tree with structural aggregate asset counts. Only person-group filtering affects tree visibility; other album filters stay local to the selected node."
       "operationId": "get_album_collection_tree_api_albums_collections_get"
       "parameters":
         -
@@ -393,8 +385,10 @@
             "type": "array"
             "items":
               "type": "integer"
+            "description": "Present for cross-view filter consistency, but rejected here."
             "default": []
             "title": "Person Ids"
+          "description": "Present for cross-view filter consistency, but rejected here."
         -
           "name": "person_group_ids"
           "in": "query"
@@ -403,8 +397,10 @@
             "type": "array"
             "items":
               "type": "integer"
+            "description": "Repeatable person-group identifiers. Collection nodes remain visible only when they carry derived relevance for at least one selected group."
             "default": []
             "title": "Person Group Ids"
+          "description": "Repeatable person-group identifiers. Collection nodes remain visible only when they carry derived relevance for at least one selected group."
         -
           "name": "tag_paths"
           "in": "query"
@@ -413,8 +409,10 @@
             "type": "array"
             "items":
               "type": "string"
+            "description": "Present for cross-view filter consistency, but rejected here."
             "default": []
             "title": "Tag Paths"
+          "description": "Present for cross-view filter consistency, but rejected here."
         -
           "name": "location_geometry"
           "in": "query"
@@ -425,7 +423,9 @@
                 "type": "string"
               -
                 "type": "null"
+            "description": "Present for cross-view filter consistency, but rejected here."
             "title": "Location Geometry"
+          "description": "Present for cross-view filter consistency, but rejected here."
         -
           "name": "distance_latitude"
           "in": "query"
@@ -438,7 +438,9 @@
                 "minimum": -90
               -
                 "type": "null"
+            "description": "Present for cross-view filter consistency, but rejected here."
             "title": "Distance Latitude"
+          "description": "Present for cross-view filter consistency, but rejected here."
         -
           "name": "distance_longitude"
           "in": "query"
@@ -451,7 +453,9 @@
                 "minimum": -180
               -
                 "type": "null"
+            "description": "Present for cross-view filter consistency, but rejected here."
             "title": "Distance Longitude"
+          "description": "Present for cross-view filter consistency, but rejected here."
         -
           "name": "distance_radius_meters"
           "in": "query"
@@ -463,7 +467,9 @@
                 "minimum": 1
               -
                 "type": "null"
+            "description": "Present for cross-view filter consistency, but rejected here."
             "title": "Distance Radius Meters"
+          "description": "Present for cross-view filter consistency, but rejected here."
         -
           "name": "filename_query"
           "in": "query"
@@ -475,7 +481,9 @@
                 "minLength": 1
               -
                 "type": "null"
+            "description": "Present for cross-view filter consistency, but rejected here."
             "title": "Filename Query"
+          "description": "Present for cross-view filter consistency, but rejected here."
       "responses":
         "200":
           "description": "Semantic collection navigation tree for the photo-album view."
@@ -485,19 +493,13 @@
                 "$ref": "#/components/schemas/AlbumCollectionsTreeResponse"
               "examples":
                 "lightroom_collections":
-                  "summary": "Semantic collection tree with filtered aggregate counts"
+                  "summary": "Semantic collection tree with structural aggregate counts"
                   "value":
                     "supported_filters":
-                      - "person_ids"
                       - "person_group_ids"
-                      - "tag_paths"
-                      - "filename_query"
                     "applied_filters":
-                      "person_ids": []
                       "person_group_ids":
                         - 5
-                      "tag_paths":
-                        - "travel"
                     "nodes":
                       -
                         "id": 9
@@ -532,9 +534,9 @@
                   "value":
                     "detail": "start and end must both be provided together"
                 "unsupported_filters":
-                  "summary": "Album routes reject unsupported global filters"
+                  "summary": "Album routes reject unsupported filters for each read shape"
                   "value":
-                    "detail": "unsupported album filters: distance_latitude, location_geometry; supported filters: person_ids, person_group_ids, tag_paths, filename_query"
+                    "detail": "unsupported album filters: distance_latitude, location_geometry; supported filters: person_ids, tag_paths"
               "schema":
                 "$ref": "#/components/schemas/ApiErrorResponse"
         "422":
@@ -602,6 +604,36 @@
             "default": []
             "title": "Tag Paths"
         -
+          "name": "offset"
+          "in": "query"
+          "required": false
+          "schema":
+            "type": "integer"
+            "minimum": 0
+            "default": 0
+            "title": "Offset"
+        -
+          "name": "limit"
+          "in": "query"
+          "required": false
+          "schema":
+            "type": "integer"
+            "minimum": 1
+            "default": 1000
+            "title": "Limit"
+        -
+          "name": "person_group_ids"
+          "in": "query"
+          "required": false
+          "schema":
+            "type": "array"
+            "items":
+              "type": "integer"
+            "description": "Present for tree navigation consistency, but rejected here."
+            "default": []
+            "title": "Person Group Ids"
+          "description": "Present for tree navigation consistency, but rejected here."
+        -
           "name": "location_geometry"
           "in": "query"
           "required": false
@@ -661,7 +693,9 @@
                 "minLength": 1
               -
                 "type": "null"
+            "description": "Present for cross-view filter consistency, but rejected here."
             "title": "Filename Query"
+          "description": "Present for cross-view filter consistency, but rejected here."
       "responses":
         "200":
           "description": "Thumbnail-oriented asset listing for one folder selection."
@@ -676,7 +710,6 @@
                     "supported_filters":
                       - "person_ids"
                       - "tag_paths"
-                      - "filename_query"
                     "applied_filters":
                       "person_ids":
                         - 7
@@ -692,6 +725,11 @@
                       "name": "Italy"
                       "path": "photos/Italy"
                       "asset_count": 2
+                    "page":
+                      "offset": 0
+                      "limit": 1000
+                      "returned": 1
+                      "total": 2
                     "items":
                       -
                         "id": 41
@@ -714,9 +752,9 @@
                   "value":
                     "detail": "start and end must both be provided together"
                 "unsupported_filters":
-                  "summary": "Album routes reject unsupported global filters"
+                  "summary": "Album routes reject unsupported filters for each read shape"
                   "value":
-                    "detail": "unsupported album filters: distance_latitude, location_geometry; supported filters: person_ids, person_group_ids, tag_paths, filename_query"
+                    "detail": "unsupported album filters: distance_latitude, location_geometry; supported filters: person_ids, tag_paths"
               "schema":
                 "$ref": "#/components/schemas/ApiErrorResponse"
         "404":
@@ -768,7 +806,7 @@
       "tags":
         - "album"
       "summary": "Get album folder context"
-      "description": "Return the stable right-column context for one selected physical folder. The response includes aggregate people, tags, and map points plus per-asset lightweight highlight links so thumbnail hover stays local."
+      "description": "Return the stable right-column context for one selected physical folder. The response includes aggregate people, tags, map points, and summary counts, but leaves per-asset hover links to the page-scoped context route."
       "operationId": "get_album_folder_context_api_albums_folders__folder_id__context_get"
       "parameters":
         -
@@ -796,8 +834,10 @@
             "type": "array"
             "items":
               "type": "integer"
+            "description": "Present for tree navigation consistency, but rejected here."
             "default": []
             "title": "Person Group Ids"
+          "description": "Present for tree navigation consistency, but rejected here."
         -
           "name": "tag_paths"
           "in": "query"
@@ -868,7 +908,9 @@
                 "minLength": 1
               -
                 "type": "null"
+            "description": "Present for cross-view filter consistency, but rejected here."
             "title": "Filename Query"
+          "description": "Present for cross-view filter consistency, but rejected here."
       "responses":
         "200":
           "description": "Stable album context for one folder selection."
@@ -878,18 +920,14 @@
                 "$ref": "#/components/schemas/AlbumContextResponse"
               "examples":
                 "folder_stable_context":
-                  "summary": "Stable album context with per-asset hover highlights"
+                  "summary": "Stable album context without page-local hover payload"
                   "value":
                     "supported_filters":
                       - "person_ids"
-                      - "person_group_ids"
                       - "tag_paths"
-                      - "filename_query"
                     "applied_filters":
                       "person_ids":
                         - 1
-                      "person_group_ids":
-                        - 3
                       "tag_paths":
                         - "travel/italy"
                     "selection":
@@ -930,15 +968,6 @@
                         "latitude": 45.4371
                         "longitude": 12.3326
                         "asset_count": 1
-                    "asset_contexts":
-                      -
-                        "asset_id": 41
-                        "person_ids":
-                          - 7
-                        "tag_paths":
-                          - "travel/italy"
-                        "map_point_ids":
-                          - "asset:PHOTO041"
                     "summary_counts":
                       "assets": 2
                       "people": 1
@@ -958,9 +987,241 @@
                   "value":
                     "detail": "start and end must both be provided together"
                 "unsupported_filters":
-                  "summary": "Album routes reject unsupported global filters"
+                  "summary": "Album routes reject unsupported filters for each read shape"
                   "value":
-                    "detail": "unsupported album filters: distance_latitude, location_geometry; supported filters: person_ids, person_group_ids, tag_paths, filename_query"
+                    "detail": "unsupported album filters: distance_latitude, location_geometry; supported filters: person_ids, tag_paths"
+              "schema":
+                "$ref": "#/components/schemas/ApiErrorResponse"
+        "404":
+          "description": "The requested folder or collection node does not exist."
+          "content":
+            "application/json":
+              "examples":
+                "unknown_folder":
+                  "summary": "Unknown folder selection"
+                  "value":
+                    "detail": "album folder 999 does not exist"
+                "unknown_collection":
+                  "summary": "Unknown collection selection"
+                  "value":
+                    "detail": "album collection 999 does not exist"
+              "schema":
+                "$ref": "#/components/schemas/ApiErrorResponse"
+        "422":
+          "description": "The request could not be parsed or failed declared parameter validation."
+          "content":
+            "application/json":
+              "examples":
+                "invalid_date":
+                  "summary": "Unparseable ISO date"
+                  "value":
+                    "detail":
+                      -
+                        "type": "date_from_datetime_parsing"
+                        "loc":
+                          - "query"
+                          - "start"
+                        "msg": "Input should be a valid date or datetime, input is too short"
+                        "input": "2026-02"
+                "invalid_path_date":
+                  "summary": "Invalid path day format"
+                  "value":
+                    "detail":
+                      -
+                        "type": "date_from_datetime_parsing"
+                        "loc":
+                          - "path"
+                          - "day"
+                        "msg": "Input should be a valid date or datetime, invalid date separator"
+                        "input": "2026/07/14"
+              "schema":
+                "$ref": "#/components/schemas/ApiValidationErrorResponse"
+  "/api/albums/folders/{folder_id}/asset-contexts":
+    "get":
+      "tags":
+        - "album"
+      "summary": "Get album folder asset hover context page"
+      "description": "Return only the per-asset hover links for one loaded page of a selected physical folder. This keeps selection-level right-column context stable while page-local hover highlighting scales with large album selections."
+      "operationId": "get_album_folder_asset_context_page_api_albums_folders__folder_id__asset_contexts_get"
+      "parameters":
+        -
+          "name": "folder_id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "integer"
+            "title": "Folder Id"
+        -
+          "name": "person_ids"
+          "in": "query"
+          "required": false
+          "schema":
+            "type": "array"
+            "items":
+              "type": "integer"
+            "default": []
+            "title": "Person Ids"
+        -
+          "name": "tag_paths"
+          "in": "query"
+          "required": false
+          "schema":
+            "type": "array"
+            "items":
+              "type": "string"
+            "default": []
+            "title": "Tag Paths"
+        -
+          "name": "offset"
+          "in": "query"
+          "required": false
+          "schema":
+            "type": "integer"
+            "minimum": 0
+            "default": 0
+            "title": "Offset"
+        -
+          "name": "limit"
+          "in": "query"
+          "required": false
+          "schema":
+            "type": "integer"
+            "minimum": 1
+            "default": 1000
+            "title": "Limit"
+        -
+          "name": "person_group_ids"
+          "in": "query"
+          "required": false
+          "schema":
+            "type": "array"
+            "items":
+              "type": "integer"
+            "description": "Present for tree navigation consistency, but rejected here."
+            "default": []
+            "title": "Person Group Ids"
+          "description": "Present for tree navigation consistency, but rejected here."
+        -
+          "name": "location_geometry"
+          "in": "query"
+          "required": false
+          "schema":
+            "anyOf":
+              -
+                "type": "string"
+              -
+                "type": "null"
+            "title": "Location Geometry"
+        -
+          "name": "distance_latitude"
+          "in": "query"
+          "required": false
+          "schema":
+            "anyOf":
+              -
+                "type": "number"
+                "maximum": 90
+                "minimum": -90
+              -
+                "type": "null"
+            "title": "Distance Latitude"
+        -
+          "name": "distance_longitude"
+          "in": "query"
+          "required": false
+          "schema":
+            "anyOf":
+              -
+                "type": "number"
+                "maximum": 180
+                "minimum": -180
+              -
+                "type": "null"
+            "title": "Distance Longitude"
+        -
+          "name": "distance_radius_meters"
+          "in": "query"
+          "required": false
+          "schema":
+            "anyOf":
+              -
+                "type": "integer"
+                "minimum": 1
+              -
+                "type": "null"
+            "title": "Distance Radius Meters"
+        -
+          "name": "filename_query"
+          "in": "query"
+          "required": false
+          "schema":
+            "anyOf":
+              -
+                "type": "string"
+                "minLength": 1
+              -
+                "type": "null"
+            "title": "Filename Query"
+      "responses":
+        "200":
+          "description": "Page-scoped hover context for one folder selection."
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/AlbumAssetContextPageResponse"
+              "examples":
+                "folder_visible_page_hover_context":
+                  "summary": "Page-scoped hover context for the currently loaded asset range"
+                  "value":
+                    "supported_filters":
+                      - "person_ids"
+                      - "tag_paths"
+                    "applied_filters":
+                      "person_ids":
+                        - 1
+                      "tag_paths":
+                        - "travel/italy"
+                    "selection":
+                      "node_kind": "folder"
+                      "id": 3
+                      "source_id": 2
+                      "source_name": "Photos"
+                      "source_type": "photos"
+                      "parent_id": 1
+                      "name": "Italy"
+                      "path": "photos/Italy"
+                      "asset_count": 2
+                    "page":
+                      "offset": 0
+                      "limit": 1000
+                      "returned": 1
+                      "total": 2
+                    "asset_contexts":
+                      -
+                        "asset_id": 41
+                        "person_ids":
+                          - 7
+                        "tag_paths":
+                          - "travel/italy"
+                        "map_point_ids":
+                          - "asset:PHOTO041"
+        "400":
+          "description": "The request was syntactically valid but violated a documented PixelPast API contract constraint."
+          "content":
+            "application/json":
+              "examples":
+                "invalid_range":
+                  "summary": "Start date after end date"
+                  "value":
+                    "detail": "start must be less than or equal to end"
+                "partial_range":
+                  "summary": "Only one range boundary provided"
+                  "value":
+                    "detail": "start and end must both be provided together"
+                "unsupported_filters":
+                  "summary": "Album routes reject unsupported filters for each read shape"
+                  "value":
+                    "detail": "unsupported album filters: distance_latitude, location_geometry; supported filters: person_ids, tag_paths"
               "schema":
                 "$ref": "#/components/schemas/ApiErrorResponse"
         "404":
@@ -1043,6 +1304,36 @@
             "default": []
             "title": "Tag Paths"
         -
+          "name": "offset"
+          "in": "query"
+          "required": false
+          "schema":
+            "type": "integer"
+            "minimum": 0
+            "default": 0
+            "title": "Offset"
+        -
+          "name": "limit"
+          "in": "query"
+          "required": false
+          "schema":
+            "type": "integer"
+            "minimum": 1
+            "default": 1000
+            "title": "Limit"
+        -
+          "name": "person_group_ids"
+          "in": "query"
+          "required": false
+          "schema":
+            "type": "array"
+            "items":
+              "type": "integer"
+            "description": "Present for tree navigation consistency, but rejected here."
+            "default": []
+            "title": "Person Group Ids"
+          "description": "Present for tree navigation consistency, but rejected here."
+        -
           "name": "location_geometry"
           "in": "query"
           "required": false
@@ -1102,7 +1393,9 @@
                 "minLength": 1
               -
                 "type": "null"
+            "description": "Present for cross-view filter consistency, but rejected here."
             "title": "Filename Query"
+          "description": "Present for cross-view filter consistency, but rejected here."
       "responses":
         "200":
           "description": "Thumbnail-oriented asset listing for one collection selection."
@@ -1117,7 +1410,6 @@
                     "supported_filters":
                       - "person_ids"
                       - "tag_paths"
-                      - "filename_query"
                     "applied_filters":
                       "person_ids":
                         - 7
@@ -1133,6 +1425,11 @@
                       "name": "Italy"
                       "path": "photos/Italy"
                       "asset_count": 2
+                    "page":
+                      "offset": 0
+                      "limit": 1000
+                      "returned": 1
+                      "total": 2
                     "items":
                       -
                         "id": 41
@@ -1155,9 +1452,9 @@
                   "value":
                     "detail": "start and end must both be provided together"
                 "unsupported_filters":
-                  "summary": "Album routes reject unsupported global filters"
+                  "summary": "Album routes reject unsupported filters for each read shape"
                   "value":
-                    "detail": "unsupported album filters: distance_latitude, location_geometry; supported filters: person_ids, person_group_ids, tag_paths, filename_query"
+                    "detail": "unsupported album filters: distance_latitude, location_geometry; supported filters: person_ids, tag_paths"
               "schema":
                 "$ref": "#/components/schemas/ApiErrorResponse"
         "404":
@@ -1209,7 +1506,7 @@
       "tags":
         - "album"
       "summary": "Get album collection context"
-      "description": "Return the stable right-column context for one selected semantic collection. Thumbnail hover remains client-side by using the per-asset lightweight highlight links returned with the aggregate context."
+      "description": "Return the stable right-column context for one selected semantic collection. Aggregate sidebar data stays selection-scoped while per-asset hover links are loaded through the page-scoped context route."
       "operationId": "get_album_collection_context_api_albums_collections__collection_id__context_get"
       "parameters":
         -
@@ -1237,8 +1534,10 @@
             "type": "array"
             "items":
               "type": "integer"
+            "description": "Present for tree navigation consistency, but rejected here."
             "default": []
             "title": "Person Group Ids"
+          "description": "Present for tree navigation consistency, but rejected here."
         -
           "name": "tag_paths"
           "in": "query"
@@ -1309,7 +1608,9 @@
                 "minLength": 1
               -
                 "type": "null"
+            "description": "Present for cross-view filter consistency, but rejected here."
             "title": "Filename Query"
+          "description": "Present for cross-view filter consistency, but rejected here."
       "responses":
         "200":
           "description": "Stable album context for one collection selection."
@@ -1319,18 +1620,14 @@
                 "$ref": "#/components/schemas/AlbumContextResponse"
               "examples":
                 "folder_stable_context":
-                  "summary": "Stable album context with per-asset hover highlights"
+                  "summary": "Stable album context without page-local hover payload"
                   "value":
                     "supported_filters":
                       - "person_ids"
-                      - "person_group_ids"
                       - "tag_paths"
-                      - "filename_query"
                     "applied_filters":
                       "person_ids":
                         - 1
-                      "person_group_ids":
-                        - 3
                       "tag_paths":
                         - "travel/italy"
                     "selection":
@@ -1371,15 +1668,6 @@
                         "latitude": 45.4371
                         "longitude": 12.3326
                         "asset_count": 1
-                    "asset_contexts":
-                      -
-                        "asset_id": 41
-                        "person_ids":
-                          - 7
-                        "tag_paths":
-                          - "travel/italy"
-                        "map_point_ids":
-                          - "asset:PHOTO041"
                     "summary_counts":
                       "assets": 2
                       "people": 1
@@ -1399,9 +1687,241 @@
                   "value":
                     "detail": "start and end must both be provided together"
                 "unsupported_filters":
-                  "summary": "Album routes reject unsupported global filters"
+                  "summary": "Album routes reject unsupported filters for each read shape"
                   "value":
-                    "detail": "unsupported album filters: distance_latitude, location_geometry; supported filters: person_ids, person_group_ids, tag_paths, filename_query"
+                    "detail": "unsupported album filters: distance_latitude, location_geometry; supported filters: person_ids, tag_paths"
+              "schema":
+                "$ref": "#/components/schemas/ApiErrorResponse"
+        "404":
+          "description": "The requested folder or collection node does not exist."
+          "content":
+            "application/json":
+              "examples":
+                "unknown_folder":
+                  "summary": "Unknown folder selection"
+                  "value":
+                    "detail": "album folder 999 does not exist"
+                "unknown_collection":
+                  "summary": "Unknown collection selection"
+                  "value":
+                    "detail": "album collection 999 does not exist"
+              "schema":
+                "$ref": "#/components/schemas/ApiErrorResponse"
+        "422":
+          "description": "The request could not be parsed or failed declared parameter validation."
+          "content":
+            "application/json":
+              "examples":
+                "invalid_date":
+                  "summary": "Unparseable ISO date"
+                  "value":
+                    "detail":
+                      -
+                        "type": "date_from_datetime_parsing"
+                        "loc":
+                          - "query"
+                          - "start"
+                        "msg": "Input should be a valid date or datetime, input is too short"
+                        "input": "2026-02"
+                "invalid_path_date":
+                  "summary": "Invalid path day format"
+                  "value":
+                    "detail":
+                      -
+                        "type": "date_from_datetime_parsing"
+                        "loc":
+                          - "path"
+                          - "day"
+                        "msg": "Input should be a valid date or datetime, invalid date separator"
+                        "input": "2026/07/14"
+              "schema":
+                "$ref": "#/components/schemas/ApiValidationErrorResponse"
+  "/api/albums/collections/{collection_id}/asset-contexts":
+    "get":
+      "tags":
+        - "album"
+      "summary": "Get album collection asset hover context page"
+      "description": "Return only the per-asset hover links for one loaded page of a selected semantic collection. The selection-level right-column summary remains stable while page-local hover data loads with reached asset ranges."
+      "operationId": "get_album_collection_asset_context_page_api_albums_collections__collection_id__asset_contexts_get"
+      "parameters":
+        -
+          "name": "collection_id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "integer"
+            "title": "Collection Id"
+        -
+          "name": "person_ids"
+          "in": "query"
+          "required": false
+          "schema":
+            "type": "array"
+            "items":
+              "type": "integer"
+            "default": []
+            "title": "Person Ids"
+        -
+          "name": "tag_paths"
+          "in": "query"
+          "required": false
+          "schema":
+            "type": "array"
+            "items":
+              "type": "string"
+            "default": []
+            "title": "Tag Paths"
+        -
+          "name": "offset"
+          "in": "query"
+          "required": false
+          "schema":
+            "type": "integer"
+            "minimum": 0
+            "default": 0
+            "title": "Offset"
+        -
+          "name": "limit"
+          "in": "query"
+          "required": false
+          "schema":
+            "type": "integer"
+            "minimum": 1
+            "default": 1000
+            "title": "Limit"
+        -
+          "name": "person_group_ids"
+          "in": "query"
+          "required": false
+          "schema":
+            "type": "array"
+            "items":
+              "type": "integer"
+            "description": "Present for tree navigation consistency, but rejected here."
+            "default": []
+            "title": "Person Group Ids"
+          "description": "Present for tree navigation consistency, but rejected here."
+        -
+          "name": "location_geometry"
+          "in": "query"
+          "required": false
+          "schema":
+            "anyOf":
+              -
+                "type": "string"
+              -
+                "type": "null"
+            "title": "Location Geometry"
+        -
+          "name": "distance_latitude"
+          "in": "query"
+          "required": false
+          "schema":
+            "anyOf":
+              -
+                "type": "number"
+                "maximum": 90
+                "minimum": -90
+              -
+                "type": "null"
+            "title": "Distance Latitude"
+        -
+          "name": "distance_longitude"
+          "in": "query"
+          "required": false
+          "schema":
+            "anyOf":
+              -
+                "type": "number"
+                "maximum": 180
+                "minimum": -180
+              -
+                "type": "null"
+            "title": "Distance Longitude"
+        -
+          "name": "distance_radius_meters"
+          "in": "query"
+          "required": false
+          "schema":
+            "anyOf":
+              -
+                "type": "integer"
+                "minimum": 1
+              -
+                "type": "null"
+            "title": "Distance Radius Meters"
+        -
+          "name": "filename_query"
+          "in": "query"
+          "required": false
+          "schema":
+            "anyOf":
+              -
+                "type": "string"
+                "minLength": 1
+              -
+                "type": "null"
+            "title": "Filename Query"
+      "responses":
+        "200":
+          "description": "Page-scoped hover context for one collection selection."
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/AlbumAssetContextPageResponse"
+              "examples":
+                "folder_visible_page_hover_context":
+                  "summary": "Page-scoped hover context for the currently loaded asset range"
+                  "value":
+                    "supported_filters":
+                      - "person_ids"
+                      - "tag_paths"
+                    "applied_filters":
+                      "person_ids":
+                        - 1
+                      "tag_paths":
+                        - "travel/italy"
+                    "selection":
+                      "node_kind": "folder"
+                      "id": 3
+                      "source_id": 2
+                      "source_name": "Photos"
+                      "source_type": "photos"
+                      "parent_id": 1
+                      "name": "Italy"
+                      "path": "photos/Italy"
+                      "asset_count": 2
+                    "page":
+                      "offset": 0
+                      "limit": 1000
+                      "returned": 1
+                      "total": 2
+                    "asset_contexts":
+                      -
+                        "asset_id": 41
+                        "person_ids":
+                          - 7
+                        "tag_paths":
+                          - "travel/italy"
+                        "map_point_ids":
+                          - "asset:PHOTO041"
+        "400":
+          "description": "The request was syntactically valid but violated a documented PixelPast API contract constraint."
+          "content":
+            "application/json":
+              "examples":
+                "invalid_range":
+                  "summary": "Start date after end date"
+                  "value":
+                    "detail": "start must be less than or equal to end"
+                "partial_range":
+                  "summary": "Only one range boundary provided"
+                  "value":
+                    "detail": "start and end must both be provided together"
+                "unsupported_filters":
+                  "summary": "Album routes reject unsupported filters for each read shape"
+                  "value":
+                    "detail": "unsupported album filters: distance_latitude, location_geometry; supported filters: person_ids, tag_paths"
               "schema":
                 "$ref": "#/components/schemas/ApiErrorResponse"
         "404":
@@ -3263,9 +3783,13 @@
     "AlbumAppliedFilters":
       "properties":
         "person_ids":
-          "items":
-            "type": "integer"
-          "type": "array"
+          "anyOf":
+            -
+              "items":
+                "type": "integer"
+              "type": "array"
+            -
+              "type": "null"
           "title": "Person Ids"
         "person_group_ids":
           "anyOf":
@@ -3277,20 +3801,43 @@
               "type": "null"
           "title": "Person Group Ids"
         "tag_paths":
-          "items":
-            "type": "string"
-          "type": "array"
-          "title": "Tag Paths"
-        "filename_query":
           "anyOf":
             -
-              "type": "string"
+              "items":
+                "type": "string"
+              "type": "array"
             -
               "type": "null"
-          "title": "Filename Query"
+          "title": "Tag Paths"
       "type": "object"
       "title": "AlbumAppliedFilters"
       "description": "Explicit supported filter state applied to an album response."
+    "AlbumAssetContextPageResponse":
+      "properties":
+        "supported_filters":
+          "items":
+            "type": "string"
+          "type": "array"
+          "title": "Supported Filters"
+        "applied_filters":
+          "$ref": "#/components/schemas/AlbumAppliedFilters"
+        "selection":
+          "$ref": "#/components/schemas/AlbumSelection"
+        "page":
+          "$ref": "#/components/schemas/AlbumPage"
+        "asset_contexts":
+          "items":
+            "$ref": "#/components/schemas/AlbumContextAssetItem"
+          "type": "array"
+          "title": "Asset Contexts"
+      "type": "object"
+      "required":
+        - "supported_filters"
+        - "applied_filters"
+        - "selection"
+        - "page"
+      "title": "AlbumAssetContextPageResponse"
+      "description": "Page-scoped hover context for one loaded album asset range."
     "AlbumAssetDetailResponse":
       "properties":
         "id":
@@ -3479,6 +4026,8 @@
           "$ref": "#/components/schemas/AlbumAppliedFilters"
         "selection":
           "$ref": "#/components/schemas/AlbumSelection"
+        "page":
+          "$ref": "#/components/schemas/AlbumPage"
         "items":
           "items":
             "$ref": "#/components/schemas/AlbumAssetItem"
@@ -3489,6 +4038,7 @@
         - "supported_filters"
         - "applied_filters"
         - "selection"
+        - "page"
         - "items"
       "title": "AlbumAssetListingResponse"
       "description": "Read response for one selected album subtree asset listing."
@@ -3723,11 +4273,6 @@
             "$ref": "#/components/schemas/AlbumContextMapPoint"
           "type": "array"
           "title": "Map Points"
-        "asset_contexts":
-          "items":
-            "$ref": "#/components/schemas/AlbumContextAssetItem"
-          "type": "array"
-          "title": "Asset Contexts"
         "summary_counts":
           "$ref": "#/components/schemas/AlbumContextSummaryCounts"
       "type": "object"
@@ -3884,6 +4429,28 @@
         - "nodes"
       "title": "AlbumFoldersTreeResponse"
       "description": "Read response for the physical album folder tree."
+    "AlbumPage":
+      "properties":
+        "offset":
+          "type": "integer"
+          "title": "Offset"
+        "limit":
+          "type": "integer"
+          "title": "Limit"
+        "returned":
+          "type": "integer"
+          "title": "Returned"
+        "total":
+          "type": "integer"
+          "title": "Total"
+      "type": "object"
+      "required":
+        - "offset"
+        - "limit"
+        - "returned"
+        - "total"
+      "title": "AlbumPage"
+      "description": "Explicit page metadata for paged album asset reads."
     "AlbumPersonGroupRelevance":
       "properties":
         "group_id":
