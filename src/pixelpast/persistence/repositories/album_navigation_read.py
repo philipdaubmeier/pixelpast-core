@@ -335,6 +335,10 @@ class AlbumNavigationReadRepository:
 
         nodes = self._list_folder_nodes()
         person_groups_by_folder_id = self._list_folder_person_groups_by_node_id()
+        counts = {
+            node.id: node.asset_count
+            for node in nodes
+        }
         if filters.person_group_ids:
             nodes = [
                 node
@@ -344,6 +348,7 @@ class AlbumNavigationReadRepository:
                     for group in person_groups_by_folder_id.get(node.id, ())
                 )
             ]
+            counts = _count_filtered_node_assets_from_visible_leaves(nodes=nodes)
         child_counts = _count_children_by_parent_id(node.parent_id for node in nodes)
         ordered_nodes = sorted(
             nodes,
@@ -364,7 +369,7 @@ class AlbumNavigationReadRepository:
                 name=node.name,
                 path=node.path,
                 child_count=child_counts.get(node.id, 0),
-                asset_count=node.asset_count,
+                asset_count=counts.get(node.id, 0),
                 person_groups=person_groups_by_folder_id.get(node.id, ()),
             )
             for node in ordered_nodes
@@ -379,6 +384,10 @@ class AlbumNavigationReadRepository:
 
         nodes = self._list_collection_nodes()
         person_groups_by_collection_id = self._list_collection_person_groups_by_node_id()
+        counts = {
+            node.id: node.asset_count
+            for node in nodes
+        }
         if filters.person_group_ids:
             nodes = [
                 node
@@ -388,6 +397,7 @@ class AlbumNavigationReadRepository:
                     for group in person_groups_by_collection_id.get(node.id, ())
                 )
             ]
+            counts = _count_filtered_node_assets_from_visible_leaves(nodes=nodes)
         child_counts = _count_children_by_parent_id(node.parent_id for node in nodes)
         ordered_nodes = sorted(
             nodes,
@@ -409,7 +419,7 @@ class AlbumNavigationReadRepository:
                 path=node.path,
                 collection_type=node.collection_type,
                 child_count=child_counts.get(node.id, 0),
-                asset_count=node.asset_count,
+                asset_count=counts.get(node.id, 0),
                 person_groups=person_groups_by_collection_id.get(node.id, ()),
             )
             for node in ordered_nodes
@@ -1303,6 +1313,33 @@ def _count_children_by_parent_id(parent_ids: Any) -> dict[int, int]:
         if parent_id is None:
             continue
         counts[parent_id] = counts.get(parent_id, 0) + 1
+    return counts
+
+
+def _count_filtered_node_assets_from_visible_leaves(
+    *,
+    nodes: list[Any],
+) -> dict[int, int]:
+    counts: dict[int, int] = {node.id: 0 for node in nodes}
+    if not nodes:
+        return counts
+
+    nodes_by_id = {node.id: node for node in nodes}
+    visible_parent_ids = {
+        node.parent_id
+        for node in nodes
+        if node.parent_id is not None
+    }
+    leaf_nodes = [
+        node
+        for node in nodes
+        if node.id not in visible_parent_ids
+    ]
+    for leaf_node in leaf_nodes:
+        node = leaf_node
+        while node is not None:
+            counts[node.id] = counts.get(node.id, 0) + leaf_node.asset_count
+            node = nodes_by_id.get(node.parent_id) if node.parent_id is not None else None
     return counts
 
 
