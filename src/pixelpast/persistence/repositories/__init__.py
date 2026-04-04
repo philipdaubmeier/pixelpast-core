@@ -2,6 +2,7 @@
 
 from pixelpast.persistence.repositories.album_aggregates import (
     AlbumAggregateAssetEvidenceInput,
+    AssetCollectionAggregateSnapshot,
     AlbumAggregateCollectionMembershipInput,
     AlbumAggregateCollectionNodeInput,
     AlbumAggregateFolderNodeInput,
@@ -9,6 +10,7 @@ from pixelpast.persistence.repositories.album_aggregates import (
     AlbumAggregateRepository,
     AlbumCollectionPersonGroupSnapshot,
     AlbumFolderPersonGroupSnapshot,
+    AssetFolderAggregateSnapshot,
     AssetCollectionPersonGroupSnapshot,
     AssetFolderPersonGroupSnapshot,
     PersonGroupCollectionRelevanceSnapshot,
@@ -97,6 +99,7 @@ __all__ = [
     "AlbumPersonGroupRelevanceSnapshot",
     "AlbumAssetDetailSnapshot",
     "AlbumAggregateAssetEvidenceInput",
+    "AssetCollectionAggregateSnapshot",
     "AlbumAggregateCollectionMembershipInput",
     "AlbumAggregateCollectionNodeInput",
     "AlbumAggregateFolderNodeInput",
@@ -114,6 +117,7 @@ __all__ = [
     "AlbumQueryFilters",
     "AlbumSelectionSnapshot",
     "AssetCollectionRepository",
+    "AssetFolderAggregateSnapshot",
     "AssetCollectionPersonGroupSnapshot",
     "AssetFolderRepository",
     "AssetFolderPersonGroupSnapshot",

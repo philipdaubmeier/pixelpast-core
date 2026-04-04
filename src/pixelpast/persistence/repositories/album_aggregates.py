@@ -88,6 +88,14 @@ class AssetFolderPersonGroupSnapshot:
 
 
 @dataclass(slots=True, frozen=True)
+class AssetFolderAggregateSnapshot:
+    """Derived folder aggregate row ready for persistence on the folder node."""
+
+    folder_id: int
+    asset_count: int
+
+
+@dataclass(slots=True, frozen=True)
 class AssetCollectionPersonGroupSnapshot:
     """Derived collection-to-group relevance row ready for persistence."""
 
@@ -97,6 +105,14 @@ class AssetCollectionPersonGroupSnapshot:
     group_person_count: int
     matched_asset_count: int
     matched_creator_person_count: int
+
+
+@dataclass(slots=True, frozen=True)
+class AssetCollectionAggregateSnapshot:
+    """Derived collection aggregate row ready for persistence on the collection node."""
+
+    collection_id: int
+    asset_count: int
 
 
 @dataclass(slots=True, frozen=True)
@@ -324,10 +340,43 @@ class AlbumAggregateRepository:
     def replace_all(
         self,
         *,
+        folder_counts: tuple[AssetFolderAggregateSnapshot, ...],
+        collection_counts: tuple[AssetCollectionAggregateSnapshot, ...],
         folder_rows: tuple[AssetFolderPersonGroupSnapshot, ...],
         collection_rows: tuple[AssetCollectionPersonGroupSnapshot, ...],
     ) -> None:
         """Replace the full album aggregate materialization deterministically."""
+
+        if folder_counts:
+            for folder_count_batch in _iter_album_aggregate_batches(
+                folder_counts,
+                batch_size=self._SQLITE_BATCH_SIZE,
+            ):
+                self._session.bulk_update_mappings(
+                    AssetFolder,
+                    [
+                        {
+                            "id": row.folder_id,
+                            "asset_count": row.asset_count,
+                        }
+                        for row in folder_count_batch
+                    ],
+                )
+        if collection_counts:
+            for collection_count_batch in _iter_album_aggregate_batches(
+                collection_counts,
+                batch_size=self._SQLITE_BATCH_SIZE,
+            ):
+                self._session.bulk_update_mappings(
+                    AssetCollection,
+                    [
+                        {
+                            "id": row.collection_id,
+                            "asset_count": row.asset_count,
+                        }
+                        for row in collection_count_batch
+                    ],
+                )
 
         self._session.execute(delete(AssetFolderPersonGroup))
         self._session.execute(delete(AssetCollectionPersonGroup))

@@ -205,6 +205,7 @@ class AssetFolder(Base):
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     path: Mapped[str] = mapped_column(String(2048), nullable=False)
+    asset_count: Mapped[int] = mapped_column(nullable=False, default=0, server_default="0")
 
 
 class AssetCollection(Base):
@@ -231,6 +232,7 @@ class AssetCollection(Base):
     path: Mapped[str] = mapped_column(String(2048), nullable=False)
     external_id: Mapped[str] = mapped_column(String(512), nullable=False)
     collection_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    asset_count: Mapped[int] = mapped_column(nullable=False, default=0, server_default="0")
     metadata_json: Mapped[dict[str, Any] | None] = mapped_column(
         "metadata",
         JSON,

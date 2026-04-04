@@ -52,6 +52,14 @@ def test_album_aggregate_job_materializes_relevance_and_repository_reads() -> No
         assert result.person_group_count == 3
 
         with runtime.session_factory() as session:
+            folder_nodes = list(
+                session.execute(select(AssetFolder).order_by(AssetFolder.id)).scalars()
+            )
+            collection_nodes = list(
+                session.execute(
+                    select(AssetCollection).order_by(AssetCollection.id)
+                ).scalars()
+            )
             folder_rows = list(
                 session.execute(
                     select(AssetFolderPersonGroup).order_by(
@@ -192,6 +200,17 @@ def test_album_aggregate_job_materializes_relevance_and_repository_reads() -> No
         ] == [
             ("Trips", "collection", 2, 1),
             ("Trips/Italy", "collection", 2, 1),
+        ]
+        assert [(row.path, row.asset_count) for row in folder_nodes] == [
+            ("photos", 2),
+            ("photos/2024", 2),
+            ("photos/2024/Trip", 1),
+            ("photos/2024/Home", 1),
+        ]
+        assert [(row.path, row.asset_count) for row in collection_nodes] == [
+            ("Portraits", 1),
+            ("Trips", 1),
+            ("Trips/Italy", 1),
         ]
     finally:
         runtime.engine.dispose()

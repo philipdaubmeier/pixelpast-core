@@ -28,6 +28,8 @@ class AlbumAggregateSnapshotPersister:
         """Replace the stored album aggregate rows atomically."""
 
         repository.replace_all(
+            folder_counts=build_result.folder_counts,
+            collection_counts=build_result.collection_counts,
             folder_rows=build_result.folder_rows,
             collection_rows=build_result.collection_rows,
         )

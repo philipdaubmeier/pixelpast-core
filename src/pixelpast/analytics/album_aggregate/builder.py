@@ -6,7 +6,9 @@ from dataclasses import dataclass, field
 
 from pixelpast.analytics.album_aggregate.loading import AlbumAggregateCanonicalInputs
 from pixelpast.persistence.repositories import (
+    AssetCollectionAggregateSnapshot,
     AssetCollectionPersonGroupSnapshot,
+    AssetFolderAggregateSnapshot,
     AssetFolderPersonGroupSnapshot,
 )
 
@@ -15,6 +17,8 @@ from pixelpast.persistence.repositories import (
 class AlbumAggregateBuildResult:
     """Deterministic derived relevance rows for folders and collections."""
 
+    folder_counts: tuple[AssetFolderAggregateSnapshot, ...]
+    collection_counts: tuple[AssetCollectionAggregateSnapshot, ...]
     folder_rows: tuple[AssetFolderPersonGroupSnapshot, ...]
     collection_rows: tuple[AssetCollectionPersonGroupSnapshot, ...]
 
@@ -58,8 +62,26 @@ def build_album_aggregate_snapshots(
 
     folder_accumulators: dict[tuple[int, int], _NodeGroupAccumulator] = {}
     collection_accumulators: dict[tuple[int, int], _NodeGroupAccumulator] = {}
+    folder_asset_counts: dict[int, int] = {}
+    collection_asset_ids_by_node_id: dict[int, set[int]] = {}
 
     for asset in inputs.asset_evidence:
+        if asset.folder_id is not None:
+            for folder_id in folder_ancestors_by_id.get(asset.folder_id, ()):
+                folder_asset_counts[folder_id] = folder_asset_counts.get(folder_id, 0) + 1
+
+        direct_collection_ids = collection_ids_by_asset_id.get(asset.asset_id, ())
+        if direct_collection_ids:
+            collection_node_ids: set[int] = set()
+            for collection_id in direct_collection_ids:
+                collection_node_ids.update(
+                    collection_ancestors_by_id.get(collection_id, ())
+                )
+            for collection_id in collection_node_ids:
+                collection_asset_ids_by_node_id.setdefault(collection_id, set()).add(
+                    asset.asset_id
+                )
+
         asset_person_ids = set(asset.person_ids)
         if asset.creator_person_id is not None:
             asset_person_ids.add(asset.creator_person_id)
@@ -76,13 +98,7 @@ def build_album_aggregate_snapshots(
                 groups_by_person_id=groups_by_person_id,
             )
 
-        direct_collection_ids = collection_ids_by_asset_id.get(asset.asset_id, ())
         if direct_collection_ids:
-            collection_node_ids: set[int] = set()
-            for collection_id in direct_collection_ids:
-                collection_node_ids.update(
-                    collection_ancestors_by_id.get(collection_id, ())
-                )
             _accumulate_node_group_stats(
                 accumulators=collection_accumulators,
                 node_ids=sorted(collection_node_ids),
@@ -109,6 +125,13 @@ def build_album_aggregate_snapshots(
             key=lambda row: (row.folder_id, row.group_id),
         )
     )
+    folder_counts = tuple(
+        AssetFolderAggregateSnapshot(
+            folder_id=node.folder_id,
+            asset_count=folder_asset_counts.get(node.folder_id, 0),
+        )
+        for node in inputs.folder_nodes
+    )
     collection_rows = tuple(
         sorted(
             (
@@ -126,7 +149,16 @@ def build_album_aggregate_snapshots(
             key=lambda row: (row.collection_id, row.group_id),
         )
     )
+    collection_counts = tuple(
+        AssetCollectionAggregateSnapshot(
+            collection_id=node.collection_id,
+            asset_count=len(collection_asset_ids_by_node_id.get(node.collection_id, set())),
+        )
+        for node in inputs.collection_nodes
+    )
     return AlbumAggregateBuildResult(
+        folder_counts=folder_counts,
+        collection_counts=collection_counts,
         folder_rows=folder_rows,
         collection_rows=collection_rows,
     )

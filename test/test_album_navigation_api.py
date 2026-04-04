@@ -691,7 +691,7 @@ def test_album_folder_tree_filters_nodes_by_person_group_relevance() -> None:
                         "name": "photos",
                     "path": "photos",
                     "child_count": 1,
-                    "asset_count": 1,
+                    "asset_count": 3,
                     "person_groups": [
                         {
                             "group_id": 1,
@@ -722,7 +722,7 @@ def test_album_folder_tree_filters_nodes_by_person_group_relevance() -> None:
                     "name": "2024",
                     "path": "photos/2024",
                     "child_count": 1,
-                    "asset_count": 1,
+                    "asset_count": 3,
                     "person_groups": [
                         {
                             "group_id": 1,
@@ -753,7 +753,7 @@ def test_album_folder_tree_filters_nodes_by_person_group_relevance() -> None:
                     "name": "Trip",
                     "path": "photos/2024/Trip",
                     "child_count": 0,
-                    "asset_count": 1,
+                    "asset_count": 2,
                     "person_groups": [
                         {
                             "group_id": 1,
@@ -783,8 +783,8 @@ def test_album_folder_tree_filters_nodes_by_person_group_relevance() -> None:
         shutil.rmtree(workspace_root, ignore_errors=True)
 
 
-def test_album_folder_tree_person_group_filter_recomputes_parent_asset_counts() -> None:
-    workspace_root = _create_workspace_dir(prefix="album-folder-group-filter-counts")
+def test_album_folder_tree_person_group_filter_keeps_structural_parent_asset_counts() -> None:
+    workspace_root = _create_workspace_dir(prefix="album-folder-group-filter-structural-counts")
     runtime = None
     try:
         runtime = _create_runtime(workspace_root=workspace_root)
@@ -796,8 +796,8 @@ def test_album_folder_tree_person_group_filter_recomputes_parent_asset_counts() 
 
         assert response.status_code == 200
         assert [node["id"] for node in response.json()["nodes"]] == [1, 2, 4, 3]
-        assert response.json()["nodes"][0]["asset_count"] == 3
-        assert response.json()["nodes"][1]["asset_count"] == 3
+        assert response.json()["nodes"][0]["asset_count"] == 4
+        assert response.json()["nodes"][1]["asset_count"] == 4
         assert response.json()["nodes"][2]["asset_count"] == 1
         assert response.json()["nodes"][3]["asset_count"] == 2
     finally:
@@ -806,8 +806,8 @@ def test_album_folder_tree_person_group_filter_recomputes_parent_asset_counts() 
         shutil.rmtree(workspace_root, ignore_errors=True)
 
 
-def test_album_collection_tree_person_group_filter_recomputes_parent_asset_counts() -> None:
-    workspace_root = _create_workspace_dir(prefix="album-collection-group-filter-counts")
+def test_album_collection_tree_person_group_filter_keeps_structural_parent_asset_counts() -> None:
+    workspace_root = _create_workspace_dir(prefix="album-collection-group-filter-structural-counts")
     runtime = None
     try:
         runtime = _create_runtime(workspace_root=workspace_root)
@@ -820,7 +820,7 @@ def test_album_collection_tree_person_group_filter_recomputes_parent_asset_count
         assert response.status_code == 200
         assert [node["id"] for node in response.json()["nodes"]] == [1, 2, 3]
         assert response.json()["nodes"][0]["asset_count"] == 1
-        assert response.json()["nodes"][1]["asset_count"] == 1
+        assert response.json()["nodes"][1]["asset_count"] == 2
         assert response.json()["nodes"][2]["asset_count"] == 1
     finally:
         if runtime is not None:
@@ -1364,6 +1364,13 @@ def _seed_album_navigation_data(runtime) -> None:
                 ),
             ]
         )
+        folder_root.asset_count = 3
+        folder_year.asset_count = 3
+        folder_trip.asset_count = 2
+        folder_home.asset_count = 1
+        collection_portraits.asset_count = 1
+        collection_trips.asset_count = 1
+        collection_italy.asset_count = 1
         session.commit()
 
 
@@ -1442,6 +1449,20 @@ def _seed_album_navigation_group_filter_count_data(runtime) -> None:
                 ),
             ]
         )
+        folder_work.asset_count = 1
+        collection_misc.asset_count = 1
+        year_folder = session.execute(
+            select(AssetFolder).where(AssetFolder.id == year_folder_id)
+        ).scalar_one()
+        year_folder.asset_count = 4
+        root_folder = session.execute(
+            select(AssetFolder).where(AssetFolder.path == "photos")
+        ).scalar_one()
+        root_folder.asset_count = 4
+        trips_collection = session.execute(
+            select(AssetCollection).where(AssetCollection.id == trips_collection_id)
+        ).scalar_one()
+        trips_collection.asset_count = 2
         session.commit()
 
 
