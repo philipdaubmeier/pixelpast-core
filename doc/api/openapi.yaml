@@ -173,6 +173,18 @@
             "title": "Person Ids"
           "description": "Repeatable person identifiers. Matching assets contribute to node counts only when linked to at least one selected person."
         -
+          "name": "person_group_ids"
+          "in": "query"
+          "required": false
+          "schema":
+            "type": "array"
+            "items":
+              "type": "integer"
+            "description": "Repeatable person-group identifiers. Folder nodes remain visible only when they carry derived relevance for at least one selected group."
+            "default": []
+            "title": "Person Group Ids"
+          "description": "Repeatable person-group identifiers. Folder nodes remain visible only when they carry derived relevance for at least one selected group."
+        -
           "name": "tag_paths"
           "in": "query"
           "required": false
@@ -268,11 +280,14 @@
                   "value":
                     "supported_filters":
                       - "person_ids"
+                      - "person_group_ids"
                       - "tag_paths"
                       - "filename_query"
                     "applied_filters":
                       "person_ids":
                         - 7
+                      "person_group_ids":
+                        - 3
                       "tag_paths":
                         - "travel/italy"
                       "filename_query": "IMG_1042"
@@ -286,6 +301,15 @@
                         "path": "photos"
                         "child_count": 2
                         "asset_count": 6
+                        "person_groups":
+                          -
+                            "group_id": 3
+                            "group_name": "Family"
+                            "color_index": 2
+                            "matched_person_count": 4
+                            "group_person_count": 5
+                            "matched_asset_count": 6
+                            "matched_creator_person_count": 2
                       -
                         "id": 3
                         "source_id": 2
@@ -296,6 +320,15 @@
                         "path": "photos/Italy"
                         "child_count": 0
                         "asset_count": 4
+                        "person_groups":
+                          -
+                            "group_id": 3
+                            "group_name": "Family"
+                            "color_index": 2
+                            "matched_person_count": 2
+                            "group_person_count": 5
+                            "matched_asset_count": 4
+                            "matched_creator_person_count": 1
         "400":
           "description": "The request was syntactically valid but violated a documented PixelPast API contract constraint."
           "content":
@@ -312,7 +345,7 @@
                 "unsupported_filters":
                   "summary": "Album routes reject unsupported global filters"
                   "value":
-                    "detail": "unsupported album filters: distance_latitude, location_geometry; supported filters: person_ids, tag_paths, filename_query"
+                    "detail": "unsupported album filters: distance_latitude, location_geometry; supported filters: person_ids, person_group_ids, tag_paths, filename_query"
               "schema":
                 "$ref": "#/components/schemas/ApiErrorResponse"
         "422":
@@ -362,6 +395,16 @@
               "type": "integer"
             "default": []
             "title": "Person Ids"
+        -
+          "name": "person_group_ids"
+          "in": "query"
+          "required": false
+          "schema":
+            "type": "array"
+            "items":
+              "type": "integer"
+            "default": []
+            "title": "Person Group Ids"
         -
           "name": "tag_paths"
           "in": "query"
@@ -446,10 +489,13 @@
                   "value":
                     "supported_filters":
                       - "person_ids"
+                      - "person_group_ids"
                       - "tag_paths"
                       - "filename_query"
                     "applied_filters":
                       "person_ids": []
+                      "person_group_ids":
+                        - 5
                       "tag_paths":
                         - "travel"
                     "nodes":
@@ -463,6 +509,15 @@
                         "collection_type": "collection"
                         "child_count": 1
                         "asset_count": 12
+                        "person_groups":
+                          -
+                            "group_id": 5
+                            "group_name": "Friends"
+                            "color_index": 4
+                            "matched_person_count": 3
+                            "group_person_count": 4
+                            "matched_asset_count": 12
+                            "matched_creator_person_count": 1
         "400":
           "description": "The request was syntactically valid but violated a documented PixelPast API contract constraint."
           "content":
@@ -479,7 +534,7 @@
                 "unsupported_filters":
                   "summary": "Album routes reject unsupported global filters"
                   "value":
-                    "detail": "unsupported album filters: distance_latitude, location_geometry; supported filters: person_ids, tag_paths, filename_query"
+                    "detail": "unsupported album filters: distance_latitude, location_geometry; supported filters: person_ids, person_group_ids, tag_paths, filename_query"
               "schema":
                 "$ref": "#/components/schemas/ApiErrorResponse"
         "422":
@@ -661,7 +716,7 @@
                 "unsupported_filters":
                   "summary": "Album routes reject unsupported global filters"
                   "value":
-                    "detail": "unsupported album filters: distance_latitude, location_geometry; supported filters: person_ids, tag_paths, filename_query"
+                    "detail": "unsupported album filters: distance_latitude, location_geometry; supported filters: person_ids, person_group_ids, tag_paths, filename_query"
               "schema":
                 "$ref": "#/components/schemas/ApiErrorResponse"
         "404":
@@ -733,6 +788,16 @@
               "type": "integer"
             "default": []
             "title": "Person Ids"
+        -
+          "name": "person_group_ids"
+          "in": "query"
+          "required": false
+          "schema":
+            "type": "array"
+            "items":
+              "type": "integer"
+            "default": []
+            "title": "Person Group Ids"
         -
           "name": "tag_paths"
           "in": "query"
@@ -817,11 +882,14 @@
                   "value":
                     "supported_filters":
                       - "person_ids"
+                      - "person_group_ids"
                       - "tag_paths"
                       - "filename_query"
                     "applied_filters":
                       "person_ids":
                         - 1
+                      "person_group_ids":
+                        - 3
                       "tag_paths":
                         - "travel/italy"
                     "selection":
@@ -834,6 +902,15 @@
                       "name": "Italy"
                       "path": "photos/Italy"
                       "asset_count": 2
+                    "person_groups":
+                      -
+                        "group_id": 3
+                        "group_name": "Family"
+                        "color_index": 2
+                        "matched_person_count": 2
+                        "group_person_count": 5
+                        "matched_asset_count": 2
+                        "matched_creator_person_count": 1
                     "persons":
                       -
                         "id": 7
@@ -883,7 +960,7 @@
                 "unsupported_filters":
                   "summary": "Album routes reject unsupported global filters"
                   "value":
-                    "detail": "unsupported album filters: distance_latitude, location_geometry; supported filters: person_ids, tag_paths, filename_query"
+                    "detail": "unsupported album filters: distance_latitude, location_geometry; supported filters: person_ids, person_group_ids, tag_paths, filename_query"
               "schema":
                 "$ref": "#/components/schemas/ApiErrorResponse"
         "404":
@@ -1080,7 +1157,7 @@
                 "unsupported_filters":
                   "summary": "Album routes reject unsupported global filters"
                   "value":
-                    "detail": "unsupported album filters: distance_latitude, location_geometry; supported filters: person_ids, tag_paths, filename_query"
+                    "detail": "unsupported album filters: distance_latitude, location_geometry; supported filters: person_ids, person_group_ids, tag_paths, filename_query"
               "schema":
                 "$ref": "#/components/schemas/ApiErrorResponse"
         "404":
@@ -1152,6 +1229,16 @@
               "type": "integer"
             "default": []
             "title": "Person Ids"
+        -
+          "name": "person_group_ids"
+          "in": "query"
+          "required": false
+          "schema":
+            "type": "array"
+            "items":
+              "type": "integer"
+            "default": []
+            "title": "Person Group Ids"
         -
           "name": "tag_paths"
           "in": "query"
@@ -1236,11 +1323,14 @@
                   "value":
                     "supported_filters":
                       - "person_ids"
+                      - "person_group_ids"
                       - "tag_paths"
                       - "filename_query"
                     "applied_filters":
                       "person_ids":
                         - 1
+                      "person_group_ids":
+                        - 3
                       "tag_paths":
                         - "travel/italy"
                     "selection":
@@ -1253,6 +1343,15 @@
                       "name": "Italy"
                       "path": "photos/Italy"
                       "asset_count": 2
+                    "person_groups":
+                      -
+                        "group_id": 3
+                        "group_name": "Family"
+                        "color_index": 2
+                        "matched_person_count": 2
+                        "group_person_count": 5
+                        "matched_asset_count": 2
+                        "matched_creator_person_count": 1
                     "persons":
                       -
                         "id": 7
@@ -1302,7 +1401,7 @@
                 "unsupported_filters":
                   "summary": "Album routes reject unsupported global filters"
                   "value":
-                    "detail": "unsupported album filters: distance_latitude, location_geometry; supported filters: person_ids, tag_paths, filename_query"
+                    "detail": "unsupported album filters: distance_latitude, location_geometry; supported filters: person_ids, person_group_ids, tag_paths, filename_query"
               "schema":
                 "$ref": "#/components/schemas/ApiErrorResponse"
         "404":
@@ -2133,6 +2232,22 @@
               "summary": "Seed the graph with Anna Becker"
               "value": 7
         -
+          "name": "person_group_ids"
+          "in": "query"
+          "required": false
+          "schema":
+            "type": "array"
+            "items":
+              "type": "integer"
+            "description": "Repeatable person-group identifiers. Only persons belonging to at least one selected group remain in the projected graph when this filter is present."
+            "default": []
+            "title": "Person Group Ids"
+          "description": "Repeatable person-group identifiers. Only persons belonging to at least one selected group remain in the projected graph when this filter is present."
+          "examples":
+            "family":
+              "summary": "Project the family slice only"
+              "value": 4
+        -
           "name": "max_people_per_asset"
           "in": "query"
           "required": false
@@ -2271,14 +2386,25 @@
                         "id": 7
                         "name": "Anna Becker"
                         "occurrence_count": 12
+                        "matching_groups":
+                          -
+                            "id": 2
+                            "name": "Travel Circle"
+                            "color_index": 4
                       -
                         "id": 12
                         "name": "Milo Tan"
                         "occurrence_count": 8
+                        "matching_groups":
+                          -
+                            "id": 4
+                            "name": "Immediate Family"
+                            "color_index": 2
                       -
                         "id": 19
                         "name": "Nora Rossi"
                         "occurrence_count": 5
+                        "matching_groups": []
                     "links":
                       -
                         "person_ids":
@@ -2308,7 +2434,7 @@
                 "unsupported_filters":
                   "summary": "Rejected tag and filename filters"
                   "value":
-                    "detail": "unsupported social graph filters: filename_query, tag_paths; supported filters: start, end, person_ids, max_people_per_asset"
+                    "detail": "unsupported social graph filters: filename_query, tag_paths; supported filters: start, end, person_ids, person_group_ids, max_people_per_asset"
               "schema":
                 "$ref": "#/components/schemas/ApiErrorResponse"
         "422":
@@ -2548,10 +2674,13 @@
                         "id": 3
                         "name": "Immediate Family"
                         "member_count": 4
+                        "ui":
+                          "color_index": 2
                       -
                         "id": 8
                         "name": "Berlin Friends"
                         "member_count": 7
+                        "ui": {}
         "400":
           "description": "The request was syntactically valid but violated a documented PixelPast API contract constraint."
           "content":
@@ -2615,8 +2744,12 @@
                     -
                       "id": 3
                       "name": "Immediate Family"
+                      "ui":
+                        "color_index": 2
                     -
                       "name": "Travel Buddies"
+                      "ui":
+                        "color_index": 5
                   "delete_ids":
                     - 8
         "required": true
@@ -2636,10 +2769,13 @@
                         "id": 3
                         "name": "Immediate Family"
                         "member_count": 4
+                        "ui":
+                          "color_index": 2
                       -
                         "id": 8
                         "name": "Berlin Friends"
                         "member_count": 7
+                        "ui": {}
         "400":
           "description": "The request was syntactically valid but violated a documented PixelPast API contract constraint."
           "content":
@@ -2714,6 +2850,11 @@
                       "id": 3
                       "name": "Immediate Family"
                       "member_count": 2
+                      "ui":
+                        "color_index": 2
+                      "album_aggregate_rules":
+                        "ignored_person_ids":
+                          - 7
                     "members":
                       -
                         "id": 7
@@ -2798,6 +2939,9 @@
                     - 7
                     - 12
                     - 18
+                  "album_aggregate_rules":
+                    "ignored_person_ids":
+                      - 7
       "responses":
         "200":
           "description": "Reloaded person-group membership state after persistence."
@@ -2813,6 +2957,11 @@
                       "id": 3
                       "name": "Immediate Family"
                       "member_count": 2
+                      "ui":
+                        "color_index": 2
+                      "album_aggregate_rules":
+                        "ignored_person_ids":
+                          - 7
                     "members":
                       -
                         "id": 7
@@ -3118,6 +3267,15 @@
             "type": "integer"
           "type": "array"
           "title": "Person Ids"
+        "person_group_ids":
+          "anyOf":
+            -
+              "items":
+                "type": "integer"
+              "type": "array"
+            -
+              "type": "null"
+          "title": "Person Group Ids"
         "tag_paths":
           "items":
             "type": "string"
@@ -3414,6 +3572,11 @@
         "asset_count":
           "type": "integer"
           "title": "Asset Count"
+        "person_groups":
+          "items":
+            "$ref": "#/components/schemas/AlbumPersonGroupRelevance"
+          "type": "array"
+          "title": "Person Groups"
       "type": "object"
       "required":
         - "id"
@@ -3540,6 +3703,11 @@
           "$ref": "#/components/schemas/AlbumAppliedFilters"
         "selection":
           "$ref": "#/components/schemas/AlbumSelection"
+        "person_groups":
+          "items":
+            "$ref": "#/components/schemas/AlbumPersonGroupRelevance"
+          "type": "array"
+          "title": "Person Groups"
         "persons":
           "items":
             "$ref": "#/components/schemas/AlbumContextPerson"
@@ -3677,6 +3845,11 @@
         "asset_count":
           "type": "integer"
           "title": "Asset Count"
+        "person_groups":
+          "items":
+            "$ref": "#/components/schemas/AlbumPersonGroupRelevance"
+          "type": "array"
+          "title": "Person Groups"
       "type": "object"
       "required":
         - "id"
@@ -3711,6 +3884,43 @@
         - "nodes"
       "title": "AlbumFoldersTreeResponse"
       "description": "Read response for the physical album folder tree."
+    "AlbumPersonGroupRelevance":
+      "properties":
+        "group_id":
+          "type": "integer"
+          "title": "Group Id"
+        "group_name":
+          "type": "string"
+          "title": "Group Name"
+        "color_index":
+          "anyOf":
+            -
+              "type": "integer"
+            -
+              "type": "null"
+          "title": "Color Index"
+        "matched_person_count":
+          "type": "integer"
+          "title": "Matched Person Count"
+        "group_person_count":
+          "type": "integer"
+          "title": "Group Person Count"
+        "matched_asset_count":
+          "type": "integer"
+          "title": "Matched Asset Count"
+        "matched_creator_person_count":
+          "type": "integer"
+          "title": "Matched Creator Person Count"
+      "type": "object"
+      "required":
+        - "group_id"
+        - "group_name"
+        - "matched_person_count"
+        - "group_person_count"
+        - "matched_asset_count"
+        - "matched_creator_person_count"
+      "title": "AlbumPersonGroupRelevance"
+      "description": "Derived person-group relevance summary for one album node."
     "AlbumSelection":
       "properties":
         "node_kind":
@@ -4214,6 +4424,16 @@
         - "name"
       "title": "PersonCatalogWriteEntry"
       "description": "Batch-write payload row for manual person maintenance."
+    "PersonGroupAlbumAggregateRulesEntry":
+      "properties":
+        "ignored_person_ids":
+          "items":
+            "type": "integer"
+          "type": "array"
+          "title": "Ignored Person Ids"
+      "type": "object"
+      "title": "PersonGroupAlbumAggregateRulesEntry"
+      "description": "Typed album-aggregate rules exposed through manage-data contracts."
     "PersonGroupCatalogEntry":
       "properties":
         "id":
@@ -4225,6 +4445,8 @@
         "member_count":
           "type": "integer"
           "title": "Member Count"
+        "ui":
+          "$ref": "#/components/schemas/PersonGroupUiEntry"
       "type": "object"
       "required":
         - "id"
@@ -4245,6 +4467,8 @@
           "type": "string"
           "minLength": 1
           "title": "Name"
+        "ui":
+          "$ref": "#/components/schemas/PersonGroupUiEntry"
       "type": "object"
       "required":
         - "name"
@@ -4261,6 +4485,10 @@
         "member_count":
           "type": "integer"
           "title": "Member Count"
+        "ui":
+          "$ref": "#/components/schemas/PersonGroupUiEntry"
+        "album_aggregate_rules":
+          "$ref": "#/components/schemas/PersonGroupAlbumAggregateRulesEntry"
       "type": "object"
       "required":
         - "id"
@@ -4311,6 +4539,19 @@
         - "members"
       "title": "PersonGroupMembershipResponse"
       "description": "Read response for one person group's persisted membership set."
+    "PersonGroupUiEntry":
+      "properties":
+        "color_index":
+          "anyOf":
+            -
+              "type": "integer"
+              "exclusiveMinimum": 0.0
+            -
+              "type": "null"
+          "title": "Color Index"
+      "type": "object"
+      "title": "PersonGroupUiEntry"
+      "description": "Explicit UI-owned person-group metadata exposed through the API."
     "PersonGroupsCatalogResponse":
       "properties":
         "person_groups":
@@ -4342,6 +4583,8 @@
             "type": "integer"
           "type": "array"
           "title": "Person Ids"
+        "album_aggregate_rules":
+          "$ref": "#/components/schemas/PersonGroupAlbumAggregateRulesEntry"
       "type": "object"
       "title": "SavePersonGroupMembershipRequest"
       "description": "Batch replacement request for one person group's membership set."
@@ -4410,13 +4653,40 @@
         "occurrence_count":
           "type": "integer"
           "title": "Occurrence Count"
+        "matching_groups":
+          "items":
+            "$ref": "#/components/schemas/SocialGraphPersonGroup"
+          "type": "array"
+          "title": "Matching Groups"
       "type": "object"
       "required":
         - "id"
         - "name"
         - "occurrence_count"
+        - "matching_groups"
       "title": "SocialGraphPerson"
       "description": "Person node exposed by the social-graph API contract."
+    "SocialGraphPersonGroup":
+      "properties":
+        "id":
+          "type": "integer"
+          "title": "Id"
+        "name":
+          "type": "string"
+          "title": "Name"
+        "color_index":
+          "anyOf":
+            -
+              "type": "integer"
+            -
+              "type": "null"
+          "title": "Color Index"
+      "type": "object"
+      "required":
+        - "id"
+        - "name"
+      "title": "SocialGraphPersonGroup"
+      "description": "Matching person-group metadata exposed for one social-graph node."
     "SocialGraphResponse":
       "properties":
         "persons":
