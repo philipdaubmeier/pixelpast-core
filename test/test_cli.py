@@ -97,6 +97,8 @@ def test_cli_export_openapi_writes_canonical_contract(monkeypatch) -> None:
     def fake_render_command(*args, **kwargs) -> subprocess.CompletedProcess[str]:
         command = tuple(args[0])
         cwd = kwargs["cwd"]
+        assert kwargs["stdin"] == subprocess.DEVNULL
+        assert kwargs["timeout"] == 300
         render_calls.append((command, cwd))
         return subprocess.CompletedProcess(
             args=command,
@@ -135,6 +137,7 @@ def test_cli_export_openapi_writes_canonical_contract(monkeypatch) -> None:
             (
                 (
                     "npx",
+                    "--yes",
                     "@redocly/cli",
                     "build-docs",
                     DEFAULT_OPENAPI_EXPORT_PATH.as_posix(),

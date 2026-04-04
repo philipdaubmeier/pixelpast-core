@@ -590,22 +590,31 @@ def _render_openapi_html(*, input_path: Path, output_path: Path) -> Path:
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     npx_executable = _resolve_npx_executable()
-    result = subprocess.run(
-        (
-            npx_executable,
-            "@redocly/cli",
-            "build-docs",
-            input_path.as_posix(),
-            "--output",
-            output_path.as_posix(),
-        ),
-        cwd=REPOSITORY_ROOT,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        check=False,
+    command = (
+        npx_executable,
+        "--yes",
+        "@redocly/cli",
+        "build-docs",
+        input_path.as_posix(),
+        "--output",
+        output_path.as_posix(),
     )
+    try:
+        result = subprocess.run(
+            command,
+            cwd=REPOSITORY_ROOT,
+            capture_output=True,
+            stdin=subprocess.DEVNULL,
+            timeout=300,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+        )
+    except subprocess.TimeoutExpired as error:
+        raise ValueError(
+            "OpenAPI HTML rendering timed out while invoking Redocly CLI."
+        ) from error
     if result.returncode != 0:
         error_output = (result.stderr or result.stdout).strip()
         if not error_output:
