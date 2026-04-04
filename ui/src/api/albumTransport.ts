@@ -1,8 +1,7 @@
 export type ApiAlbumAppliedFilters = {
-  person_ids: number[];
+  person_ids?: number[];
   person_group_ids?: number[];
-  tag_paths: string[];
-  filename_query?: string;
+  tag_paths?: string[];
 };
 
 export type ApiAlbumFolderNode = {
@@ -161,9 +160,12 @@ export type ApiAlbumAssetDetailResponse = {
   }>;
 };
 
-type ApiAlbumRequest = {
-  personIds: string[];
+type ApiAlbumTreeRequest = {
   personGroupIds: string[];
+};
+
+type ApiAlbumSelectionRequest = {
+  personIds: string[];
   tagPaths: string[];
 };
 
@@ -239,62 +241,67 @@ async function requestJson<T>(path: string): Promise<T> {
   return (await response.json()) as T;
 }
 
-function buildAlbumFilterQuery(request: ApiAlbumRequest): string {
+function buildAlbumTreeFilterQuery(request: ApiAlbumTreeRequest): string {
+  return buildQueryString({
+    person_group_ids: request.personGroupIds,
+  });
+}
+
+function buildAlbumSelectionFilterQuery(request: ApiAlbumSelectionRequest): string {
   return buildQueryString({
     person_ids: request.personIds,
-    person_group_ids: request.personGroupIds,
     tag_paths: request.tagPaths,
   });
 }
 
 export const albumTransport = {
-  getFolderTree(request: ApiAlbumRequest): Promise<ApiAlbumTreeResponse> {
+  getFolderTree(request: ApiAlbumTreeRequest): Promise<ApiAlbumTreeResponse> {
     return requestJson<ApiAlbumTreeResponse>(
-      `/albums/folders${buildAlbumFilterQuery(request)}`,
+      `/albums/folders${buildAlbumTreeFilterQuery(request)}`,
     );
   },
 
   getCollectionTree(
-    request: ApiAlbumRequest,
+    request: ApiAlbumTreeRequest,
   ): Promise<ApiAlbumCollectionsTreeResponse> {
     return requestJson<ApiAlbumCollectionsTreeResponse>(
-      `/albums/collections${buildAlbumFilterQuery(request)}`,
+      `/albums/collections${buildAlbumTreeFilterQuery(request)}`,
     );
   },
 
   getFolderAssets(
     folderId: number,
-    request: ApiAlbumRequest,
+    request: ApiAlbumSelectionRequest,
   ): Promise<ApiAlbumAssetListingResponse> {
     return requestJson<ApiAlbumAssetListingResponse>(
-      `/albums/folders/${folderId}/assets${buildAlbumFilterQuery(request)}`,
+      `/albums/folders/${folderId}/assets${buildAlbumSelectionFilterQuery(request)}`,
     );
   },
 
   getCollectionAssets(
     collectionId: number,
-    request: ApiAlbumRequest,
+    request: ApiAlbumSelectionRequest,
   ): Promise<ApiAlbumAssetListingResponse> {
     return requestJson<ApiAlbumAssetListingResponse>(
-      `/albums/collections/${collectionId}/assets${buildAlbumFilterQuery(request)}`,
+      `/albums/collections/${collectionId}/assets${buildAlbumSelectionFilterQuery(request)}`,
     );
   },
 
   getFolderContext(
     folderId: number,
-    request: ApiAlbumRequest,
+    request: ApiAlbumSelectionRequest,
   ): Promise<ApiAlbumContextResponse> {
     return requestJson<ApiAlbumContextResponse>(
-      `/albums/folders/${folderId}/context${buildAlbumFilterQuery(request)}`,
+      `/albums/folders/${folderId}/context${buildAlbumSelectionFilterQuery(request)}`,
     );
   },
 
   getCollectionContext(
     collectionId: number,
-    request: ApiAlbumRequest,
+    request: ApiAlbumSelectionRequest,
   ): Promise<ApiAlbumContextResponse> {
     return requestJson<ApiAlbumContextResponse>(
-      `/albums/collections/${collectionId}/context${buildAlbumFilterQuery(request)}`,
+      `/albums/collections/${collectionId}/context${buildAlbumSelectionFilterQuery(request)}`,
     );
   },
 

@@ -32,7 +32,6 @@ class AlbumQueryFilters:
     person_ids: tuple[int, ...] = ()
     person_group_ids: tuple[int, ...] = ()
     tag_paths: tuple[str, ...] = ()
-    filename_query: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -308,7 +307,7 @@ class AlbumNavigationReadRepository:
 
         nodes = self._list_folder_nodes()
         person_groups_by_folder_id = self._list_folder_person_groups_by_node_id()
-        counts = self._count_assets_by_folder_subtree(filters=filters, nodes=nodes)
+        counts = self._count_assets_by_folder_subtree(nodes=nodes)
         if filters.person_group_ids:
             nodes = [
                 node
@@ -353,7 +352,7 @@ class AlbumNavigationReadRepository:
 
         nodes = self._list_collection_nodes()
         person_groups_by_collection_id = self._list_collection_person_groups_by_node_id()
-        counts = self._count_assets_by_collection_subtree(filters=filters, nodes=nodes)
+        counts = self._count_assets_by_collection_subtree(nodes=nodes)
         if filters.person_group_ids:
             nodes = [
                 node
@@ -412,10 +411,10 @@ class AlbumNavigationReadRepository:
                 selected_path=selected_node.path,
             )
         }
-        filtered_assets = self._list_filtered_assets(filters=filters)
-        selected_assets = [
-            asset for asset in filtered_assets if asset.folder_id in descendant_ids
-        ]
+        selected_assets = self._filter_assets(
+            assets=self._list_assets_for_folder_ids(folder_ids=descendant_ids),
+            filters=filters,
+        )
         return AlbumAssetListingSnapshot(
             selection=AlbumSelectionSnapshot(
                 node_kind="folder",
@@ -453,17 +452,12 @@ class AlbumNavigationReadRepository:
                 selected_path=selected_node.path,
             )
         }
-        filtered_assets = self._list_filtered_assets(filters=filters)
-        memberships_by_asset_id = self._list_collection_memberships_by_asset(
-            asset_ids=[asset.id for asset in filtered_assets]
+        selected_assets = self._filter_assets(
+            assets=self._list_assets_for_collection_ids(
+                collection_ids=descendant_collection_ids
+            ),
+            filters=filters,
         )
-        selected_assets = [
-            asset
-            for asset in filtered_assets
-            if descendant_collection_ids.intersection(
-                memberships_by_asset_id.get(asset.id, set())
-            )
-        ]
         return AlbumAssetListingSnapshot(
             selection=AlbumSelectionSnapshot(
                 node_kind="collection",
@@ -488,11 +482,6 @@ class AlbumNavigationReadRepository:
     ) -> AlbumContextSnapshot | None:
         """Return the stable context for one selected folder subtree."""
 
-        if filters.person_group_ids and not self._folder_matches_selected_person_groups(
-            folder_id=folder_id,
-            person_group_ids=filters.person_group_ids,
-        ):
-            return None
         listing = self.get_folder_asset_listing(folder_id=folder_id, filters=filters)
         if listing is None:
             return None
@@ -510,11 +499,6 @@ class AlbumNavigationReadRepository:
     ) -> AlbumContextSnapshot | None:
         """Return the stable context for one selected collection subtree."""
 
-        if filters.person_group_ids and not self._collection_matches_selected_person_groups(
-            collection_id=collection_id,
-            person_group_ids=filters.person_group_ids,
-        ):
-            return None
         listing = self.get_collection_asset_listing(
             collection_id=collection_id,
             filters=filters,
@@ -782,29 +766,25 @@ class AlbumNavigationReadRepository:
     ) -> tuple[AlbumPersonGroupRelevanceSnapshot, ...]:
         return self._list_collection_person_groups_by_node_id().get(collection_id, ())
 
-    def _list_filtered_assets(self, *, filters: AlbumQueryFilters) -> list[_AssetRow]:
-        assets = self._list_all_assets()
+    def _filter_assets(
+        self,
+        *,
+        assets: list[_AssetRow],
+        filters: AlbumQueryFilters,
+    ) -> list[_AssetRow]:
         if not assets:
             return []
 
+        asset_ids = [asset.id for asset in assets]
         person_links_by_asset: dict[int, set[int]] = {}
         if filters.person_ids:
-            person_links_by_asset = self._list_person_links_by_asset(
-                asset_ids=[asset.id for asset in assets]
-            )
+            person_links_by_asset = self._list_person_links_by_asset(asset_ids=asset_ids)
 
         tag_links_by_asset: dict[int, list[str]] = {}
         if filters.tag_paths:
-            tag_links_by_asset = self._list_tag_links_by_asset(
-                asset_ids=[asset.id for asset in assets]
-            )
+            tag_links_by_asset = self._list_tag_links_by_asset(asset_ids=asset_ids)
 
         filtered_assets: list[_AssetRow] = []
-        normalized_filename_query = (
-            filters.filename_query.casefold().strip()
-            if filters.filename_query is not None
-            else None
-        )
         for asset in assets:
             if filters.person_ids and not person_links_by_asset.get(asset.id, set()).intersection(
                 filters.person_ids
@@ -819,29 +799,15 @@ class AlbumNavigationReadRepository:
                 for selected_tag_path in filters.tag_paths
             ):
                 continue
-            if normalized_filename_query is not None and not any(
-                normalized_filename_query in filename.casefold()
-                for filename in _resolve_filename_candidates(asset)
-            ):
-                continue
             filtered_assets.append(asset)
         return filtered_assets
 
-    def _list_all_assets(self) -> list[_AssetRow]:
+    def _list_assets(
+        self,
+        statement,
+    ) -> list[_AssetRow]:
         rows = self._session.execute(
-            select(
-                Asset.id,
-                Asset.short_id,
-                Asset.source_id,
-                Asset.timestamp,
-                Asset.media_type,
-                Asset.latitude,
-                Asset.longitude,
-                Asset.external_id,
-                Asset.summary,
-                Asset.metadata_json,
-                Asset.folder_id,
-            ).order_by(Asset.timestamp.desc(), Asset.id.desc())
+            statement.order_by(Asset.timestamp.desc(), Asset.id.desc())
         )
         return [
             _AssetRow(
@@ -871,6 +837,47 @@ class AlbumNavigationReadRepository:
                 folder_id,
             ) in rows
         ]
+
+    def _base_asset_select(self):
+        return select(
+            Asset.id,
+            Asset.short_id,
+            Asset.source_id,
+            Asset.timestamp,
+            Asset.media_type,
+            Asset.latitude,
+            Asset.longitude,
+            Asset.external_id,
+            Asset.summary,
+            Asset.metadata_json,
+            Asset.folder_id,
+        )
+
+    def _list_assets_for_folder_ids(self, *, folder_ids: set[int]) -> list[_AssetRow]:
+        if not folder_ids:
+            return []
+        return self._list_assets(
+            self._base_asset_select().where(Asset.folder_id.in_(sorted(folder_ids)))
+        )
+
+    def _list_assets_for_collection_ids(
+        self,
+        *,
+        collection_ids: set[int],
+    ) -> list[_AssetRow]:
+        if not collection_ids:
+            return []
+        return self._list_assets(
+            self._base_asset_select()
+            .join(AssetCollectionItem, AssetCollectionItem.asset_id == Asset.id)
+            .where(AssetCollectionItem.collection_id.in_(sorted(collection_ids)))
+            .distinct()
+        )
+
+    def _list_assets_by_ids(self, *, asset_ids: list[int]) -> list[_AssetRow]:
+        if not asset_ids:
+            return []
+        return self._list_assets(self._base_asset_select().where(Asset.id.in_(asset_ids)))
 
     def _list_person_links_by_asset(self, *, asset_ids: list[int]) -> dict[int, set[int]]:
         if not asset_ids:
@@ -922,32 +929,9 @@ class AlbumNavigationReadRepository:
             memberships.setdefault(asset_id, set()).add(collection_id)
         return memberships
 
-    def _folder_matches_selected_person_groups(
-        self,
-        *,
-        folder_id: int,
-        person_group_ids: tuple[int, ...],
-    ) -> bool:
-        return any(
-            group.group_id in person_group_ids
-            for group in self._list_person_groups_for_folder(folder_id=folder_id)
-        )
-
-    def _collection_matches_selected_person_groups(
-        self,
-        *,
-        collection_id: int,
-        person_group_ids: tuple[int, ...],
-    ) -> bool:
-        return any(
-            group.group_id in person_group_ids
-            for group in self._list_person_groups_for_collection(collection_id=collection_id)
-        )
-
     def _count_assets_by_folder_subtree(
         self,
         *,
-        filters: AlbumQueryFilters,
         nodes: list[_FolderNodeRow],
     ) -> dict[int, int]:
         if not nodes:
@@ -955,10 +939,14 @@ class AlbumNavigationReadRepository:
 
         nodes_by_id = {node.id: node for node in nodes}
         counts: dict[int, int] = {}
-        for asset in self._list_filtered_assets(filters=filters):
-            if asset.folder_id is None:
+        rows = self._session.execute(select(Asset.folder_id).where(Asset.folder_id.is_not(None)))
+        for (folder_id,) in rows:
+            if folder_id is None:
                 continue
-            node = nodes_by_id.get(asset.folder_id)
+            asset_folder_node = nodes_by_id.get(folder_id)
+            node = asset_folder_node
+            if node is None:
+                continue
             while node is not None:
                 counts[node.id] = counts.get(node.id, 0) + 1
                 node = nodes_by_id.get(node.parent_id) if node.parent_id is not None else None
@@ -967,7 +955,6 @@ class AlbumNavigationReadRepository:
     def _count_assets_by_collection_subtree(
         self,
         *,
-        filters: AlbumQueryFilters,
         nodes: list[_CollectionNodeRow],
     ) -> dict[int, int]:
         if not nodes:
@@ -976,7 +963,10 @@ class AlbumNavigationReadRepository:
         nodes_by_id = {node.id: node for node in nodes}
         counted_assets_by_node_id: dict[int, set[int]] = {}
         memberships_by_asset_id = self._list_collection_memberships_by_asset(
-            asset_ids=[asset.id for asset in self._list_filtered_assets(filters=filters)]
+            asset_ids=[
+                asset_id
+                for (asset_id,) in self._session.execute(select(Asset.id))
+            ]
         )
         for asset_id, direct_collection_ids in memberships_by_asset_id.items():
             for collection_id in direct_collection_ids:
@@ -1053,11 +1043,7 @@ class AlbumNavigationReadRepository:
         listed_asset_ids = {item.id for item in listing.items}
         if not listed_asset_ids:
             return []
-        return [
-            asset
-            for asset in self._list_all_assets()
-            if asset.id in listed_asset_ids
-        ]
+        return self._list_assets_by_ids(asset_ids=sorted(listed_asset_ids))
 
     def _list_context_people(
         self,
@@ -1273,13 +1259,6 @@ def _resolve_title_value(
             return candidate
 
     return media_type
-
-
-def _resolve_filename_candidates(asset: _AssetRow) -> tuple[str, ...]:
-    return _resolve_filename_candidates_from_metadata(
-        metadata=asset.metadata_json,
-        external_id=asset.external_id,
-    )
 
 
 def _resolve_filename_candidates_from_metadata(

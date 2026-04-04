@@ -79,10 +79,13 @@ def test_album_routes_document_navigation_and_listing_contracts() -> None:
     assert "unsupported_filters" in _response_examples(folders_operation, 400)
 
     folder_parameters = _parameters_by_name(folders_operation)
-    assert "Repeatable person identifiers" in folder_parameters["person_ids"]["description"]
+    assert "reject person filtering" in folder_parameters["person_ids"]["description"]
     assert "geometry filtering" in folder_parameters["location_geometry"]["description"]
     assert _non_null_schema(folder_parameters["distance_latitude"])["minimum"] == -90
     assert _non_null_schema(folder_parameters["filename_query"])["minLength"] == 1
+    assert folder_parameters["person_group_ids"]["description"].startswith(
+        "Repeatable person-group identifiers."
+    )
 
     assert collections_operation["summary"] == "Get album collection tree"
     assert "lightroom_collections" in _response_examples(collections_operation, 200)
@@ -95,6 +98,14 @@ def test_album_routes_document_navigation_and_listing_contracts() -> None:
     assert folder_context_operation["summary"] == "Get album folder context"
     assert "hover stays local" in folder_context_operation["description"]
     assert "folder_stable_context" in _response_examples(folder_context_operation, 200)
+    assert (
+        _parameters_by_name(folder_assets_operation)["person_group_ids"]["description"]
+        == "Present for tree navigation consistency, but rejected here."
+    )
+    assert (
+        _parameters_by_name(folder_context_operation)["filename_query"]["description"]
+        == "Present for cross-view filter consistency, but rejected here."
+    )
 
     assert collection_assets_operation["summary"] == "Get album collection asset listing"
     assert "deduplicate assets" in collection_assets_operation["description"]

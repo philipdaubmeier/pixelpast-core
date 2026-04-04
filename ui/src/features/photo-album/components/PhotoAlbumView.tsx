@@ -79,27 +79,6 @@ function findNodeBySelection(
   return nodes.find((node) => node.id === selection.id) ?? null;
 }
 
-function pickDefaultSelection(
-  folderNodes: AlbumTreeNodeProjection[],
-  collectionNodes: AlbumTreeNodeProjection[],
-): AlbumNodeSelection | null {
-  const folderCandidate =
-    folderNodes.find((node) => node.assetCount > 0) ?? folderNodes[0] ?? null;
-  if (folderCandidate !== null) {
-    return { kind: "folder", id: folderCandidate.id };
-  }
-
-  const collectionCandidate =
-    collectionNodes.find((node) => node.assetCount > 0) ??
-    collectionNodes[0] ??
-    null;
-  if (collectionCandidate !== null) {
-    return { kind: "collection", id: collectionCandidate.id };
-  }
-
-  return null;
-}
-
 function ensureAncestorExpansion(
   nodes: AlbumTreeNodeProjection[],
   selection: AlbumNodeSelection | null,
@@ -620,9 +599,7 @@ export function PhotoAlbumView({
 
     void albumApi
       .getFolderTree({
-        selectedPersons: selectedPersonIds,
         selectedPersonGroupIds,
-        selectedTags: selectedTagPaths,
       })
       .then((nextFolderNodes) => {
         if (cancelled) {
@@ -652,7 +629,7 @@ export function PhotoAlbumView({
     return () => {
       cancelled = true;
     };
-  }, [selectedPersonGroupIds, selectedPersonIds, selectedTagPaths]);
+  }, [selectedPersonGroupIds]);
 
   useEffect(() => {
     let cancelled = false;
@@ -664,9 +641,7 @@ export function PhotoAlbumView({
 
     void albumApi
       .getCollectionTree({
-        selectedPersons: selectedPersonIds,
         selectedPersonGroupIds,
-        selectedTags: selectedTagPaths,
       })
       .then((nextCollectionNodes) => {
         if (cancelled) {
@@ -696,31 +671,30 @@ export function PhotoAlbumView({
     return () => {
       cancelled = true;
     };
-  }, [selectedPersonGroupIds, selectedPersonIds, selectedTagPaths]);
+  }, [selectedPersonGroupIds]);
 
   useEffect(() => {
-    const stillValidSelection =
-      selection !== null &&
-      (selection.kind === "folder"
-        ? folderNodes.some((node) => node.id === selection.id)
-        : collectionNodes.some((node) => node.id === selection.id));
+    if (selection === null) {
+      return;
+    }
 
+    const stillValidSelection =
+      selection.kind === "folder"
+        ? folderNodes.some((node) => node.id === selection.id)
+        : collectionNodes.some((node) => node.id === selection.id);
     if (stillValidSelection) {
       return;
     }
 
-    const nextSelection = pickDefaultSelection(folderNodes, collectionNodes);
-    const selectionUnchanged =
-      (selection === null && nextSelection === null) ||
-      (selection !== null &&
-        nextSelection !== null &&
-        selection.kind === nextSelection.kind &&
-        selection.id === nextSelection.id);
-
-    if (!selectionUnchanged) {
-      onSelectionChange(nextSelection);
-    }
-  }, [collectionNodes, folderNodes, onSelectionChange, selection]);
+    onSelectionChange(null);
+    onSelectedAssetChange(null);
+  }, [
+    collectionNodes,
+    folderNodes,
+    onSelectedAssetChange,
+    onSelectionChange,
+    selection,
+  ]);
 
   useEffect(() => {
     if (selection === null) {
@@ -748,24 +722,20 @@ export function PhotoAlbumView({
       selection.kind === "folder"
         ? albumApi.getFolderListing(selection.id, {
             selectedPersons: selectedPersonIds,
-            selectedPersonGroupIds,
             selectedTags: selectedTagPaths,
           })
         : albumApi.getCollectionListing(selection.id, {
             selectedPersons: selectedPersonIds,
-            selectedPersonGroupIds,
             selectedTags: selectedTagPaths,
           });
     const contextRequest =
       selection.kind === "folder"
         ? albumApi.getFolderContext(selection.id, {
             selectedPersons: selectedPersonIds,
-            selectedPersonGroupIds,
             selectedTags: selectedTagPaths,
           })
         : albumApi.getCollectionContext(selection.id, {
             selectedPersons: selectedPersonIds,
-            selectedPersonGroupIds,
             selectedTags: selectedTagPaths,
           });
 
@@ -811,7 +781,6 @@ export function PhotoAlbumView({
     };
   }, [
     onSelectedAssetChange,
-    selectedPersonGroupIds,
     selectedPersonIds,
     selectedTagPaths,
     selection,
@@ -1061,7 +1030,7 @@ export function PhotoAlbumView({
             </div>
           ) : listing.items.length === 0 ? (
             <div className="flex h-full min-h-[18rem] items-center justify-center rounded-[18px] border border-dashed border-[color:var(--pp-border)] bg-white/35 px-4 text-center text-sm text-slate-500">
-              No assets matched the current global filters in this selection.
+              No assets in this selection matched the active people or tag filters.
             </div>
           ) : selectedAssetId !== null && detail !== null ? (
             <div className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] gap-1">

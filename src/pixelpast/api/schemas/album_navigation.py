@@ -8,10 +8,9 @@ from pydantic import BaseModel, Field
 class AlbumAppliedFilters(BaseModel):
     """Explicit supported filter state applied to an album response."""
 
-    person_ids: list[int] = Field(default_factory=list)
+    person_ids: list[int] | None = None
     person_group_ids: list[int] | None = None
-    tag_paths: list[str] = Field(default_factory=list)
-    filename_query: str | None = None
+    tag_paths: list[str] | None = None
 
 
 class AlbumPersonGroupRelevance(BaseModel):

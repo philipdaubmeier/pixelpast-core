@@ -42,12 +42,9 @@ from pixelpast.persistence.repositories.album_navigation_read import (
 )
 
 SUPPORTED_NAVIGATION_FILTERS: tuple[str, ...] = (
-    "person_ids",
     "person_group_ids",
-    "tag_paths",
-    "filename_query",
 )
-SUPPORTED_LISTING_FILTERS: tuple[str, ...] = ("person_ids", "tag_paths", "filename_query")
+SUPPORTED_SELECTION_FILTERS: tuple[str, ...] = ("person_ids", "tag_paths")
 
 
 class AlbumNavigationQueryService:
@@ -61,7 +58,7 @@ class AlbumNavigationQueryService:
 
         return AlbumFoldersTreeResponse(
             supported_filters=list(SUPPORTED_NAVIGATION_FILTERS),
-            applied_filters=_to_applied_filters(filters),
+            applied_filters=_to_navigation_applied_filters(filters),
             nodes=[
                 _to_folder_tree_node(node)
                 for node in self._repository.list_folder_tree(filters=filters)
@@ -77,7 +74,7 @@ class AlbumNavigationQueryService:
 
         return AlbumCollectionsTreeResponse(
             supported_filters=list(SUPPORTED_NAVIGATION_FILTERS),
-            applied_filters=_to_applied_filters(filters),
+            applied_filters=_to_navigation_applied_filters(filters),
             nodes=[
                 _to_collection_tree_node(node)
                 for node in self._repository.list_collection_tree(filters=filters)
@@ -154,12 +151,16 @@ class AlbumNavigationQueryService:
         return _to_asset_detail_response(snapshot)
 
 
-def _to_applied_filters(filters: AlbumQueryFilters) -> AlbumAppliedFilters:
+def _to_navigation_applied_filters(filters: AlbumQueryFilters) -> AlbumAppliedFilters:
+    return AlbumAppliedFilters(
+        person_group_ids=list(filters.person_group_ids) or None,
+    )
+
+
+def _to_selection_applied_filters(filters: AlbumQueryFilters) -> AlbumAppliedFilters:
     return AlbumAppliedFilters(
         person_ids=list(filters.person_ids),
-        person_group_ids=list(filters.person_group_ids) or None,
         tag_paths=list(filters.tag_paths),
-        filename_query=filters.filename_query,
     )
 
 
@@ -202,8 +203,8 @@ def _to_asset_listing_response(
     filters: AlbumQueryFilters,
 ) -> AlbumAssetListingResponse:
     return AlbumAssetListingResponse(
-        supported_filters=list(SUPPORTED_LISTING_FILTERS),
-        applied_filters=_to_applied_filters(filters),
+        supported_filters=list(SUPPORTED_SELECTION_FILTERS),
+        applied_filters=_to_selection_applied_filters(filters),
         selection=AlbumSelection(
             node_kind=snapshot.selection.node_kind,
             id=snapshot.selection.id,
@@ -268,8 +269,8 @@ def _to_context_response(
     filters: AlbumQueryFilters,
 ) -> AlbumContextResponse:
     return AlbumContextResponse(
-        supported_filters=list(SUPPORTED_NAVIGATION_FILTERS),
-        applied_filters=_to_applied_filters(filters),
+        supported_filters=list(SUPPORTED_SELECTION_FILTERS),
+        applied_filters=_to_selection_applied_filters(filters),
         selection=AlbumSelection(
             node_kind=snapshot.selection.node_kind,
             id=snapshot.selection.id,

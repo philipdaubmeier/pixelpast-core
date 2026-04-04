@@ -29,19 +29,11 @@ router = APIRouter(tags=["album"])
 
 ALBUM_FOLDERS_TREE_EXAMPLES = {
     "photo_import_folders": {
-        "summary": "Physical folder tree with filtered aggregate counts",
+        "summary": "Physical folder tree with structural aggregate counts",
         "value": {
-            "supported_filters": [
-                "person_ids",
-                "person_group_ids",
-                "tag_paths",
-                "filename_query",
-            ],
+            "supported_filters": ["person_group_ids"],
             "applied_filters": {
-                "person_ids": [7],
                 "person_group_ids": [3],
-                "tag_paths": ["travel/italy"],
-                "filename_query": "IMG_1042",
             },
             "nodes": [
                 {
@@ -95,19 +87,11 @@ ALBUM_FOLDERS_TREE_EXAMPLES = {
 
 ALBUM_COLLECTIONS_TREE_EXAMPLES = {
     "lightroom_collections": {
-        "summary": "Semantic collection tree with filtered aggregate counts",
+        "summary": "Semantic collection tree with structural aggregate counts",
         "value": {
-            "supported_filters": [
-                "person_ids",
-                "person_group_ids",
-                "tag_paths",
-                "filename_query",
-            ],
+            "supported_filters": ["person_group_ids"],
             "applied_filters": {
-                "person_ids": [],
                 "person_group_ids": [5],
-                "tag_paths": ["travel"],
-                "filename_query": None,
             },
             "nodes": [
                 {
@@ -142,11 +126,10 @@ ALBUM_ASSET_LISTING_EXAMPLES = {
     "folder_thumbnail_grid": {
         "summary": "Thumbnail-oriented album asset listing",
         "value": {
-            "supported_filters": ["person_ids", "tag_paths", "filename_query"],
+            "supported_filters": ["person_ids", "tag_paths"],
             "applied_filters": {
                 "person_ids": [7],
                 "tag_paths": ["travel/italy"],
-                "filename_query": None,
             },
             "selection": {
                 "node_kind": "folder",
@@ -178,17 +161,10 @@ ALBUM_CONTEXT_EXAMPLES = {
     "folder_stable_context": {
         "summary": "Stable album context with per-asset hover highlights",
         "value": {
-            "supported_filters": [
-                "person_ids",
-                "person_group_ids",
-                "tag_paths",
-                "filename_query",
-            ],
+            "supported_filters": ["person_ids", "tag_paths"],
             "applied_filters": {
                 "person_ids": [1],
-                "person_group_ids": [3],
                 "tag_paths": ["travel/italy"],
-                "filename_query": None,
             },
             "selection": {
                 "node_kind": "folder",
@@ -305,11 +281,11 @@ ALBUM_ASSET_DETAIL_EXAMPLES = {
 ALBUM_BAD_REQUEST_EXAMPLES = {
     **BAD_REQUEST_RESPONSE[400]["content"]["application/json"]["examples"],
     "unsupported_filters": {
-        "summary": "Album routes reject unsupported global filters",
+        "summary": "Album routes reject unsupported filters for each read shape",
         "value": {
             "detail": (
                 "unsupported album filters: distance_latitude, location_geometry; "
-                "supported filters: person_ids, person_group_ids, tag_paths, filename_query"
+                "supported filters: person_ids, tag_paths"
             )
         },
     },
@@ -359,10 +335,11 @@ ALBUM_ASSET_NOT_FOUND_RESPONSES = {
     response_model=AlbumFoldersTreeResponse,
     summary="Get album folder tree",
     description=(
-        "Return the physical album folder tree with filtered descendant asset "
-        "counts. The contract keeps source-owned folders explicit and does not "
-        "collapse them into the semantic collections tree."
+        "Return the physical album folder tree with structural descendant asset "
+        "counts. Only person-group filtering affects tree visibility; other "
+        "album filters stay local to the selected node."
     ),
+    response_model_exclude_none=True,
     response_description="Physical folder navigation tree for the photo-album view.",
     responses=combine_responses(
         {
@@ -391,8 +368,8 @@ def get_album_folder_tree(
     person_ids: list[int] = Query(
         default=[],
         description=(
-            "Repeatable person identifiers. Matching assets contribute to node "
-            "counts only when linked to at least one selected person."
+            "Present for cross-view filter consistency, but album tree routes "
+            "reject person filtering in this increment."
         ),
     ),
     person_group_ids: list[int] = Query(
@@ -405,8 +382,8 @@ def get_album_folder_tree(
     tag_paths: list[str] = Query(
         default=[],
         description=(
-            "Repeatable normalized tag paths used to constrain descendant asset "
-            "counts and later thumbnail listings."
+            "Present for cross-view filter consistency, but album tree routes "
+            "reject tag filtering in this increment."
         ),
     ),
     location_geometry: str | None = Query(
@@ -436,13 +413,13 @@ def get_album_folder_tree(
     filename_query: str | None = Query(
         default=None,
         min_length=1,
-        description="Case-insensitive filename substring applied to matching assets.",
+        description="Present for cross-view filter consistency, but rejected here.",
     ),
     session: Session = Depends(get_db_session),
 ) -> AlbumFoldersTreeResponse:
     """Return the explicit folder tree for photo-album navigation."""
 
-    filters = _build_album_filters(
+    filters = _build_tree_filters(
         person_ids=person_ids,
         person_group_ids=person_group_ids,
         tag_paths=tag_paths,
@@ -460,10 +437,11 @@ def get_album_folder_tree(
     response_model=AlbumCollectionsTreeResponse,
     summary="Get album collection tree",
     description=(
-        "Return the semantic album collection tree with filtered aggregate asset "
-        "counts. The contract keeps Lightroom-style collections distinct from "
-        "physical folders."
+        "Return the semantic album collection tree with structural aggregate "
+        "asset counts. Only person-group filtering affects tree visibility; "
+        "other album filters stay local to the selected node."
     ),
+    response_model_exclude_none=True,
     response_description="Semantic collection navigation tree for the photo-album view.",
     responses=combine_responses(
         {
@@ -489,19 +467,52 @@ def get_album_folder_tree(
     ),
 )
 def get_album_collection_tree(
-    person_ids: list[int] = Query(default=[]),
-    person_group_ids: list[int] = Query(default=[]),
-    tag_paths: list[str] = Query(default=[]),
-    location_geometry: str | None = Query(default=None),
-    distance_latitude: float | None = Query(default=None, ge=-90, le=90),
-    distance_longitude: float | None = Query(default=None, ge=-180, le=180),
-    distance_radius_meters: int | None = Query(default=None, ge=1),
-    filename_query: str | None = Query(default=None, min_length=1),
+    person_ids: list[int] = Query(
+        default=[],
+        description="Present for cross-view filter consistency, but rejected here.",
+    ),
+    person_group_ids: list[int] = Query(
+        default=[],
+        description=(
+            "Repeatable person-group identifiers. Collection nodes remain visible "
+            "only when they carry derived relevance for at least one selected group."
+        ),
+    ),
+    tag_paths: list[str] = Query(
+        default=[],
+        description="Present for cross-view filter consistency, but rejected here.",
+    ),
+    location_geometry: str | None = Query(
+        default=None,
+        description="Present for cross-view filter consistency, but rejected here.",
+    ),
+    distance_latitude: float | None = Query(
+        default=None,
+        ge=-90,
+        le=90,
+        description="Present for cross-view filter consistency, but rejected here.",
+    ),
+    distance_longitude: float | None = Query(
+        default=None,
+        ge=-180,
+        le=180,
+        description="Present for cross-view filter consistency, but rejected here.",
+    ),
+    distance_radius_meters: int | None = Query(
+        default=None,
+        ge=1,
+        description="Present for cross-view filter consistency, but rejected here.",
+    ),
+    filename_query: str | None = Query(
+        default=None,
+        min_length=1,
+        description="Present for cross-view filter consistency, but rejected here.",
+    ),
     session: Session = Depends(get_db_session),
 ) -> AlbumCollectionsTreeResponse:
     """Return the explicit collection tree for photo-album navigation."""
 
-    filters = _build_album_filters(
+    filters = _build_tree_filters(
         person_ids=person_ids,
         person_group_ids=person_group_ids,
         tag_paths=tag_paths,
@@ -552,17 +563,26 @@ def get_album_folder_asset_listing(
     folder_id: int,
     person_ids: list[int] = Query(default=[]),
     tag_paths: list[str] = Query(default=[]),
+    person_group_ids: list[int] = Query(
+        default=[],
+        description="Present for tree navigation consistency, but rejected here.",
+    ),
     location_geometry: str | None = Query(default=None),
     distance_latitude: float | None = Query(default=None, ge=-90, le=90),
     distance_longitude: float | None = Query(default=None, ge=-180, le=180),
     distance_radius_meters: int | None = Query(default=None, ge=1),
-    filename_query: str | None = Query(default=None, min_length=1),
+    filename_query: str | None = Query(
+        default=None,
+        min_length=1,
+        description="Present for cross-view filter consistency, but rejected here.",
+    ),
     session: Session = Depends(get_db_session),
 ) -> AlbumAssetListingResponse:
     """Return the filtered subtree asset listing for one folder node."""
 
-    filters = _build_album_filters(
+    filters = _build_selection_filters(
         person_ids=person_ids,
+        person_group_ids=person_group_ids,
         tag_paths=tag_paths,
         location_geometry=location_geometry,
         distance_latitude=distance_latitude,
@@ -617,18 +637,25 @@ def get_album_folder_asset_listing(
 def get_album_folder_context(
     folder_id: int,
     person_ids: list[int] = Query(default=[]),
-    person_group_ids: list[int] = Query(default=[]),
+    person_group_ids: list[int] = Query(
+        default=[],
+        description="Present for tree navigation consistency, but rejected here.",
+    ),
     tag_paths: list[str] = Query(default=[]),
     location_geometry: str | None = Query(default=None),
     distance_latitude: float | None = Query(default=None, ge=-90, le=90),
     distance_longitude: float | None = Query(default=None, ge=-180, le=180),
     distance_radius_meters: int | None = Query(default=None, ge=1),
-    filename_query: str | None = Query(default=None, min_length=1),
+    filename_query: str | None = Query(
+        default=None,
+        min_length=1,
+        description="Present for cross-view filter consistency, but rejected here.",
+    ),
     session: Session = Depends(get_db_session),
 ) -> AlbumContextResponse:
     """Return the stable album context for one folder node."""
 
-    filters = _build_album_filters(
+    filters = _build_selection_filters(
         person_ids=person_ids,
         person_group_ids=person_group_ids,
         tag_paths=tag_paths,
@@ -686,17 +713,26 @@ def get_album_collection_asset_listing(
     collection_id: int,
     person_ids: list[int] = Query(default=[]),
     tag_paths: list[str] = Query(default=[]),
+    person_group_ids: list[int] = Query(
+        default=[],
+        description="Present for tree navigation consistency, but rejected here.",
+    ),
     location_geometry: str | None = Query(default=None),
     distance_latitude: float | None = Query(default=None, ge=-90, le=90),
     distance_longitude: float | None = Query(default=None, ge=-180, le=180),
     distance_radius_meters: int | None = Query(default=None, ge=1),
-    filename_query: str | None = Query(default=None, min_length=1),
+    filename_query: str | None = Query(
+        default=None,
+        min_length=1,
+        description="Present for cross-view filter consistency, but rejected here.",
+    ),
     session: Session = Depends(get_db_session),
 ) -> AlbumAssetListingResponse:
     """Return the filtered subtree asset listing for one collection node."""
 
-    filters = _build_album_filters(
+    filters = _build_selection_filters(
         person_ids=person_ids,
+        person_group_ids=person_group_ids,
         tag_paths=tag_paths,
         location_geometry=location_geometry,
         distance_latitude=distance_latitude,
@@ -754,18 +790,25 @@ def get_album_collection_asset_listing(
 def get_album_collection_context(
     collection_id: int,
     person_ids: list[int] = Query(default=[]),
-    person_group_ids: list[int] = Query(default=[]),
+    person_group_ids: list[int] = Query(
+        default=[],
+        description="Present for tree navigation consistency, but rejected here.",
+    ),
     tag_paths: list[str] = Query(default=[]),
     location_geometry: str | None = Query(default=None),
     distance_latitude: float | None = Query(default=None, ge=-90, le=90),
     distance_longitude: float | None = Query(default=None, ge=-180, le=180),
     distance_radius_meters: int | None = Query(default=None, ge=1),
-    filename_query: str | None = Query(default=None, min_length=1),
+    filename_query: str | None = Query(
+        default=None,
+        min_length=1,
+        description="Present for cross-view filter consistency, but rejected here.",
+    ),
     session: Session = Depends(get_db_session),
 ) -> AlbumContextResponse:
     """Return the stable album context for one collection node."""
 
-    filters = _build_album_filters(
+    filters = _build_selection_filters(
         person_ids=person_ids,
         person_group_ids=person_group_ids,
         tag_paths=tag_paths,
@@ -823,7 +866,49 @@ def get_album_asset_detail(
     return response
 
 
-def _build_album_filters(
+def _build_tree_filters(
+    *,
+    person_ids: list[int],
+    person_group_ids: list[int],
+    tag_paths: list[str],
+    location_geometry: str | None,
+    distance_latitude: float | None,
+    distance_longitude: float | None,
+    distance_radius_meters: int | None,
+    filename_query: str | None,
+) -> AlbumQueryFilters:
+    unsupported_filters: list[str] = []
+    if person_ids:
+        unsupported_filters.append("person_ids")
+    if tag_paths:
+        unsupported_filters.append("tag_paths")
+    if location_geometry is not None:
+        unsupported_filters.append("location_geometry")
+    if distance_latitude is not None:
+        unsupported_filters.append("distance_latitude")
+    if distance_longitude is not None:
+        unsupported_filters.append("distance_longitude")
+    if distance_radius_meters is not None:
+        unsupported_filters.append("distance_radius_meters")
+    if filename_query is not None:
+        unsupported_filters.append("filename_query")
+
+    if unsupported_filters:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "unsupported album filters: "
+                + ", ".join(sorted(unsupported_filters))
+                + "; supported filters: person_group_ids"
+            ),
+        )
+
+    return AlbumQueryFilters(
+        person_group_ids=tuple(sorted(set(person_group_ids))),
+    )
+
+
+def _build_selection_filters(
     *,
     person_ids: list[int],
     person_group_ids: list[int] | None = None,
@@ -835,6 +920,8 @@ def _build_album_filters(
     filename_query: str | None,
 ) -> AlbumQueryFilters:
     unsupported_filters: list[str] = []
+    if person_group_ids:
+        unsupported_filters.append("person_group_ids")
     if location_geometry is not None:
         unsupported_filters.append("location_geometry")
     if distance_latitude is not None:
@@ -843,6 +930,8 @@ def _build_album_filters(
         unsupported_filters.append("distance_longitude")
     if distance_radius_meters is not None:
         unsupported_filters.append("distance_radius_meters")
+    if filename_query is not None:
+        unsupported_filters.append("filename_query")
 
     if unsupported_filters:
         raise HTTPException(
@@ -850,15 +939,13 @@ def _build_album_filters(
             detail=(
                 "unsupported album filters: "
                 + ", ".join(sorted(unsupported_filters))
-                + "; supported filters: person_ids, person_group_ids, tag_paths, filename_query"
+                + "; supported filters: person_ids, tag_paths"
             ),
         )
 
     return AlbumQueryFilters(
         person_ids=tuple(sorted(set(person_ids))),
-        person_group_ids=tuple(sorted(set(person_group_ids or []))),
         tag_paths=tuple(sorted(set(tag_paths))),
-        filename_query=filename_query.strip() if filename_query is not None else None,
     )
 
 

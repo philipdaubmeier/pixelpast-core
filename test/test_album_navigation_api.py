@@ -29,7 +29,7 @@ from pixelpast.shared.runtime import create_runtime_context, initialize_database
 from pixelpast.shared.settings import Settings
 
 
-def test_album_folder_tree_lists_stable_nodes_with_filtered_counts() -> None:
+def test_album_folder_tree_lists_stable_nodes_with_structural_counts() -> None:
     workspace_root = _create_workspace_dir(prefix="album-folder-tree")
     runtime = None
     try:
@@ -38,36 +38,22 @@ def test_album_folder_tree_lists_stable_nodes_with_filtered_counts() -> None:
 
         app = create_app(settings=runtime.settings)
         with TestClient(app) as client:
-            response = client.get(
-                "/api/albums/folders",
-                params=[("person_ids", 1), ("tag_paths", "travel/italy")],
-            )
+            response = client.get("/api/albums/folders")
 
         assert response.status_code == 200
         assert response.json() == {
-            "supported_filters": [
-                "person_ids",
-                "person_group_ids",
-                "tag_paths",
-                "filename_query",
-            ],
-            "applied_filters": {
-                "person_ids": [1],
-                "person_group_ids": None,
-                "tag_paths": ["travel/italy"],
-                "filename_query": None,
-            },
+            "supported_filters": ["person_group_ids"],
+            "applied_filters": {},
             "nodes": [
                 {
                     "id": 1,
                     "source_id": 1,
                     "source_name": "Photos",
                     "source_type": "photos",
-                    "parent_id": None,
                     "name": "photos",
                     "path": "photos",
                     "child_count": 1,
-                    "asset_count": 1,
+                    "asset_count": 3,
                     "person_groups": [
                         {
                             "group_id": 1,
@@ -98,7 +84,7 @@ def test_album_folder_tree_lists_stable_nodes_with_filtered_counts() -> None:
                     "name": "2024",
                     "path": "photos/2024",
                     "child_count": 2,
-                    "asset_count": 1,
+                    "asset_count": 3,
                     "person_groups": [
                         {
                             "group_id": 1,
@@ -129,7 +115,7 @@ def test_album_folder_tree_lists_stable_nodes_with_filtered_counts() -> None:
                     "name": "Home",
                     "path": "photos/2024/Home",
                     "child_count": 0,
-                    "asset_count": 0,
+                    "asset_count": 1,
                     "person_groups": [
                         {
                             "group_id": 1,
@@ -151,7 +137,7 @@ def test_album_folder_tree_lists_stable_nodes_with_filtered_counts() -> None:
                     "name": "Trip",
                     "path": "photos/2024/Trip",
                     "child_count": 0,
-                    "asset_count": 1,
+                    "asset_count": 2,
                     "person_groups": [
                         {
                             "group_id": 1,
@@ -194,25 +180,14 @@ def test_album_collection_tree_lists_stable_nodes_with_deduplicated_counts() -> 
 
         assert response.status_code == 200
         assert response.json() == {
-            "supported_filters": [
-                "person_ids",
-                "person_group_ids",
-                "tag_paths",
-                "filename_query",
-            ],
-            "applied_filters": {
-                "person_ids": [],
-                "person_group_ids": None,
-                "tag_paths": [],
-                "filename_query": None,
-            },
+            "supported_filters": ["person_group_ids"],
+            "applied_filters": {},
             "nodes": [
                 {
                     "id": 1,
                     "source_id": 2,
                     "source_name": "Lightroom",
                     "source_type": "lightroom_catalog",
-                    "parent_id": None,
                     "name": "Portraits",
                     "path": "Portraits",
                     "collection_type": "collection",
@@ -235,7 +210,6 @@ def test_album_collection_tree_lists_stable_nodes_with_deduplicated_counts() -> 
                     "source_id": 2,
                     "source_name": "Lightroom",
                     "source_type": "lightroom_catalog",
-                    "parent_id": None,
                     "name": "Trips",
                     "path": "Trips",
                     "collection_type": "collection",
@@ -297,7 +271,7 @@ def test_album_folder_asset_listing_aggregates_descendants_in_stable_order() -> 
 
         assert response.status_code == 200
         assert response.json() == {
-            "supported_filters": ["person_ids", "tag_paths", "filename_query"],
+            "supported_filters": ["person_ids", "tag_paths"],
             "applied_filters": {
                 "person_ids": [],
                 "tag_paths": [],
@@ -360,17 +334,15 @@ def test_album_collection_asset_listing_supports_filters_and_empty_results() -> 
                 params=[
                     ("person_ids", 1),
                     ("tag_paths", "travel/italy"),
-                    ("filename_query", "italy"),
                 ],
             )
 
         assert response.status_code == 200
         assert response.json() == {
-            "supported_filters": ["person_ids", "tag_paths", "filename_query"],
+            "supported_filters": ["person_ids", "tag_paths"],
             "applied_filters": {
                 "person_ids": [1],
                 "tag_paths": ["travel/italy"],
-                "filename_query": "italy",
             },
             "selection": {
                 "node_kind": "collection",
@@ -398,7 +370,7 @@ def test_album_collection_asset_listing_supports_filters_and_empty_results() -> 
         with TestClient(app) as client:
             empty_response = client.get(
                 "/api/albums/collections/2/assets",
-                params=[("filename_query", "does-not-exist")],
+                params=[("person_ids", 2)],
             )
 
         assert empty_response.status_code == 200
@@ -423,12 +395,7 @@ def test_album_folder_context_returns_stable_people_tags_and_hover_links() -> No
 
         assert response.status_code == 200
         assert response.json() == {
-            "supported_filters": [
-                "person_ids",
-                "person_group_ids",
-                "tag_paths",
-                "filename_query",
-            ],
+            "supported_filters": ["person_ids", "tag_paths"],
             "applied_filters": {
                 "person_ids": [],
                 "tag_paths": [],
@@ -533,12 +500,7 @@ def test_album_collection_context_supports_filters_and_map_points() -> None:
 
         assert response.status_code == 200
         assert response.json() == {
-            "supported_filters": [
-                "person_ids",
-                "person_group_ids",
-                "tag_paths",
-                "filename_query",
-            ],
+            "supported_filters": ["person_ids", "tag_paths"],
             "applied_filters": {
                 "person_ids": [1],
                 "tag_paths": ["travel/italy"],
@@ -618,17 +580,9 @@ def test_album_folder_tree_filters_nodes_by_person_group_relevance() -> None:
 
         assert response.status_code == 200
         assert response.json() == {
-            "supported_filters": [
-                "person_ids",
-                "person_group_ids",
-                "tag_paths",
-                "filename_query",
-            ],
+            "supported_filters": ["person_group_ids"],
             "applied_filters": {
-                "person_ids": [],
                 "person_group_ids": [2],
-                "tag_paths": [],
-                "filename_query": None,
             },
             "nodes": [
                 {
@@ -636,8 +590,7 @@ def test_album_folder_tree_filters_nodes_by_person_group_relevance() -> None:
                     "source_id": 1,
                     "source_name": "Photos",
                     "source_type": "photos",
-                    "parent_id": None,
-                    "name": "photos",
+                        "name": "photos",
                     "path": "photos",
                     "child_count": 1,
                     "asset_count": 3,
@@ -732,7 +685,7 @@ def test_album_folder_tree_filters_nodes_by_person_group_relevance() -> None:
         shutil.rmtree(workspace_root, ignore_errors=True)
 
 
-def test_album_folder_context_returns_404_when_person_group_filter_excludes_node() -> None:
+def test_album_folder_context_rejects_person_group_filter() -> None:
     workspace_root = _create_workspace_dir(prefix="album-folder-context-group-filter")
     runtime = None
     try:
@@ -746,8 +699,13 @@ def test_album_folder_context_returns_404_when_person_group_filter_excludes_node
                 params=[("person_group_ids", 2)],
             )
 
-        assert response.status_code == 404
-        assert response.json() == {"detail": "album folder 4 does not exist"}
+        assert response.status_code == 400
+        assert response.json() == {
+            "detail": (
+                "unsupported album filters: person_group_ids; "
+                "supported filters: person_ids, tag_paths"
+            )
+        }
     finally:
         if runtime is not None:
             runtime.engine.dispose()
@@ -772,7 +730,7 @@ def test_album_routes_reject_unsupported_global_filters() -> None:
         assert response.json() == {
             "detail": (
                 "unsupported album filters: distance_latitude, location_geometry; "
-                "supported filters: person_ids, person_group_ids, tag_paths, filename_query"
+                "supported filters: person_group_ids"
             )
         }
     finally:
@@ -1282,3 +1240,61 @@ def _create_workspace_dir(*, prefix: str) -> Path:
     workspace_root = Path("var") / f"{prefix}-{uuid4().hex}"
     workspace_root.mkdir(parents=True, exist_ok=False)
     return workspace_root
+
+
+def test_album_tree_routes_reject_person_tag_and_filename_filters() -> None:
+    workspace_root = _create_workspace_dir(prefix="album-tree-filter-rejection")
+    runtime = None
+    try:
+        runtime = _create_runtime(workspace_root=workspace_root)
+        _seed_album_navigation_data(runtime)
+
+        app = create_app(settings=runtime.settings)
+        with TestClient(app) as client:
+            response = client.get(
+                "/api/albums/folders",
+                params=[
+                    ("person_ids", 1),
+                    ("tag_paths", "travel/italy"),
+                    ("filename_query", "italy"),
+                ],
+            )
+
+        assert response.status_code == 400
+        assert response.json() == {
+            "detail": (
+                "unsupported album filters: filename_query, person_ids, tag_paths; "
+                "supported filters: person_group_ids"
+            )
+        }
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_album_listing_routes_reject_person_group_and_filename_filters() -> None:
+    workspace_root = _create_workspace_dir(prefix="album-listing-filter-rejection")
+    runtime = None
+    try:
+        runtime = _create_runtime(workspace_root=workspace_root)
+        _seed_album_navigation_data(runtime)
+
+        app = create_app(settings=runtime.settings)
+        with TestClient(app) as client:
+            response = client.get(
+                "/api/albums/collections/2/assets",
+                params=[("person_group_ids", 1), ("filename_query", "italy")],
+            )
+
+        assert response.status_code == 400
+        assert response.json() == {
+            "detail": (
+                "unsupported album filters: filename_query, person_group_ids; "
+                "supported filters: person_ids, tag_paths"
+            )
+        }
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
