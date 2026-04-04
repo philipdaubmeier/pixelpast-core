@@ -95,6 +95,46 @@ def test_asset_thumbnail_job_supports_lightroom_file_path_resolution() -> None:
         shutil.rmtree(workspace_root, ignore_errors=True)
 
 
+def test_asset_thumbnail_job_falls_back_to_same_basename_jpg_for_unreadable_raw(
+) -> None:
+    workspace_root = _create_workspace_dir(prefix="asset-thumbnails-raw-fallback")
+    runtime = None
+    try:
+        raw_path = _copy_fixture_file(
+            workspace_root=workspace_root,
+            fixture_name="raw-fallback-source.raw",
+        )
+        _copy_fixture_file(
+            workspace_root=workspace_root,
+            fixture_name="monalisa-1.jpg",
+            destination_name="raw-fallback-source.jpg",
+        )
+        runtime = _create_runtime(workspace_root=workspace_root)
+        _insert_photo_asset(
+            runtime=runtime,
+            short_id="RAW00001",
+            source_type="photos",
+            external_id=raw_path.as_posix(),
+        )
+
+        result = AssetThumbnailJob().run(
+            runtime=runtime,
+            renditions=("h120",),
+        )
+
+        assert result.status == "completed"
+        assert result.generated_count == 1
+        assert result.failed_count == 0
+        assert _read_image_size(_thumb_path(workspace_root, "h120", "RAW00001")) == (
+            120,
+            120,
+        )
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
 def test_asset_thumbnail_job_missing_only_and_force_rebuild_behave_deterministically(
 ) -> None:
     workspace_root = _create_workspace_dir(prefix="asset-thumbnails-force")
@@ -287,8 +327,20 @@ def _insert_photo_asset(
 
 
 def _copy_fixture_image(*, workspace_root: Path, fixture_name: str) -> Path:
+    return _copy_fixture_file(
+        workspace_root=workspace_root,
+        fixture_name=fixture_name,
+    )
+
+
+def _copy_fixture_file(
+    *,
+    workspace_root: Path,
+    fixture_name: str,
+    destination_name: str | None = None,
+) -> Path:
     fixture_path = Path("test") / "assets" / fixture_name
-    destination_path = workspace_root / "photos" / fixture_name
+    destination_path = workspace_root / "photos" / (destination_name or fixture_name)
     destination_path.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(fixture_path, destination_path)
     return destination_path.resolve()

@@ -48,23 +48,73 @@ def render_thumbnail(
     """Render one fixed thumbnail rendition from a source image."""
 
     try:
-        with Image.open(source_path) as image:
-            normalized = ImageOps.exif_transpose(image)
-            prepared = _render_rendition(image=normalized, rendition=rendition)
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            prepared.save(output_path, **_WEBP_SAVE_OPTIONS)
+        prepared = _load_and_prepare_rendition(
+            source_path=source_path,
+            rendition=rendition,
+        )
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        prepared.save(output_path, **_WEBP_SAVE_OPTIONS)
     except FileNotFoundError as error:
         raise ThumbnailRenderError(
             f"Original file is missing: {source_path}"
         ) from error
-    except UnidentifiedImageError as error:
-        raise ThumbnailRenderError(
+
+
+def _load_and_prepare_rendition(*, source_path: Path, rendition: str) -> Image.Image:
+    try:
+        return _render_rendition_from_path(
+            source_path=source_path,
+            rendition=rendition,
+        )
+    except (UnidentifiedImageError, OSError) as original_error:
+        fallback_path = _resolve_jpg_fallback_path(source_path=source_path)
+        if fallback_path is None:
+            raise _map_render_error(
+                source_path=source_path,
+                error=original_error,
+            ) from original_error
+        try:
+            return _render_rendition_from_path(
+                source_path=fallback_path,
+                rendition=rendition,
+            )
+        except FileNotFoundError:
+            raise _map_render_error(
+                source_path=source_path,
+                error=original_error,
+            ) from original_error
+        except (UnidentifiedImageError, OSError) as fallback_error:
+            raise _map_render_error(
+                source_path=source_path,
+                error=fallback_error,
+            ) from fallback_error
+
+
+def _render_rendition_from_path(*, source_path: Path, rendition: str) -> Image.Image:
+    with Image.open(source_path) as image:
+        normalized = ImageOps.exif_transpose(image)
+        return _render_rendition(image=normalized, rendition=rendition)
+
+
+def _resolve_jpg_fallback_path(*, source_path: Path) -> Path | None:
+    fallback_path = source_path.with_suffix(".jpg")
+    if fallback_path == source_path or not fallback_path.is_file():
+        return None
+    return fallback_path
+
+
+def _map_render_error(
+    *,
+    source_path: Path,
+    error: Exception,
+) -> ThumbnailRenderError:
+    if isinstance(error, UnidentifiedImageError):
+        return ThumbnailRenderError(
             f"Unsupported or unreadable image source: {source_path}"
-        ) from error
-    except OSError as error:
-        raise ThumbnailRenderError(
-            f"Could not render thumbnail from source image: {source_path}"
-        ) from error
+        )
+    return ThumbnailRenderError(
+        f"Could not render thumbnail from source image: {source_path}"
+    )
 
 
 def _render_rendition(*, image: Image.Image, rendition: str) -> Image.Image:

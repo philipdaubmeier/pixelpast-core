@@ -152,6 +152,41 @@ def test_thumbnail_media_reports_missing_original_files() -> None:
         shutil.rmtree(workspace_root, ignore_errors=True)
 
 
+def test_thumbnail_media_falls_back_to_same_basename_jpg_for_unreadable_raw() -> None:
+    workspace_root = _create_workspace_dir(prefix="media-api-raw-fallback")
+    runtime = None
+    try:
+        runtime = _create_runtime(workspace_root=workspace_root)
+        raw_path = _copy_fixture_file(
+            workspace_root=workspace_root,
+            fixture_name="raw-fallback-source.raw",
+        )
+        _copy_fixture_file(
+            workspace_root=workspace_root,
+            fixture_name="monalisa-3.jpg",
+            destination_name="raw-fallback-source.jpg",
+        )
+        _insert_photo_asset(
+            runtime=runtime,
+            short_id="RAWAPI01",
+            source_type="photos",
+            external_id=raw_path.as_posix(),
+        )
+        app = create_app(settings=runtime.settings)
+
+        with TestClient(app) as client:
+            response = client.get("/media/h120/RAWAPI01.webp")
+
+        output_path = workspace_root / "thumbs" / "h120" / "RAWAPI01.webp"
+        assert response.status_code == 200
+        assert output_path.exists()
+        assert _read_image_size(output_path) == (120, 120)
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
 def test_original_media_serves_photo_with_inline_content_disposition() -> None:
     workspace_root = _create_workspace_dir(prefix="media-api-original-photo")
     runtime = None
@@ -340,8 +375,20 @@ def _insert_photo_asset(
 
 
 def _copy_fixture_image(*, workspace_root: Path, fixture_name: str) -> Path:
+    return _copy_fixture_file(
+        workspace_root=workspace_root,
+        fixture_name=fixture_name,
+    )
+
+
+def _copy_fixture_file(
+    *,
+    workspace_root: Path,
+    fixture_name: str,
+    destination_name: str | None = None,
+) -> Path:
     fixture_path = Path("test") / "assets" / fixture_name
-    destination_path = workspace_root / "photos" / fixture_name
+    destination_path = workspace_root / "photos" / (destination_name or fixture_name)
     destination_path.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(fixture_path, destination_path)
     return destination_path.resolve()
