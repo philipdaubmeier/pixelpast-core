@@ -258,6 +258,45 @@ def test_original_media_prefers_preserved_lightroom_filename() -> None:
         shutil.rmtree(workspace_root, ignore_errors=True)
 
 
+def test_original_media_falls_back_to_same_basename_jpg_for_raw_photo() -> None:
+    workspace_root = _create_workspace_dir(prefix="media-api-original-raw-fallback")
+    runtime = None
+    try:
+        runtime = _create_runtime(workspace_root=workspace_root)
+        raw_path = _copy_fixture_file(
+            workspace_root=workspace_root,
+            fixture_name="raw-fallback-source.raw",
+        )
+        jpg_path = _copy_fixture_file(
+            workspace_root=workspace_root,
+            fixture_name="monalisa-1.jpg",
+            destination_name="raw-fallback-source.jpg",
+        )
+        _insert_photo_asset(
+            runtime=runtime,
+            short_id="ORIGRAW1",
+            source_type="photos",
+            external_id=raw_path.as_posix(),
+            metadata_json={"source_path": raw_path.as_posix()},
+        )
+        app = create_app(settings=runtime.settings)
+
+        with TestClient(app) as client:
+            response = client.get("/media/orig/ORIGRAW1")
+
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "image/jpeg"
+        assert (
+            response.headers["content-disposition"]
+            == 'inline; filename="raw-fallback-source.jpg"'
+        )
+        assert response.content == jpg_path.read_bytes()
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
 def test_original_media_rejects_unknown_short_ids() -> None:
     workspace_root = _create_workspace_dir(prefix="media-api-original-unknown")
     runtime = None

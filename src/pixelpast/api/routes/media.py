@@ -262,7 +262,8 @@ def get_original_media(short_id: str, request: Request) -> FileResponse:
             detail=f"original file path for asset '{short_id}' could not be resolved",
         )
 
-    if not original_path.is_file():
+    delivery_path = _resolve_original_delivery_path(original_path=original_path)
+    if delivery_path is None:
         raise HTTPException(
             status_code=404,
             detail=f"original file for asset '{short_id}' is missing",
@@ -270,10 +271,10 @@ def get_original_media(short_id: str, request: Request) -> FileResponse:
 
     filename = _resolve_original_filename(
         candidate=candidate,
-        original_path=original_path,
+        original_path=delivery_path,
     )
     return _build_original_file_response(
-        output_path=original_path,
+        output_path=delivery_path,
         filename=filename,
     )
 
@@ -381,6 +382,23 @@ def _resolve_original_path(*, candidate: AssetOriginalCandidate) -> Path | None:
         return None
 
     return None
+
+
+def _resolve_original_delivery_path(*, original_path: Path) -> Path | None:
+    if original_path.is_file():
+        jpg_fallback_path = _resolve_same_basename_jpg_path(source_path=original_path)
+        if jpg_fallback_path is not None:
+            return jpg_fallback_path
+        return original_path
+
+    return _resolve_same_basename_jpg_path(source_path=original_path)
+
+
+def _resolve_same_basename_jpg_path(*, source_path: Path) -> Path | None:
+    jpg_fallback_path = source_path.with_suffix(".jpg")
+    if jpg_fallback_path == source_path or not jpg_fallback_path.is_file():
+        return None
+    return jpg_fallback_path
 
 
 def _resolve_original_filename(
