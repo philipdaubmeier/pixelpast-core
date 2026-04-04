@@ -180,7 +180,7 @@ def test_lightroom_transformer_converts_apex_values_and_normalizes_person_links(
                 collection_type="lightroom_collection",
             ),
         ),
-    )
+    )[0]
 
     assert candidate.timestamp == datetime(2020, 1, 1, 0, 3, 40, tzinfo=UTC)
     assert candidate.tag_paths == (
@@ -287,12 +287,74 @@ def test_lightroom_transformer_creates_people_from_person_keyword_type_without_f
             ),
         ),
         collection_rows=(),
-    )
+    )[0]
 
     assert tuple((person.name, person.path) for person in candidate.persons) == (
         ("Mona Lisa", "who|Persons|Mona Lisa"),
     )
     assert all("who|" not in path for path in candidate.tag_paths)
+
+
+def test_lightroom_transformer_ignores_person_keywords_without_matching_confirmed_face_region() -> (
+    None
+):
+    transformer = LightroomCatalogTransformer()
+
+    candidate = transformer.build_asset_candidate(
+        image_row=LightroomChosenImageRow(
+            image_id=1,
+            root_file_id=1,
+            file_name="example.jpg",
+            file_path="C:/photos/example.jpg",
+            capture_time_text="2020-01-01T02:03:40.000",
+            rating=None,
+            color_label=None,
+            xmp_blob=_FIXTURE_ROW.xmp_blob,
+            caption=None,
+            creator_name=None,
+            camera=None,
+            lens=None,
+            aperture_apex=None,
+            shutter_speed_apex=None,
+            iso_speed_rating=None,
+            gps_latitude=None,
+            gps_longitude=None,
+        ),
+        face_rows=(
+            LightroomFaceRow(
+                image_id=1,
+                face_id=2,
+                name="Mona Lisa",
+                left=0.2,
+                top=0.1,
+                right=0.4,
+                bottom=0.3,
+                region_type=1.0,
+                orientation=0.0,
+            ),
+        ),
+        keyword_rows=(
+            LightroomKeywordRow(
+                image_id=1,
+                keyword_id=97,
+                keyword_name="Mona Lisa",
+                keyword_path="who|Persons|Mona Lisa",
+                keyword_type="person",
+            ),
+            LightroomKeywordRow(
+                image_id=1,
+                keyword_id=146,
+                keyword_name="John Doe",
+                keyword_path="who|Persons|John Doe",
+                keyword_type="person",
+            ),
+        ),
+        collection_rows=(),
+    )[0]
+
+    assert tuple((person.name, person.path) for person in candidate.persons) == (
+        ("Mona Lisa", "who|Persons|Mona Lisa"),
+    )
 
 
 def test_lightroom_transformer_remaps_invalid_non_leap_day_capture_time_to_april_first() -> None:

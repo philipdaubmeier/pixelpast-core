@@ -229,8 +229,10 @@ def _fetch_face_rows(
                     face.regionType AS region_type,
                     face.orientation AS orientation
                 FROM AgLibraryFace face
-                LEFT JOIN AgLibraryKeywordFace keyword_face
+                JOIN AgLibraryKeywordFace keyword_face
                     ON keyword_face.face = face.id_local
+                    AND COALESCE(keyword_face.userPick, 0) = 1
+                    AND COALESCE(keyword_face.userReject, 0) = 0
                 LEFT JOIN AgLibraryKeyword keyword
                     ON keyword.id_local = keyword_face.tag
                 WHERE face.image IN ({_sql_placeholders(len(batch_image_ids))})

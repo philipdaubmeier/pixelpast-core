@@ -318,6 +318,8 @@ def _build_person_candidates(
         name = _normalize_optional_text(keyword_row.keyword_name)
         if name is None or name in seen_names:
             continue
+        if face_names and name not in face_names:
+            continue
         seen_names.add(name)
         matching_path = _resolve_matching_person_path(
             name=name,

@@ -338,6 +338,56 @@ def test_lightroom_catalog_ingestion_persists_caption_and_collection_metadata_an
         shutil.rmtree(workspace_root, ignore_errors=True)
 
 
+def test_lightroom_catalog_ingestion_ignores_unconfirmed_lightroom_face_suggestions() -> (
+    None
+):
+    runtime = _create_runtime()
+    workspace_root = _create_workspace_root()
+    try:
+        catalog_path = _copy_fixture_catalog(workspace_root)
+        _mark_lightroom_face_as_unconfirmed(
+            catalog_path=catalog_path,
+            face_id=159,
+        )
+
+        result = LightroomCatalogIngestionService().ingest(
+            runtime=runtime,
+            root=catalog_path,
+        )
+
+        with runtime.session_factory() as session:
+            assets = {
+                asset.external_id: asset
+                for asset in session.execute(select(Asset)).scalars()
+            }
+            persons = list(
+                session.execute(select(Person).order_by(Person.name, Person.id)).scalars()
+            )
+            asset_people = list(session.execute(select(AssetPerson)).scalars())
+
+        assert result.status == "completed"
+        assert len(persons) == 3
+        assert [person.name for person in persons] == [
+            "John Doe",
+            "Leonardo da Vinci",
+            "Mona Lisa",
+        ]
+        assert len(asset_people) == 4
+        assert assets[_SECOND_ASSET_EXTERNAL_ID].metadata_json is not None
+        assert assets[_SECOND_ASSET_EXTERNAL_ID].metadata_json["face_regions"] == [
+            {
+                "name": "Mona Lisa",
+                "left": 0.10048499999999999,
+                "top": 0.09559,
+                "right": 0.348035,
+                "bottom": 0.33701,
+            }
+        ]
+    finally:
+        runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
 def test_lightroom_catalog_ingestion_reads_runtime_catalog_path_and_emits_progress() -> (
     None
 ):
@@ -753,6 +803,15 @@ def _corrupt_xmp_blob(*, catalog_path: Path, image_id: int) -> None:
         connection.execute(
             "UPDATE Adobe_AdditionalMetadata SET xmp = ? WHERE image = ?",
             (original_blob[:4] + b"not-a-valid-zlib-stream", image_id),
+        )
+        connection.commit()
+
+
+def _mark_lightroom_face_as_unconfirmed(*, catalog_path: Path, face_id: int) -> None:
+    with sqlite3.connect(catalog_path) as connection:
+        connection.execute(
+            "UPDATE AgLibraryKeywordFace SET userPick = 0 WHERE face = ?",
+            (face_id,),
         )
         connection.commit()
 
