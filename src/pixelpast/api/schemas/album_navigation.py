@@ -98,12 +98,22 @@ class AlbumAssetItem(BaseModel):
     thumbnail_url: str
 
 
+class AlbumPage(BaseModel):
+    """Explicit page metadata for paged album asset reads."""
+
+    offset: int
+    limit: int
+    returned: int
+    total: int
+
+
 class AlbumAssetListingResponse(BaseModel):
     """Read response for one selected album subtree asset listing."""
 
     supported_filters: list[str]
     applied_filters: AlbumAppliedFilters
     selection: AlbumSelection
+    page: AlbumPage
     items: list[AlbumAssetItem]
 
 
@@ -179,8 +189,17 @@ class AlbumContextResponse(BaseModel):
     persons: list[AlbumContextPerson] = Field(default_factory=list)
     tags: list[AlbumContextTag] = Field(default_factory=list)
     map_points: list[AlbumContextMapPoint] = Field(default_factory=list)
-    asset_contexts: list[AlbumContextAssetItem] = Field(default_factory=list)
     summary_counts: AlbumContextSummaryCounts
+
+
+class AlbumAssetContextPageResponse(BaseModel):
+    """Page-scoped hover context for one loaded album asset range."""
+
+    supported_filters: list[str]
+    applied_filters: AlbumAppliedFilters
+    selection: AlbumSelection
+    page: AlbumPage
+    asset_contexts: list[AlbumContextAssetItem] = Field(default_factory=list)
 
 
 class AlbumFaceRegion(BaseModel):

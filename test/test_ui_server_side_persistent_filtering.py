@@ -99,6 +99,8 @@ def test_album_transport_separates_tree_and_selection_filter_queries() -> None:
     assert "function buildAlbumSelectionFilterQuery" in source
     assert "person_ids: request.personIds" in source
     assert "tag_paths: request.tagPaths" in source
+    assert "offset: request.offset" in source
+    assert "limit: request.limit" in source
     assert "person_group_ids: request.personGroupIds" not in source.split(
         "function buildAlbumSelectionFilterQuery", maxsplit=1
     )[1]
@@ -113,3 +115,17 @@ def test_photo_album_view_keeps_empty_initial_state_and_clears_invalid_selection
     assert "onSelectionChange(null);" in source
     assert "Select a folder or collection to open the album surface." in source
     assert "No assets in this selection matched the active people or tag filters." in source
+
+
+def test_photo_album_view_uses_page_scoped_context_loading_for_large_grids() -> None:
+    source = (
+        UI_ROOT / "features" / "photo-album" / "components" / "PhotoAlbumView.tsx"
+    ).read_text(encoding="utf-8")
+
+    assert "const ALBUM_PAGE_SIZE = 1000;" in source
+    assert "const PAGE_LOAD_DWELL_MS = 1000;" in source
+    assert "new IntersectionObserver(" in source
+    assert "data-page-anchor" in source
+    assert "albumApi.getFolderAssetContextPage" in source
+    assert "albumApi.getCollectionAssetContextPage" in source
+    assert "Retry page load" in source

@@ -53,6 +53,13 @@ export type ApiAlbumAssetItem = {
   thumbnail_url: string;
 };
 
+export type ApiAlbumPage = {
+  offset: number;
+  limit: number;
+  returned: number;
+  total: number;
+};
+
 export type ApiAlbumContextPerson = {
   id: number;
   name: string;
@@ -90,7 +97,6 @@ export type ApiAlbumContextResponse = {
   persons: ApiAlbumContextPerson[];
   tags: ApiAlbumContextTag[];
   map_points: ApiAlbumContextMapPoint[];
-  asset_contexts: ApiAlbumContextAssetItem[];
   summary_counts: {
     assets: number;
     people: number;
@@ -115,7 +121,16 @@ export type ApiAlbumAssetListingResponse = {
   supported_filters: string[];
   applied_filters: ApiAlbumAppliedFilters;
   selection: ApiAlbumSelection;
+  page: ApiAlbumPage;
   items: ApiAlbumAssetItem[];
+};
+
+export type ApiAlbumAssetContextPageResponse = {
+  supported_filters: string[];
+  applied_filters: ApiAlbumAppliedFilters;
+  selection: ApiAlbumSelection;
+  page: ApiAlbumPage;
+  asset_contexts: ApiAlbumContextAssetItem[];
 };
 
 export type ApiAlbumAssetDetailResponse = {
@@ -167,6 +182,8 @@ type ApiAlbumTreeRequest = {
 type ApiAlbumSelectionRequest = {
   personIds: string[];
   tagPaths: string[];
+  offset?: number;
+  limit?: number;
 };
 
 function normalizeConfiguredApiBaseUrl(value: string): string {
@@ -251,6 +268,8 @@ function buildAlbumSelectionFilterQuery(request: ApiAlbumSelectionRequest): stri
   return buildQueryString({
     person_ids: request.personIds,
     tag_paths: request.tagPaths,
+    offset: request.offset,
+    limit: request.limit,
   });
 }
 
@@ -302,6 +321,24 @@ export const albumTransport = {
   ): Promise<ApiAlbumContextResponse> {
     return requestJson<ApiAlbumContextResponse>(
       `/albums/collections/${collectionId}/context${buildAlbumSelectionFilterQuery(request)}`,
+    );
+  },
+
+  getFolderAssetContexts(
+    folderId: number,
+    request: ApiAlbumSelectionRequest,
+  ): Promise<ApiAlbumAssetContextPageResponse> {
+    return requestJson<ApiAlbumAssetContextPageResponse>(
+      `/albums/folders/${folderId}/asset-contexts${buildAlbumSelectionFilterQuery(request)}`,
+    );
+  },
+
+  getCollectionAssetContexts(
+    collectionId: number,
+    request: ApiAlbumSelectionRequest,
+  ): Promise<ApiAlbumAssetContextPageResponse> {
+    return requestJson<ApiAlbumAssetContextPageResponse>(
+      `/albums/collections/${collectionId}/asset-contexts${buildAlbumSelectionFilterQuery(request)}`,
     );
   },
 

@@ -1,6 +1,7 @@
 import type { MapPointProjection, PersonProjection, TagProjection } from "../projections/timeline";
 import {
   albumTransport,
+  type ApiAlbumAssetContextPageResponse,
   resolveBackendUrl,
   type ApiAlbumAssetDetailResponse,
   type ApiAlbumAssetListingResponse,
@@ -58,6 +59,12 @@ export type AlbumAssetProjection = {
 
 export type AlbumAssetListingProjection = {
   selection: AlbumSelectionProjection;
+  page: {
+    offset: number;
+    limit: number;
+    returned: number;
+    total: number;
+  };
   items: AlbumAssetProjection[];
 };
 
@@ -87,13 +94,23 @@ export type AlbumContextProjection = {
       assetCount: number;
     }
   >;
-  assetContextsByAssetId: Record<number, AlbumContextAssetProjection>;
   summaryCounts: {
     assets: number;
     people: number;
     tags: number;
     places: number;
   };
+};
+
+export type AlbumAssetContextPageProjection = {
+  selection: AlbumSelectionProjection;
+  page: {
+    offset: number;
+    limit: number;
+    returned: number;
+    total: number;
+  };
+  assetContextsByAssetId: Record<number, AlbumContextAssetProjection>;
 };
 
 export type AlbumAssetDetailProjection = {
@@ -130,9 +147,9 @@ export type AlbumAssetDetailProjection = {
 };
 
 type AlbumApiFilters = {
-  selectedPersons: string[];
-  selectedPersonGroupIds: string[];
-  selectedTags: string[];
+  selectedPersons?: string[];
+  selectedPersonGroupIds?: string[];
+  selectedTags?: string[];
 };
 
 function mapSelection(selection: ApiAlbumSelection): AlbumSelectionProjection {
@@ -181,6 +198,7 @@ function mapListing(
 ): AlbumAssetListingProjection {
   return {
     selection: mapSelection(response.selection),
+    page: response.page,
     items: response.items.map((item) => ({
       id: item.id,
       shortId: item.short_id,
@@ -223,6 +241,16 @@ function mapContext(response: ApiAlbumContextResponse): AlbumContextProjection {
       longitude: point.longitude,
       assetCount: point.asset_count,
     })),
+    summaryCounts: response.summary_counts,
+  };
+}
+
+function mapAssetContextPage(
+  response: ApiAlbumAssetContextPageResponse,
+): AlbumAssetContextPageProjection {
+  return {
+    selection: mapSelection(response.selection),
+    page: response.page,
     assetContextsByAssetId: Object.fromEntries(
       response.asset_contexts.map((item) => [
         item.asset_id,
@@ -234,7 +262,6 @@ function mapContext(response: ApiAlbumContextResponse): AlbumContextProjection {
         },
       ]),
     ),
-    summaryCounts: response.summary_counts,
   };
 }
 
@@ -279,7 +306,7 @@ function mapAssetDetail(
 export const albumApi = {
   async getFolderTree(filters: AlbumApiFilters): Promise<AlbumTreeNodeProjection[]> {
     const response = await albumTransport.getFolderTree({
-      personGroupIds: filters.selectedPersonGroupIds,
+      personGroupIds: filters.selectedPersonGroupIds ?? [],
     });
 
     return response.nodes.map(mapTreeNode);
@@ -289,7 +316,7 @@ export const albumApi = {
     filters: AlbumApiFilters,
   ): Promise<AlbumTreeNodeProjection[]> {
     const response = await albumTransport.getCollectionTree({
-      personGroupIds: filters.selectedPersonGroupIds,
+      personGroupIds: filters.selectedPersonGroupIds ?? [],
     });
 
     return response.nodes.map(mapTreeNode);
@@ -297,24 +324,28 @@ export const albumApi = {
 
   async getFolderListing(
     folderId: number,
-    filters: AlbumApiFilters,
+    filters: AlbumApiFilters & { offset?: number; limit?: number },
   ): Promise<AlbumAssetListingProjection> {
     return mapListing(
       await albumTransport.getFolderAssets(folderId, {
-        personIds: filters.selectedPersons,
-        tagPaths: filters.selectedTags,
+        personIds: filters.selectedPersons ?? [],
+        tagPaths: filters.selectedTags ?? [],
+        offset: filters.offset,
+        limit: filters.limit,
       }),
     );
   },
 
   async getCollectionListing(
     collectionId: number,
-    filters: AlbumApiFilters,
+    filters: AlbumApiFilters & { offset?: number; limit?: number },
   ): Promise<AlbumAssetListingProjection> {
     return mapListing(
       await albumTransport.getCollectionAssets(collectionId, {
-        personIds: filters.selectedPersons,
-        tagPaths: filters.selectedTags,
+        personIds: filters.selectedPersons ?? [],
+        tagPaths: filters.selectedTags ?? [],
+        offset: filters.offset,
+        limit: filters.limit,
       }),
     );
   },
@@ -325,8 +356,8 @@ export const albumApi = {
   ): Promise<AlbumContextProjection> {
     return mapContext(
       await albumTransport.getFolderContext(folderId, {
-        personIds: filters.selectedPersons,
-        tagPaths: filters.selectedTags,
+        personIds: filters.selectedPersons ?? [],
+        tagPaths: filters.selectedTags ?? [],
       }),
     );
   },
@@ -337,8 +368,36 @@ export const albumApi = {
   ): Promise<AlbumContextProjection> {
     return mapContext(
       await albumTransport.getCollectionContext(collectionId, {
-        personIds: filters.selectedPersons,
-        tagPaths: filters.selectedTags,
+        personIds: filters.selectedPersons ?? [],
+        tagPaths: filters.selectedTags ?? [],
+      }),
+    );
+  },
+
+  async getFolderAssetContextPage(
+    folderId: number,
+    filters: AlbumApiFilters & { offset?: number; limit?: number },
+  ): Promise<AlbumAssetContextPageProjection> {
+    return mapAssetContextPage(
+      await albumTransport.getFolderAssetContexts(folderId, {
+        personIds: filters.selectedPersons ?? [],
+        tagPaths: filters.selectedTags ?? [],
+        offset: filters.offset,
+        limit: filters.limit,
+      }),
+    );
+  },
+
+  async getCollectionAssetContextPage(
+    collectionId: number,
+    filters: AlbumApiFilters & { offset?: number; limit?: number },
+  ): Promise<AlbumAssetContextPageProjection> {
+    return mapAssetContextPage(
+      await albumTransport.getCollectionAssetContexts(collectionId, {
+        personIds: filters.selectedPersons ?? [],
+        tagPaths: filters.selectedTags ?? [],
+        offset: filters.offset,
+        limit: filters.limit,
       }),
     );
   },

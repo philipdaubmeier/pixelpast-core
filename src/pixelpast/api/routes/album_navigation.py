@@ -13,6 +13,7 @@ from pixelpast.api.routes.metadata import (
 )
 from pixelpast.api.schemas import (
     AlbumAssetDetailResponse,
+    AlbumAssetContextPageResponse,
     AlbumAssetListingResponse,
     AlbumCollectionsTreeResponse,
     AlbumContextResponse,
@@ -26,6 +27,7 @@ from pixelpast.persistence.repositories.album_navigation_read import (
 )
 
 router = APIRouter(tags=["album"])
+DEFAULT_ALBUM_PAGE_SIZE = 1000
 
 ALBUM_FOLDERS_TREE_EXAMPLES = {
     "photo_import_folders": {
@@ -143,6 +145,12 @@ ALBUM_ASSET_LISTING_EXAMPLES = {
                 "asset_count": 2,
                 "collection_type": None,
             },
+            "page": {
+                "offset": 0,
+                "limit": 1000,
+                "returned": 1,
+                "total": 2,
+            },
             "items": [
                 {
                     "id": 41,
@@ -159,7 +167,7 @@ ALBUM_ASSET_LISTING_EXAMPLES = {
 
 ALBUM_CONTEXT_EXAMPLES = {
     "folder_stable_context": {
-        "summary": "Stable album context with per-asset hover highlights",
+        "summary": "Stable album context without page-local hover payload",
         "value": {
             "supported_filters": ["person_ids", "tag_paths"],
             "applied_filters": {
@@ -214,6 +222,43 @@ ALBUM_CONTEXT_EXAMPLES = {
                     "asset_count": 1,
                 }
             ],
+            "summary_counts": {
+                "assets": 2,
+                "people": 1,
+                "tags": 1,
+                "places": 1,
+            },
+        },
+    }
+}
+
+ALBUM_ASSET_CONTEXT_PAGE_EXAMPLES = {
+    "folder_visible_page_hover_context": {
+        "summary": "Page-scoped hover context for the currently loaded asset range",
+        "value": {
+            "supported_filters": ["person_ids", "tag_paths"],
+            "applied_filters": {
+                "person_ids": [1],
+                "tag_paths": ["travel/italy"],
+            },
+            "selection": {
+                "node_kind": "folder",
+                "id": 3,
+                "source_id": 2,
+                "source_name": "Photos",
+                "source_type": "photos",
+                "parent_id": 1,
+                "name": "Italy",
+                "path": "photos/Italy",
+                "asset_count": 2,
+                "collection_type": None,
+            },
+            "page": {
+                "offset": 0,
+                "limit": 1000,
+                "returned": 1,
+                "total": 2,
+            },
             "asset_contexts": [
                 {
                     "asset_id": 41,
@@ -222,12 +267,6 @@ ALBUM_CONTEXT_EXAMPLES = {
                     "map_point_ids": ["asset:PHOTO041"],
                 }
             ],
-            "summary_counts": {
-                "assets": 2,
-                "people": 1,
-                "tags": 1,
-                "places": 1,
-            },
         },
     }
 }
@@ -563,6 +602,8 @@ def get_album_folder_asset_listing(
     folder_id: int,
     person_ids: list[int] = Query(default=[]),
     tag_paths: list[str] = Query(default=[]),
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=DEFAULT_ALBUM_PAGE_SIZE, ge=1),
     person_group_ids: list[int] = Query(
         default=[],
         description="Present for tree navigation consistency, but rejected here.",
@@ -593,6 +634,8 @@ def get_album_folder_asset_listing(
     response = _build_service(session).get_folder_asset_listing(
         folder_id=folder_id,
         filters=filters,
+        offset=offset,
+        limit=limit,
     )
     if response is None:
         raise HTTPException(status_code=404, detail=f"album folder {folder_id} does not exist")
@@ -606,8 +649,8 @@ def get_album_folder_asset_listing(
     summary="Get album folder context",
     description=(
         "Return the stable right-column context for one selected physical folder. "
-        "The response includes aggregate people, tags, and map points plus "
-        "per-asset lightweight highlight links so thumbnail hover stays local."
+        "The response includes aggregate people, tags, map points, and summary "
+        "counts, but leaves per-asset hover links to the page-scoped context route."
     ),
     response_description="Stable album context for one folder selection.",
     responses=combine_responses(
@@ -675,6 +718,81 @@ def get_album_folder_context(
 
 
 @router.get(
+    "/albums/folders/{folder_id}/asset-contexts",
+    response_model=AlbumAssetContextPageResponse,
+    response_model_exclude_none=True,
+    summary="Get album folder asset hover context page",
+    description=(
+        "Return only the per-asset hover links for one loaded page of a selected "
+        "physical folder. This keeps selection-level right-column context stable "
+        "while page-local hover highlighting scales with large album selections."
+    ),
+    response_description="Page-scoped hover context for one folder selection.",
+    responses=combine_responses(
+        {
+            200: {
+                "content": {
+                    "application/json": {
+                        "examples": ALBUM_ASSET_CONTEXT_PAGE_EXAMPLES,
+                    }
+                }
+            }
+        },
+        {
+            400: {
+                **BAD_REQUEST_RESPONSE[400],
+                "content": {
+                    "application/json": {
+                        "examples": ALBUM_BAD_REQUEST_EXAMPLES,
+                    }
+                },
+            }
+        },
+        ALBUM_NOT_FOUND_RESPONSES,
+        VALIDATION_ERROR_RESPONSE,
+    ),
+)
+def get_album_folder_asset_context_page(
+    folder_id: int,
+    person_ids: list[int] = Query(default=[]),
+    tag_paths: list[str] = Query(default=[]),
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=DEFAULT_ALBUM_PAGE_SIZE, ge=1),
+    person_group_ids: list[int] = Query(
+        default=[],
+        description="Present for tree navigation consistency, but rejected here.",
+    ),
+    location_geometry: str | None = Query(default=None),
+    distance_latitude: float | None = Query(default=None, ge=-90, le=90),
+    distance_longitude: float | None = Query(default=None, ge=-180, le=180),
+    distance_radius_meters: int | None = Query(default=None, ge=1),
+    filename_query: str | None = Query(default=None, min_length=1),
+    session: Session = Depends(get_db_session),
+) -> AlbumAssetContextPageResponse:
+    """Return page-scoped hover context for one selected folder."""
+
+    filters = _build_selection_filters(
+        person_ids=person_ids,
+        person_group_ids=person_group_ids,
+        tag_paths=tag_paths,
+        location_geometry=location_geometry,
+        distance_latitude=distance_latitude,
+        distance_longitude=distance_longitude,
+        distance_radius_meters=distance_radius_meters,
+        filename_query=filename_query,
+    )
+    response = _build_service(session).get_folder_asset_context_page(
+        folder_id=folder_id,
+        filters=filters,
+        offset=offset,
+        limit=limit,
+    )
+    if response is None:
+        raise HTTPException(status_code=404, detail=f"album folder {folder_id} does not exist")
+    return response
+
+
+@router.get(
     "/albums/collections/{collection_id}/assets",
     response_model=AlbumAssetListingResponse,
     response_model_exclude_none=True,
@@ -713,6 +831,8 @@ def get_album_collection_asset_listing(
     collection_id: int,
     person_ids: list[int] = Query(default=[]),
     tag_paths: list[str] = Query(default=[]),
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=DEFAULT_ALBUM_PAGE_SIZE, ge=1),
     person_group_ids: list[int] = Query(
         default=[],
         description="Present for tree navigation consistency, but rejected here.",
@@ -743,6 +863,8 @@ def get_album_collection_asset_listing(
     response = _build_service(session).get_collection_asset_listing(
         collection_id=collection_id,
         filters=filters,
+        offset=offset,
+        limit=limit,
     )
     if response is None:
         raise HTTPException(
@@ -759,8 +881,8 @@ def get_album_collection_asset_listing(
     summary="Get album collection context",
     description=(
         "Return the stable right-column context for one selected semantic "
-        "collection. Thumbnail hover remains client-side by using the per-asset "
-        "lightweight highlight links returned with the aggregate context."
+        "collection. Aggregate sidebar data stays selection-scoped while per-asset "
+        "hover links are loaded through the page-scoped context route."
     ),
     response_description="Stable album context for one collection selection.",
     responses=combine_responses(
@@ -821,6 +943,84 @@ def get_album_collection_context(
     response = _build_service(session).get_collection_context(
         collection_id=collection_id,
         filters=filters,
+    )
+    if response is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"album collection {collection_id} does not exist",
+        )
+    return response
+
+
+@router.get(
+    "/albums/collections/{collection_id}/asset-contexts",
+    response_model=AlbumAssetContextPageResponse,
+    response_model_exclude_none=True,
+    summary="Get album collection asset hover context page",
+    description=(
+        "Return only the per-asset hover links for one loaded page of a selected "
+        "semantic collection. The selection-level right-column summary remains "
+        "stable while page-local hover data loads with reached asset ranges."
+    ),
+    response_description="Page-scoped hover context for one collection selection.",
+    responses=combine_responses(
+        {
+            200: {
+                "content": {
+                    "application/json": {
+                        "examples": ALBUM_ASSET_CONTEXT_PAGE_EXAMPLES,
+                    }
+                }
+            }
+        },
+        {
+            400: {
+                **BAD_REQUEST_RESPONSE[400],
+                "content": {
+                    "application/json": {
+                        "examples": ALBUM_BAD_REQUEST_EXAMPLES,
+                    }
+                },
+            }
+        },
+        ALBUM_NOT_FOUND_RESPONSES,
+        VALIDATION_ERROR_RESPONSE,
+    ),
+)
+def get_album_collection_asset_context_page(
+    collection_id: int,
+    person_ids: list[int] = Query(default=[]),
+    tag_paths: list[str] = Query(default=[]),
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=DEFAULT_ALBUM_PAGE_SIZE, ge=1),
+    person_group_ids: list[int] = Query(
+        default=[],
+        description="Present for tree navigation consistency, but rejected here.",
+    ),
+    location_geometry: str | None = Query(default=None),
+    distance_latitude: float | None = Query(default=None, ge=-90, le=90),
+    distance_longitude: float | None = Query(default=None, ge=-180, le=180),
+    distance_radius_meters: int | None = Query(default=None, ge=1),
+    filename_query: str | None = Query(default=None, min_length=1),
+    session: Session = Depends(get_db_session),
+) -> AlbumAssetContextPageResponse:
+    """Return page-scoped hover context for one selected collection."""
+
+    filters = _build_selection_filters(
+        person_ids=person_ids,
+        person_group_ids=person_group_ids,
+        tag_paths=tag_paths,
+        location_geometry=location_geometry,
+        distance_latitude=distance_latitude,
+        distance_longitude=distance_longitude,
+        distance_radius_meters=distance_radius_meters,
+        filename_query=filename_query,
+    )
+    response = _build_service(session).get_collection_asset_context_page(
+        collection_id=collection_id,
+        filters=filters,
+        offset=offset,
+        limit=limit,
     )
     if response is None:
         raise HTTPException(

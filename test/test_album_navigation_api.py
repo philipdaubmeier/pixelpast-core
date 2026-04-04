@@ -287,6 +287,12 @@ def test_album_folder_asset_listing_aggregates_descendants_in_stable_order() -> 
                 "path": "photos/2024",
                 "asset_count": 3,
             },
+            "page": {
+                "offset": 0,
+                "limit": 1000,
+                "returned": 3,
+                "total": 3,
+            },
             "items": [
                 {
                     "id": 3,
@@ -355,6 +361,12 @@ def test_album_collection_asset_listing_supports_filters_and_empty_results() -> 
                 "asset_count": 1,
                 "collection_type": "collection",
             },
+            "page": {
+                "offset": 0,
+                "limit": 1000,
+                "returned": 1,
+                "total": 1,
+            },
             "items": [
                 {
                     "id": 5,
@@ -375,7 +387,67 @@ def test_album_collection_asset_listing_supports_filters_and_empty_results() -> 
 
         assert empty_response.status_code == 200
         assert empty_response.json()["selection"]["asset_count"] == 0
+        assert empty_response.json()["page"] == {
+            "offset": 0,
+            "limit": 1000,
+            "returned": 0,
+            "total": 0,
+        }
         assert empty_response.json()["items"] == []
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_album_folder_asset_listing_supports_explicit_pagination_and_empty_tail_pages() -> None:
+    workspace_root = _create_workspace_dir(prefix="album-folder-listing-pagination")
+    runtime = None
+    try:
+        runtime = _create_runtime(workspace_root=workspace_root)
+        _seed_album_navigation_data(runtime)
+
+        app = create_app(settings=runtime.settings)
+        with TestClient(app) as client:
+            first_page = client.get(
+                "/api/albums/folders/2/assets",
+                params=[("offset", 0), ("limit", 2)],
+            )
+            second_page = client.get(
+                "/api/albums/folders/2/assets",
+                params=[("offset", 2), ("limit", 2)],
+            )
+            empty_tail_page = client.get(
+                "/api/albums/folders/2/assets",
+                params=[("offset", 4), ("limit", 2)],
+            )
+
+        assert first_page.status_code == 200
+        assert first_page.json()["page"] == {
+            "offset": 0,
+            "limit": 2,
+            "returned": 2,
+            "total": 3,
+        }
+        assert [item["id"] for item in first_page.json()["items"]] == [3, 2]
+
+        assert second_page.status_code == 200
+        assert second_page.json()["page"] == {
+            "offset": 2,
+            "limit": 2,
+            "returned": 1,
+            "total": 3,
+        }
+        assert [item["id"] for item in second_page.json()["items"]] == [1]
+
+        assert empty_tail_page.status_code == 200
+        assert empty_tail_page.json()["page"] == {
+            "offset": 4,
+            "limit": 2,
+            "returned": 0,
+            "total": 3,
+        }
+        assert empty_tail_page.json()["items"] == []
     finally:
         if runtime is not None:
             runtime.engine.dispose()
@@ -451,26 +523,6 @@ def test_album_folder_context_returns_stable_people_tags_and_hover_links() -> No
                 {"id": 2, "label": "Italy", "path": "travel/italy", "asset_count": 1},
             ],
             "map_points": [],
-            "asset_contexts": [
-                {
-                    "asset_id": 3,
-                    "person_ids": [1],
-                    "tag_paths": ["home"],
-                    "map_point_ids": [],
-                },
-                {
-                    "asset_id": 2,
-                    "person_ids": [2],
-                    "tag_paths": ["travel"],
-                    "map_point_ids": [],
-                },
-                {
-                    "asset_id": 1,
-                    "person_ids": [1],
-                    "tag_paths": ["travel/italy"],
-                    "map_point_ids": [],
-                },
-            ],
             "summary_counts": {
                 "assets": 3,
                 "people": 2,
@@ -546,20 +598,65 @@ def test_album_collection_context_supports_filters_and_map_points() -> None:
                     "asset_count": 1,
                 }
             ],
-            "asset_contexts": [
-                {
-                    "asset_id": 5,
-                    "person_ids": [1],
-                    "tag_paths": ["travel/italy"],
-                    "map_point_ids": ["asset:LR000005"],
-                }
-            ],
             "summary_counts": {
                 "assets": 1,
                 "people": 1,
                 "tags": 1,
                 "places": 1,
             },
+        }
+    finally:
+        if runtime is not None:
+            runtime.engine.dispose()
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_album_folder_asset_context_page_returns_hover_links_for_requested_page_only() -> None:
+    workspace_root = _create_workspace_dir(prefix="album-folder-page-context")
+    runtime = None
+    try:
+        runtime = _create_runtime(workspace_root=workspace_root)
+        _seed_album_navigation_data(runtime)
+
+        app = create_app(settings=runtime.settings)
+        with TestClient(app) as client:
+            response = client.get(
+                "/api/albums/folders/2/asset-contexts",
+                params=[("offset", 2), ("limit", 2)],
+            )
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "supported_filters": ["person_ids", "tag_paths"],
+            "applied_filters": {
+                "person_ids": [],
+                "tag_paths": [],
+            },
+            "selection": {
+                "node_kind": "folder",
+                "id": 2,
+                "source_id": 1,
+                "source_name": "Photos",
+                "source_type": "photos",
+                "parent_id": 1,
+                "name": "2024",
+                "path": "photos/2024",
+                "asset_count": 3,
+            },
+            "page": {
+                "offset": 2,
+                "limit": 2,
+                "returned": 1,
+                "total": 3,
+            },
+            "asset_contexts": [
+                {
+                    "asset_id": 1,
+                    "person_ids": [1],
+                    "tag_paths": ["travel/italy"],
+                    "map_point_ids": [],
+                }
+            ],
         }
     finally:
         if runtime is not None:

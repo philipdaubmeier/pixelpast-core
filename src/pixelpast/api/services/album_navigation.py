@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pixelpast.api.schemas import (
     AlbumAppliedFilters,
+    AlbumAssetContextPageResponse,
     AlbumContextAssetItem,
     AlbumContextMapPoint,
     AlbumContextPerson,
@@ -14,6 +15,7 @@ from pixelpast.api.schemas import (
     AlbumAssetDetailResponse,
     AlbumAssetItem,
     AlbumAssetListingResponse,
+    AlbumPage,
     AlbumAssetPerson,
     AlbumAssetTag,
     AlbumCollectionTreeNode,
@@ -25,6 +27,7 @@ from pixelpast.api.schemas import (
 )
 from pixelpast.persistence.repositories.album_navigation_read import (
     AlbumAssetDetailSnapshot,
+    AlbumAssetContextPageSnapshot,
     AlbumAssetListingSnapshot,
     AlbumAssetPersonSnapshot,
     AlbumAssetTagSnapshot,
@@ -38,6 +41,7 @@ from pixelpast.persistence.repositories.album_navigation_read import (
     AlbumFaceRegionSnapshot,
     AlbumFolderTreeNodeSnapshot,
     AlbumNavigationReadRepository,
+    AlbumPageSnapshot,
     AlbumQueryFilters,
 )
 
@@ -86,12 +90,16 @@ class AlbumNavigationQueryService:
         *,
         folder_id: int,
         filters: AlbumQueryFilters,
+        offset: int,
+        limit: int,
     ) -> AlbumAssetListingResponse | None:
         """Return the filtered subtree asset listing for one folder."""
 
         snapshot = self._repository.get_folder_asset_listing(
             folder_id=folder_id,
             filters=filters,
+            offset=offset,
+            limit=limit,
         )
         if snapshot is None:
             return None
@@ -102,16 +110,60 @@ class AlbumNavigationQueryService:
         *,
         collection_id: int,
         filters: AlbumQueryFilters,
+        offset: int,
+        limit: int,
     ) -> AlbumAssetListingResponse | None:
         """Return the filtered subtree asset listing for one collection."""
 
         snapshot = self._repository.get_collection_asset_listing(
             collection_id=collection_id,
             filters=filters,
+            offset=offset,
+            limit=limit,
         )
         if snapshot is None:
             return None
         return _to_asset_listing_response(snapshot=snapshot, filters=filters)
+
+    def get_folder_asset_context_page(
+        self,
+        *,
+        folder_id: int,
+        filters: AlbumQueryFilters,
+        offset: int,
+        limit: int,
+    ) -> AlbumAssetContextPageResponse | None:
+        """Return page-local hover context for one folder selection."""
+
+        snapshot = self._repository.get_folder_asset_context_page(
+            folder_id=folder_id,
+            filters=filters,
+            offset=offset,
+            limit=limit,
+        )
+        if snapshot is None:
+            return None
+        return _to_asset_context_page_response(snapshot=snapshot, filters=filters)
+
+    def get_collection_asset_context_page(
+        self,
+        *,
+        collection_id: int,
+        filters: AlbumQueryFilters,
+        offset: int,
+        limit: int,
+    ) -> AlbumAssetContextPageResponse | None:
+        """Return page-local hover context for one collection selection."""
+
+        snapshot = self._repository.get_collection_asset_context_page(
+            collection_id=collection_id,
+            filters=filters,
+            offset=offset,
+            limit=limit,
+        )
+        if snapshot is None:
+            return None
+        return _to_asset_context_page_response(snapshot=snapshot, filters=filters)
 
     def get_folder_context(
         self,
@@ -217,6 +269,7 @@ def _to_asset_listing_response(
             asset_count=snapshot.selection.asset_count,
             collection_type=snapshot.selection.collection_type,
         ),
+        page=_to_page(snapshot.page),
         items=[
             AlbumAssetItem(
                 id=item.id,
@@ -227,6 +280,39 @@ def _to_asset_listing_response(
                 thumbnail_url=f"/media/q200/{item.short_id}.webp",
             )
             for item in snapshot.items
+        ],
+    )
+
+
+def _to_asset_context_page_response(
+    *,
+    snapshot: AlbumAssetContextPageSnapshot,
+    filters: AlbumQueryFilters,
+) -> AlbumAssetContextPageResponse:
+    return AlbumAssetContextPageResponse(
+        supported_filters=list(SUPPORTED_SELECTION_FILTERS),
+        applied_filters=_to_selection_applied_filters(filters),
+        selection=AlbumSelection(
+            node_kind=snapshot.selection.node_kind,
+            id=snapshot.selection.id,
+            source_id=snapshot.selection.source_id,
+            source_name=snapshot.selection.source_name,
+            source_type=snapshot.selection.source_type,
+            parent_id=snapshot.selection.parent_id,
+            name=snapshot.selection.name,
+            path=snapshot.selection.path,
+            asset_count=snapshot.selection.asset_count,
+            collection_type=snapshot.selection.collection_type,
+        ),
+        page=_to_page(snapshot.page),
+        asset_contexts=[
+            AlbumContextAssetItem(
+                asset_id=item.asset_id,
+                person_ids=list(item.person_ids),
+                tag_paths=list(item.tag_paths),
+                map_point_ids=list(item.map_point_ids),
+            )
+            for item in snapshot.asset_contexts
         ],
     )
 
@@ -287,21 +373,21 @@ def _to_context_response(
         persons=[_to_context_person(person) for person in snapshot.persons],
         tags=[_to_context_tag(tag) for tag in snapshot.tags],
         map_points=[_to_context_map_point(point) for point in snapshot.map_points],
-        asset_contexts=[
-            AlbumContextAssetItem(
-                asset_id=item.asset_id,
-                person_ids=list(item.person_ids),
-                tag_paths=list(item.tag_paths),
-                map_point_ids=list(item.map_point_ids),
-            )
-            for item in snapshot.asset_contexts
-        ],
         summary_counts=AlbumContextSummaryCounts(
             assets=snapshot.summary_counts.assets,
             people=snapshot.summary_counts.people,
             tags=snapshot.summary_counts.tags,
             places=snapshot.summary_counts.places,
         ),
+    )
+
+
+def _to_page(snapshot: AlbumPageSnapshot) -> AlbumPage:
+    return AlbumPage(
+        offset=snapshot.offset,
+        limit=snapshot.limit,
+        returned=snapshot.returned,
+        total=snapshot.total,
     )
 
 

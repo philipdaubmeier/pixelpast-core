@@ -1,9 +1,11 @@
-import { startTransition, useEffect, useMemo, useState } from "react";
+import { startTransition, useEffect, useMemo, useRef, useState } from "react";
 import {
   albumApi,
   type AlbumAssetProjection,
+  type AlbumAssetContextPageProjection,
   type AlbumAssetDetailProjection,
   type AlbumAssetListingProjection,
+  type AlbumContextAssetProjection,
   type AlbumContextProjection,
   type AlbumTreeNodeProjection,
 } from "../../../api/album";
@@ -25,6 +27,15 @@ import { getPersonGroupColorOption } from "../../person-groups/palette";
 import type { AlbumChromeState, AlbumNodeSelection } from "../types";
 
 type LoadState = "loading" | "ready" | "error";
+type PageLoadState = "idle" | "loading" | "ready" | "error";
+
+type AlbumPageEntry = {
+  offset: number;
+  status: PageLoadState;
+  error: string | null;
+  items: AlbumAssetProjection[];
+  assetContextsByAssetId: Record<number, AlbumContextAssetProjection>;
+};
 
 type PhotoAlbumViewProps = {
   selectedPersons: PersonProjection[];
@@ -48,6 +59,9 @@ type PhotoAlbumViewProps = {
 };
 
 const MAX_INLINE_PERSON_GROUPS = 3;
+const ALBUM_PAGE_SIZE = 1000;
+const PAGE_LOAD_DWELL_MS = 1000;
+const PAGE_VISIBILITY_ROOT_MARGIN = "420px 0px";
 
 function formatTimestamp(value: string): string {
   const parsed = new Date(value);
@@ -119,11 +133,12 @@ function areNumberSetsEqual(left: number[], right: number[]): boolean {
 function buildAlbumPersons(
   selectedPersons: PersonProjection[],
   context: AlbumContextProjection | null,
+  assetContextsByAssetId: Record<number, AlbumContextAssetProjection>,
   hoveredAssetId: number | null,
 ): PersonPanelItemProjection[] {
   const hoveredPersonIds = new Set(
     hoveredAssetId !== null
-      ? context?.assetContextsByAssetId[hoveredAssetId]?.personIds ?? []
+      ? assetContextsByAssetId[hoveredAssetId]?.personIds ?? []
       : [],
   );
   const contextPersons = context?.persons ?? [];
@@ -138,11 +153,12 @@ function buildAlbumPersons(
 function buildAlbumTags(
   selectedTags: TagProjection[],
   context: AlbumContextProjection | null,
+  assetContextsByAssetId: Record<number, AlbumContextAssetProjection>,
   hoveredAssetId: number | null,
 ): TagPanelItemProjection[] {
   const hoveredTagPaths = new Set(
     hoveredAssetId !== null
-      ? context?.assetContextsByAssetId[hoveredAssetId]?.tagPaths ?? []
+      ? assetContextsByAssetId[hoveredAssetId]?.tagPaths ?? []
       : [],
   );
   const contextTags = (context?.tags ?? []).map((tag) => ({
@@ -154,6 +170,51 @@ function buildAlbumTags(
     selectedTags,
     contextTags.filter((tag) => hoveredTagPaths.has(tag.path)),
     contextTags,
+  );
+}
+
+function buildPageOffsets(total: number, pageSize: number): number[] {
+  if (total <= 0 || pageSize <= 0) {
+    return [];
+  }
+
+  return Array.from(
+    { length: Math.ceil(total / pageSize) },
+    (_, index) => index * pageSize,
+  );
+}
+
+function createEmptyPageEntry(offset: number): AlbumPageEntry {
+  return {
+    offset,
+    status: "idle",
+    error: null,
+    items: [],
+    assetContextsByAssetId: {},
+  };
+}
+
+function mergePageContext(
+  listing: AlbumAssetListingProjection,
+  contextPage: AlbumAssetContextPageProjection,
+  offset: number,
+): AlbumPageEntry {
+  return {
+    offset,
+    status: "ready",
+    error: null,
+    items: listing.items,
+    assetContextsByAssetId: contextPage.assetContextsByAssetId,
+  };
+}
+
+function resolvePageOffsets(
+  total: number,
+  pageSize: number,
+  pagesByOffset: Record<number, AlbumPageEntry>,
+): AlbumPageEntry[] {
+  return buildPageOffsets(total, pageSize).map(
+    (offset) => pagesByOffset[offset] ?? createEmptyPageEntry(offset),
   );
 }
 
@@ -576,10 +637,14 @@ export function PhotoAlbumView({
   const [collectionNodes, setCollectionNodes] = useState<AlbumTreeNodeProjection[]>(
     [],
   );
-  const [listingState, setListingState] = useState<LoadState>("loading");
+  const [listingState, setListingState] = useState<LoadState>("ready");
   const [listingError, setListingError] = useState<string | null>(null);
-  const [listing, setListing] = useState<AlbumAssetListingProjection | null>(
-    null,
+  const [listingSelection, setListingSelection] =
+    useState<AlbumAssetListingProjection["selection"] | null>(null);
+  const [listingTotal, setListingTotal] = useState(0);
+  const [listingPageSize, setListingPageSize] = useState(ALBUM_PAGE_SIZE);
+  const [pagesByOffset, setPagesByOffset] = useState<Record<number, AlbumPageEntry>>(
+    {},
   );
   const [contextState, setContextState] = useState<LoadState>("loading");
   const [contextError, setContextError] = useState<string | null>(null);
@@ -588,6 +653,24 @@ export function PhotoAlbumView({
   const [detailError, setDetailError] = useState<string | null>(null);
   const [detail, setDetail] = useState<AlbumAssetDetailProjection | null>(null);
   const [hoveredAssetId, setHoveredAssetId] = useState<number | null>(null);
+  const gridScrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const pageLoadTimersRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(
+    new Map(),
+  );
+  const pageRequestScopeRef = useRef<string>("none");
+  const inFlightPageKeysRef = useRef<Set<string>>(new Set());
+
+  const selectionScopeKey = useMemo(() => {
+    if (selection === null) {
+      return "none";
+    }
+
+    return [
+      `${selection.kind}:${selection.id}`,
+      `persons:${selectedPersonIds.join(",")}`,
+      `tags:${selectedTagPaths.join(",")}`,
+    ].join("|");
+  }, [selectedPersonIds, selectedTagPaths, selection]);
 
   useEffect(() => {
     let cancelled = false;
@@ -700,8 +783,12 @@ export function PhotoAlbumView({
     if (selection === null) {
       startTransition(() => {
         setListingState("ready");
-        setListing(null);
+        setListingError(null);
+        setListingSelection(null);
+        setListingTotal(0);
+        setPagesByOffset({});
         setContextState("ready");
+        setContextError(null);
         setContext(null);
         setHoveredAssetId(null);
       });
@@ -709,12 +796,18 @@ export function PhotoAlbumView({
     }
 
     let cancelled = false;
+    pageRequestScopeRef.current = selectionScopeKey;
 
     startTransition(() => {
       setListingState("loading");
       setListingError(null);
+      setListingSelection(null);
+      setListingTotal(0);
+      setListingPageSize(ALBUM_PAGE_SIZE);
+      setPagesByOffset({});
       setContextState("loading");
       setContextError(null);
+      setContext(null);
       setHoveredAssetId(null);
     });
 
@@ -723,10 +816,28 @@ export function PhotoAlbumView({
         ? albumApi.getFolderListing(selection.id, {
             selectedPersons: selectedPersonIds,
             selectedTags: selectedTagPaths,
+            offset: 0,
+            limit: ALBUM_PAGE_SIZE,
           })
         : albumApi.getCollectionListing(selection.id, {
             selectedPersons: selectedPersonIds,
             selectedTags: selectedTagPaths,
+            offset: 0,
+            limit: ALBUM_PAGE_SIZE,
+          });
+    const contextPageRequest =
+      selection.kind === "folder"
+        ? albumApi.getFolderAssetContextPage(selection.id, {
+            selectedPersons: selectedPersonIds,
+            selectedTags: selectedTagPaths,
+            offset: 0,
+            limit: ALBUM_PAGE_SIZE,
+          })
+        : albumApi.getCollectionAssetContextPage(selection.id, {
+            selectedPersons: selectedPersonIds,
+            selectedTags: selectedTagPaths,
+            offset: 0,
+            limit: ALBUM_PAGE_SIZE,
           });
     const contextRequest =
       selection.kind === "folder"
@@ -739,17 +850,20 @@ export function PhotoAlbumView({
             selectedTags: selectedTagPaths,
           });
 
-    void Promise.all([listingRequest, contextRequest])
-      .then(([nextListing, nextContext]) => {
+    void Promise.all([listingRequest, contextPageRequest])
+      .then(([nextListing, nextContextPage]) => {
         if (cancelled) {
           return;
         }
 
         startTransition(() => {
-          setListing(nextListing);
+          setListingSelection(nextListing.selection);
+          setListingTotal(nextListing.page.total);
+          setListingPageSize(nextListing.page.limit);
+          setPagesByOffset({
+            0: mergePageContext(nextListing, nextContextPage, 0),
+          });
           setListingState("ready");
-          setContext(nextContext);
-          setContextState("ready");
         });
 
         if (
@@ -771,8 +885,32 @@ export function PhotoAlbumView({
         startTransition(() => {
           setListingState("error");
           setListingError(message);
+        });
+      });
+
+    void contextRequest
+      .then((nextContext) => {
+        if (cancelled) {
+          return;
+        }
+
+        startTransition(() => {
+          setContext(nextContext);
+          setContextState("ready");
+        });
+      })
+      .catch((error: unknown) => {
+        if (cancelled) {
+          return;
+        }
+
+        startTransition(() => {
           setContextState("error");
-          setContextError(message);
+          setContextError(
+            error instanceof Error
+              ? error.message
+              : "Unable to load album selection context.",
+          );
         });
       });
 
@@ -784,7 +922,104 @@ export function PhotoAlbumView({
     selectedPersonIds,
     selectedTagPaths,
     selection,
+    selectionScopeKey,
   ]);
+
+  function loadPage(offset: number): void {
+    if (selection === null) {
+      return;
+    }
+
+    const pageKey = `${selectionScopeKey}:${offset}`;
+    if (inFlightPageKeysRef.current.has(pageKey)) {
+      return;
+    }
+
+    const currentPage = pagesByOffset[offset];
+    if (currentPage?.status === "ready" || currentPage?.status === "loading") {
+      return;
+    }
+
+    inFlightPageKeysRef.current.add(pageKey);
+    startTransition(() => {
+      setPagesByOffset((current) => ({
+        ...current,
+        [offset]: {
+          ...(current[offset] ?? createEmptyPageEntry(offset)),
+          status: "loading",
+          error: null,
+        },
+      }));
+    });
+
+    const listingRequest =
+      selection.kind === "folder"
+        ? albumApi.getFolderListing(selection.id, {
+            selectedPersons: selectedPersonIds,
+            selectedTags: selectedTagPaths,
+            offset,
+            limit: listingPageSize,
+          })
+        : albumApi.getCollectionListing(selection.id, {
+            selectedPersons: selectedPersonIds,
+            selectedTags: selectedTagPaths,
+            offset,
+            limit: listingPageSize,
+          });
+    const contextPageRequest =
+      selection.kind === "folder"
+        ? albumApi.getFolderAssetContextPage(selection.id, {
+            selectedPersons: selectedPersonIds,
+            selectedTags: selectedTagPaths,
+            offset,
+            limit: listingPageSize,
+          })
+        : albumApi.getCollectionAssetContextPage(selection.id, {
+            selectedPersons: selectedPersonIds,
+            selectedTags: selectedTagPaths,
+            offset,
+            limit: listingPageSize,
+          });
+
+    void Promise.all([listingRequest, contextPageRequest])
+      .then(([nextListing, nextContextPage]) => {
+        if (pageRequestScopeRef.current !== selectionScopeKey) {
+          return;
+        }
+
+        startTransition(() => {
+          setListingSelection(nextListing.selection);
+          setListingTotal(nextListing.page.total);
+          setListingPageSize(nextListing.page.limit);
+          setPagesByOffset((current) => ({
+            ...current,
+            [offset]: mergePageContext(nextListing, nextContextPage, offset),
+          }));
+        });
+      })
+      .catch((error: unknown) => {
+        if (pageRequestScopeRef.current !== selectionScopeKey) {
+          return;
+        }
+
+        startTransition(() => {
+          setPagesByOffset((current) => ({
+            ...current,
+            [offset]: {
+              ...(current[offset] ?? createEmptyPageEntry(offset)),
+              status: "error",
+              error:
+                error instanceof Error
+                  ? error.message
+                  : "Unable to load album page.",
+            },
+          }));
+        });
+      })
+      .finally(() => {
+        inFlightPageKeysRef.current.delete(pageKey);
+      });
+  }
 
   useEffect(() => {
     if (selectedAssetId === null) {
@@ -836,6 +1071,69 @@ export function PhotoAlbumView({
   }, [selectedAssetId]);
 
   useEffect(() => {
+    if (selection === null || selectedAssetId !== null) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          const offsetValue = entry.target.getAttribute("data-page-offset");
+          if (offsetValue === null) {
+            continue;
+          }
+
+          const offset = Number(offsetValue);
+          const pageEntry = pagesByOffset[offset] ?? createEmptyPageEntry(offset);
+          const existingTimer = pageLoadTimersRef.current.get(offset);
+
+          if (
+            entry.isIntersecting &&
+            (pageEntry.status === "idle" || pageEntry.status === "error") &&
+            existingTimer === undefined
+          ) {
+            const timer = setTimeout(() => {
+              pageLoadTimersRef.current.delete(offset);
+              loadPage(offset);
+            }, PAGE_LOAD_DWELL_MS);
+            pageLoadTimersRef.current.set(offset, timer);
+            continue;
+          }
+
+          if (!entry.isIntersecting && existingTimer !== undefined) {
+            clearTimeout(existingTimer);
+            pageLoadTimersRef.current.delete(offset);
+          }
+        }
+      },
+      {
+        root: gridScrollContainerRef.current,
+        rootMargin: PAGE_VISIBILITY_ROOT_MARGIN,
+        threshold: 0.01,
+      },
+    );
+
+    for (const element of gridScrollContainerRef.current?.querySelectorAll(
+      "[data-page-anchor='true']",
+    ) ?? []) {
+      observer.observe(element);
+    }
+
+    return () => {
+      observer.disconnect();
+      for (const timer of pageLoadTimersRef.current.values()) {
+        clearTimeout(timer);
+      }
+      pageLoadTimersRef.current.clear();
+    };
+  }, [
+    loadPage,
+    pagesByOffset,
+    selectedAssetId,
+    selection,
+  ]);
+
+  useEffect(() => {
     const folderSelection = findNodeBySelection(folderNodes, selection, "folder");
     if (folderSelection !== null) {
       const nextExpandedFolderIds = ensureAncestorExpansion(
@@ -875,24 +1173,51 @@ export function PhotoAlbumView({
     selection,
   ]);
 
+  const pageEntries = useMemo(
+    () => resolvePageOffsets(listingTotal, listingPageSize, pagesByOffset),
+    [listingPageSize, listingTotal, pagesByOffset],
+  );
+  const loadedItems = useMemo(
+    () => pageEntries.flatMap((page) => page.items),
+    [pageEntries],
+  );
+  const assetContextsByAssetId = useMemo(
+    () =>
+      Object.fromEntries(
+        pageEntries.flatMap((page) =>
+          Object.entries(page.assetContextsByAssetId).map(([assetId, item]) => [
+            Number(assetId),
+            item,
+          ]),
+        ),
+      ) as Record<number, AlbumContextAssetProjection>,
+    [pageEntries],
+  );
   const visiblePersons = useMemo(
-    () => buildAlbumPersons(selectedPersons, context, hoveredAssetId),
-    [context, hoveredAssetId, selectedPersons],
+    () =>
+      buildAlbumPersons(
+        selectedPersons,
+        context,
+        assetContextsByAssetId,
+        hoveredAssetId,
+      ),
+    [assetContextsByAssetId, context, hoveredAssetId, selectedPersons],
   );
   const visibleTags = useMemo(
-    () => buildAlbumTags(selectedTags, context, hoveredAssetId),
-    [context, hoveredAssetId, selectedTags],
+    () =>
+      buildAlbumTags(selectedTags, context, assetContextsByAssetId, hoveredAssetId),
+    [assetContextsByAssetId, context, hoveredAssetId, selectedTags],
   );
   const hoveredAssetContext =
     hoveredAssetId !== null
-      ? context?.assetContextsByAssetId[hoveredAssetId] ?? null
+      ? assetContextsByAssetId[hoveredAssetId] ?? null
       : null;
   const hoveredAsset =
     hoveredAssetId !== null
-      ? listing?.items.find((item) => item.id === hoveredAssetId) ?? null
+      ? loadedItems.find((item) => item.id === hoveredAssetId) ?? null
       : null;
   const activeSelectionLabel =
-    listing?.selection.name ?? context?.selection.name ?? null;
+    listingSelection?.name ?? context?.selection.name ?? null;
   const activeSelectionPersonGroups = context?.personGroups ?? [];
   const activeTransportState = useMemo(
     () =>
@@ -901,6 +1226,12 @@ export function PhotoAlbumView({
         { state: collectionTreeState, error: collectionTreeError },
         { state: listingState, error: listingError },
         { state: contextState, error: contextError },
+        ...pageEntries
+          .filter((page) => page.status === "loading" || page.status === "error")
+          .map((page) => ({
+            state: (page.status === "loading" ? "loading" : "error") as LoadState,
+            error: page.error,
+          })),
         ...(selectedAssetId !== null
           ? [{ state: detailState, error: detailError }]
           : []),
@@ -916,6 +1247,7 @@ export function PhotoAlbumView({
       folderTreeState,
       listingError,
       listingState,
+      pageEntries,
       selectedAssetId,
     ],
   );
@@ -923,16 +1255,16 @@ export function PhotoAlbumView({
   useEffect(() => {
     const hoveredAssetTitle =
       hoveredAssetId !== null
-        ? listing?.items.find((item) => item.id === hoveredAssetId)?.title ?? null
+        ? loadedItems.find((item) => item.id === hoveredAssetId)?.title ?? null
         : null;
     onChromeStateChange({
       transportState: activeTransportState.transportState,
       transportError: activeTransportState.transportError,
       resultSummary:
-        listing === null
+        listingSelection === null
           ? "Select a folder or collection"
-          : `${listing.selection.assetCount} matching asset${
-              listing.selection.assetCount === 1 ? "" : "s"
+          : `${listingTotal} matching asset${
+              listingTotal === 1 ? "" : "s"
             }`,
       hoverLabel: hoveredAssetTitle ?? detail?.title ?? "not active",
     });
@@ -940,7 +1272,9 @@ export function PhotoAlbumView({
     activeTransportState,
     detail?.title,
     hoveredAssetId,
-    listing,
+    listingSelection,
+    listingTotal,
+    loadedItems,
     onChromeStateChange,
   ]);
 
@@ -1024,11 +1358,11 @@ export function PhotoAlbumView({
             <div className="flex h-full min-h-[18rem] items-center justify-center rounded-[18px] border border-rose-200 bg-rose-50 px-4 text-center text-sm text-rose-700">
               {listingError ?? "Album assets could not be loaded."}
             </div>
-          ) : listing === null ? (
+          ) : listingSelection === null ? (
             <div className="flex h-full min-h-[18rem] items-center justify-center rounded-[18px] border border-dashed border-[color:var(--pp-border)] bg-white/35 px-4 text-center text-sm text-slate-500">
               Select a folder or collection to open the album surface.
             </div>
-          ) : listing.items.length === 0 ? (
+          ) : listingTotal === 0 ? (
             <div className="flex h-full min-h-[18rem] items-center justify-center rounded-[18px] border border-dashed border-[color:var(--pp-border)] bg-white/35 px-4 text-center text-sm text-slate-500">
               No assets in this selection matched the active people or tag filters.
             </div>
@@ -1048,7 +1382,7 @@ export function PhotoAlbumView({
                 />
               </div>
               <div className="thin-scrollbar flex gap-1 overflow-x-auto pb-1">
-                {listing.items.map((item) => (
+                {loadedItems.map((item) => (
                   <button
                     key={item.id}
                     type="button"
@@ -1072,24 +1406,59 @@ export function PhotoAlbumView({
               </div>
             </div>
           ) : (
-            <div className="thin-scrollbar h-full overflow-y-auto">
+            <div
+              ref={gridScrollContainerRef}
+              className="thin-scrollbar h-full overflow-y-auto"
+            >
               <div className="grid grid-cols-[repeat(auto-fill,minmax(8rem,1fr))] gap-1">
-                {listing.items.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onMouseEnter={() => setHoveredAssetId(item.id)}
-                    onMouseLeave={() => setHoveredAssetId(null)}
-                    onClick={() => onSelectedAssetChange(item.id)}
-                    className="group overflow-hidden p-0 text-left transition hover:opacity-95"
-                  >
-                    <img
-                      src={item.thumbnailUrl}
-                      alt={item.title}
-                      className="h-32 w-full object-cover"
-                    />
-                  </button>
-                ))}
+                {Array.from({ length: listingTotal }, (_, index) => {
+                  const offset =
+                    Math.floor(index / listingPageSize) * listingPageSize;
+                  const pageEntry =
+                    pagesByOffset[offset] ?? createEmptyPageEntry(offset);
+                  const pageIndex = index - offset;
+                  const item = pageEntry.items[pageIndex];
+                  const isPageAnchor = pageIndex === 0;
+
+                  if (item !== undefined) {
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        data-page-anchor={isPageAnchor ? "true" : undefined}
+                        data-page-offset={isPageAnchor ? String(offset) : undefined}
+                        onMouseEnter={() => setHoveredAssetId(item.id)}
+                        onMouseLeave={() => setHoveredAssetId(null)}
+                        onClick={() => onSelectedAssetChange(item.id)}
+                        className="group overflow-hidden p-0 text-left transition hover:opacity-95"
+                      >
+                        <img
+                          src={item.thumbnailUrl}
+                          alt={item.title}
+                          className="h-32 w-full object-cover"
+                        />
+                      </button>
+                    );
+                  }
+
+                  const isFailedAnchor =
+                    isPageAnchor && pageEntry.status === "error";
+                  return (
+                    <button
+                      key={`placeholder-${index}`}
+                      type="button"
+                      data-page-anchor={isPageAnchor ? "true" : undefined}
+                      data-page-offset={isPageAnchor ? String(offset) : undefined}
+                      onClick={isFailedAnchor ? () => loadPage(offset) : undefined}
+                      className={[
+                        "flex h-32 items-center justify-center overflow-hidden rounded-[16px] border border-[color:var(--pp-border)] bg-white/35 text-center text-[11px] text-slate-500",
+                        isFailedAnchor ? "hover:bg-white/55" : "",
+                      ].join(" ")}
+                    >
+                      {isFailedAnchor ? "Retry page load" : ""}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}

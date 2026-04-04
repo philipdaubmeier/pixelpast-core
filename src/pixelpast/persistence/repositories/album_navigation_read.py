@@ -108,10 +108,21 @@ class AlbumAssetListItemSnapshot:
 
 
 @dataclass(frozen=True, slots=True)
+class AlbumPageSnapshot:
+    """Serializable page metadata for paged album selection reads."""
+
+    offset: int
+    limit: int
+    returned: int
+    total: int
+
+
+@dataclass(frozen=True, slots=True)
 class AlbumAssetListingSnapshot:
     """Serializable album asset-list response body."""
 
     selection: AlbumSelectionSnapshot
+    page: AlbumPageSnapshot
     items: tuple[AlbumAssetListItemSnapshot, ...]
 
 
@@ -193,8 +204,16 @@ class AlbumContextSnapshot:
     persons: tuple[AlbumContextPersonSnapshot, ...]
     tags: tuple[AlbumContextTagSnapshot, ...]
     map_points: tuple[AlbumContextMapPointSnapshot, ...]
-    asset_contexts: tuple[AlbumContextAssetSnapshot, ...]
     summary_counts: AlbumContextSummarySnapshot
+
+
+@dataclass(frozen=True, slots=True)
+class AlbumAssetContextPageSnapshot:
+    """Serializable page-scoped per-asset hover context payload."""
+
+    selection: AlbumSelectionSnapshot
+    page: AlbumPageSnapshot
+    asset_contexts: tuple[AlbumContextAssetSnapshot, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -290,6 +309,13 @@ class _AssetDetailRow:
     external_id: str
     creator_name: str | None
     metadata_json: dict[str, Any] | None
+
+
+@dataclass(frozen=True, slots=True)
+class _PageSlice:
+    offset: int
+    limit: int
+    items: tuple[_AssetRow, ...]
 
 
 class AlbumNavigationReadRepository:
@@ -394,40 +420,28 @@ class AlbumNavigationReadRepository:
         *,
         folder_id: int,
         filters: AlbumQueryFilters,
+        offset: int,
+        limit: int,
     ) -> AlbumAssetListingSnapshot | None:
         """Return the filtered asset listing for one folder subtree selection."""
 
-        nodes = self._list_folder_nodes()
-        selected_node = next((node for node in nodes if node.id == folder_id), None)
-        if selected_node is None:
-            return None
-
-        descendant_ids = {
-            node.id
-            for node in nodes
-            if node.source_id == selected_node.source_id
-            and _is_navigation_descendant(
-                candidate_path=node.path,
-                selected_path=selected_node.path,
-            )
-        }
-        selected_assets = self._filter_assets(
-            assets=self._list_assets_for_folder_ids(folder_ids=descendant_ids),
+        selection_assets = self._get_folder_selection_assets(
+            folder_id=folder_id,
             filters=filters,
         )
+        if selection_assets is None:
+            return None
+        selection, selected_assets = selection_assets
+        page = _slice_page(items=selected_assets, offset=offset, limit=limit)
         return AlbumAssetListingSnapshot(
-            selection=AlbumSelectionSnapshot(
-                node_kind="folder",
-                id=selected_node.id,
-                source_id=selected_node.source_id,
-                source_name=selected_node.source_name,
-                source_type=selected_node.source_type,
-                parent_id=selected_node.parent_id,
-                name=selected_node.name,
-                path=selected_node.path,
-                asset_count=len(selected_assets),
+            selection=selection,
+            page=AlbumPageSnapshot(
+                offset=page.offset,
+                limit=page.limit,
+                returned=len(page.items),
+                total=len(selected_assets),
             ),
-            items=tuple(self._to_listing_item(asset) for asset in selected_assets),
+            items=tuple(self._to_listing_item(asset) for asset in page.items),
         )
 
     def get_collection_asset_listing(
@@ -435,43 +449,80 @@ class AlbumNavigationReadRepository:
         *,
         collection_id: int,
         filters: AlbumQueryFilters,
+        offset: int,
+        limit: int,
     ) -> AlbumAssetListingSnapshot | None:
         """Return the filtered asset listing for one collection subtree selection."""
 
-        nodes = self._list_collection_nodes()
-        selected_node = next((node for node in nodes if node.id == collection_id), None)
-        if selected_node is None:
-            return None
-
-        descendant_collection_ids = {
-            node.id
-            for node in nodes
-            if node.source_id == selected_node.source_id
-            and _is_navigation_descendant(
-                candidate_path=node.path,
-                selected_path=selected_node.path,
-            )
-        }
-        selected_assets = self._filter_assets(
-            assets=self._list_assets_for_collection_ids(
-                collection_ids=descendant_collection_ids
-            ),
+        selection_assets = self._get_collection_selection_assets(
+            collection_id=collection_id,
             filters=filters,
         )
+        if selection_assets is None:
+            return None
+        selection, selected_assets = selection_assets
+        page = _slice_page(items=selected_assets, offset=offset, limit=limit)
         return AlbumAssetListingSnapshot(
-            selection=AlbumSelectionSnapshot(
-                node_kind="collection",
-                id=selected_node.id,
-                source_id=selected_node.source_id,
-                source_name=selected_node.source_name,
-                source_type=selected_node.source_type,
-                parent_id=selected_node.parent_id,
-                name=selected_node.name,
-                path=selected_node.path,
-                asset_count=len(selected_assets),
-                collection_type=selected_node.collection_type,
+            selection=selection,
+            page=AlbumPageSnapshot(
+                offset=page.offset,
+                limit=page.limit,
+                returned=len(page.items),
+                total=len(selected_assets),
             ),
-            items=tuple(self._to_listing_item(asset) for asset in selected_assets),
+            items=tuple(self._to_listing_item(asset) for asset in page.items),
+        )
+
+    def get_folder_asset_context_page(
+        self,
+        *,
+        folder_id: int,
+        filters: AlbumQueryFilters,
+        offset: int,
+        limit: int,
+    ) -> AlbumAssetContextPageSnapshot | None:
+        """Return page-local hover context for one folder subtree selection."""
+
+        selection_assets = self._get_folder_selection_assets(
+            folder_id=folder_id,
+            filters=filters,
+        )
+        if selection_assets is None:
+            return None
+        selection, selected_assets = selection_assets
+        page = _slice_page(items=selected_assets, offset=offset, limit=limit)
+        return self._build_asset_context_page_snapshot(
+            selection=selection,
+            assets=tuple(page.items),
+            total_asset_count=len(selected_assets),
+            offset=page.offset,
+            limit=page.limit,
+        )
+
+    def get_collection_asset_context_page(
+        self,
+        *,
+        collection_id: int,
+        filters: AlbumQueryFilters,
+        offset: int,
+        limit: int,
+    ) -> AlbumAssetContextPageSnapshot | None:
+        """Return page-local hover context for one collection subtree selection."""
+
+        selection_assets = self._get_collection_selection_assets(
+            collection_id=collection_id,
+            filters=filters,
+        )
+        if selection_assets is None:
+            return None
+        selection, selected_assets = selection_assets
+        page = _slice_page(items=selected_assets, offset=offset, limit=limit)
+        return self._build_asset_context_page_snapshot(
+            selection=selection,
+            assets=tuple(page.items),
+            total_asset_count=len(selected_assets),
+            offset=page.offset,
+            limit=page.limit,
         )
 
     def get_folder_context(
@@ -482,12 +533,17 @@ class AlbumNavigationReadRepository:
     ) -> AlbumContextSnapshot | None:
         """Return the stable context for one selected folder subtree."""
 
-        listing = self.get_folder_asset_listing(folder_id=folder_id, filters=filters)
+        listing = self.get_folder_asset_listing(
+            folder_id=folder_id,
+            filters=filters,
+            offset=0,
+            limit=2**31 - 1,
+        )
         if listing is None:
             return None
         return self._build_context_snapshot(
             selection=listing.selection,
-            assets=tuple(self._list_assets_from_listing(listing)),
+            assets=tuple(self._list_assets_by_selection(listing=listing)),
             person_groups=self._list_person_groups_for_folder(folder_id=folder_id),
         )
 
@@ -502,12 +558,14 @@ class AlbumNavigationReadRepository:
         listing = self.get_collection_asset_listing(
             collection_id=collection_id,
             filters=filters,
+            offset=0,
+            limit=2**31 - 1,
         )
         if listing is None:
             return None
         return self._build_context_snapshot(
             selection=listing.selection,
-            assets=tuple(self._list_assets_from_listing(listing)),
+            assets=tuple(self._list_assets_by_selection(listing=listing)),
             person_groups=self._list_person_groups_for_collection(collection_id=collection_id),
         )
 
@@ -766,6 +824,87 @@ class AlbumNavigationReadRepository:
     ) -> tuple[AlbumPersonGroupRelevanceSnapshot, ...]:
         return self._list_collection_person_groups_by_node_id().get(collection_id, ())
 
+    def _get_folder_selection_assets(
+        self,
+        *,
+        folder_id: int,
+        filters: AlbumQueryFilters,
+    ) -> tuple[AlbumSelectionSnapshot, list[_AssetRow]] | None:
+        nodes = self._list_folder_nodes()
+        selected_node = next((node for node in nodes if node.id == folder_id), None)
+        if selected_node is None:
+            return None
+
+        descendant_ids = {
+            node.id
+            for node in nodes
+            if node.source_id == selected_node.source_id
+            and _is_navigation_descendant(
+                candidate_path=node.path,
+                selected_path=selected_node.path,
+            )
+        }
+        selected_assets = self._filter_assets(
+            assets=self._list_assets_for_folder_ids(folder_ids=descendant_ids),
+            filters=filters,
+        )
+        return (
+            AlbumSelectionSnapshot(
+                node_kind="folder",
+                id=selected_node.id,
+                source_id=selected_node.source_id,
+                source_name=selected_node.source_name,
+                source_type=selected_node.source_type,
+                parent_id=selected_node.parent_id,
+                name=selected_node.name,
+                path=selected_node.path,
+                asset_count=len(selected_assets),
+            ),
+            selected_assets,
+        )
+
+    def _get_collection_selection_assets(
+        self,
+        *,
+        collection_id: int,
+        filters: AlbumQueryFilters,
+    ) -> tuple[AlbumSelectionSnapshot, list[_AssetRow]] | None:
+        nodes = self._list_collection_nodes()
+        selected_node = next((node for node in nodes if node.id == collection_id), None)
+        if selected_node is None:
+            return None
+
+        descendant_collection_ids = {
+            node.id
+            for node in nodes
+            if node.source_id == selected_node.source_id
+            and _is_navigation_descendant(
+                candidate_path=node.path,
+                selected_path=selected_node.path,
+            )
+        }
+        selected_assets = self._filter_assets(
+            assets=self._list_assets_for_collection_ids(
+                collection_ids=descendant_collection_ids
+            ),
+            filters=filters,
+        )
+        return (
+            AlbumSelectionSnapshot(
+                node_kind="collection",
+                id=selected_node.id,
+                source_id=selected_node.source_id,
+                source_name=selected_node.source_name,
+                source_type=selected_node.source_type,
+                parent_id=selected_node.parent_id,
+                name=selected_node.name,
+                path=selected_node.path,
+                asset_count=len(selected_assets),
+                collection_type=selected_node.collection_type,
+            ),
+            selected_assets,
+        )
+
     def _filter_assets(
         self,
         *,
@@ -1019,6 +1158,35 @@ class AlbumNavigationReadRepository:
             persons=persons,
             tags=tags,
             map_points=map_points,
+            summary_counts=AlbumContextSummarySnapshot(
+                assets=len(assets),
+                people=len(persons),
+                tags=len(tags),
+                places=len(map_points),
+            ),
+        )
+
+    def _build_asset_context_page_snapshot(
+        self,
+        *,
+        selection: AlbumSelectionSnapshot,
+        assets: tuple[_AssetRow, ...],
+        total_asset_count: int,
+        offset: int,
+        limit: int,
+    ) -> AlbumAssetContextPageSnapshot:
+        asset_ids = [asset.id for asset in assets]
+        person_links_by_asset = self._list_person_links_by_asset(asset_ids=asset_ids)
+        tag_links_by_asset = self._list_tag_links_by_asset(asset_ids=asset_ids)
+        _, map_point_ids_by_asset = self._list_context_map_points(assets=assets)
+        return AlbumAssetContextPageSnapshot(
+            selection=selection,
+            page=AlbumPageSnapshot(
+                offset=offset,
+                limit=limit,
+                returned=len(assets),
+                total=total_asset_count,
+            ),
             asset_contexts=tuple(
                 AlbumContextAssetSnapshot(
                     asset_id=asset.id,
@@ -1028,22 +1196,20 @@ class AlbumNavigationReadRepository:
                 )
                 for asset in assets
             ),
-            summary_counts=AlbumContextSummarySnapshot(
-                assets=len(assets),
-                people=len(persons),
-                tags=len(tags),
-                places=len(map_points),
-            ),
         )
 
-    def _list_assets_from_listing(
+    def _list_assets_by_selection(
         self,
         listing: AlbumAssetListingSnapshot,
     ) -> list[_AssetRow]:
-        listed_asset_ids = {item.id for item in listing.items}
-        if not listed_asset_ids:
+        if listing.page.total == 0:
             return []
-        return self._list_assets_by_ids(asset_ids=sorted(listed_asset_ids))
+        return self._list_assets_by_ids(
+            asset_ids=[
+                item.id
+                for item in listing.items
+            ]
+        )
 
     def _list_context_people(
         self,
@@ -1380,6 +1546,16 @@ def _extract_filename(value: str) -> str:
     if not normalized:
         return ""
     return PurePath(normalized).name or normalized
+
+
+def _slice_page(*, items: list[_AssetRow], offset: int, limit: int) -> _PageSlice:
+    normalized_offset = max(offset, 0)
+    normalized_limit = max(limit, 0)
+    return _PageSlice(
+        offset=normalized_offset,
+        limit=normalized_limit,
+        items=tuple(items[normalized_offset : normalized_offset + normalized_limit]),
+    )
 
 
 def _normalize_person_group_color_index(metadata_json: Any) -> int | None:
