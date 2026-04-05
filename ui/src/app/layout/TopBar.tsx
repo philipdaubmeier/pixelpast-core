@@ -63,7 +63,7 @@ export function TopBar({
   onToggleManageData,
 }: TopBarProps) {
   return (
-    <header className="thin-scrollbar fixed inset-x-0 top-0 z-20 overflow-x-auto border-b border-[color:var(--pp-border)] bg-[color:rgba(255,249,241,0.96)] shadow-[0_10px_30px_rgba(61,44,15,0.06)] backdrop-blur-sm">
+    <header className="thin-scrollbar fixed inset-x-0 top-0 z-30 overflow-x-auto border-b border-[color:var(--pp-border)] bg-[color:rgba(255,249,241,0.96)] shadow-[0_10px_30px_rgba(61,44,15,0.06)] backdrop-blur-sm">
       <div className="min-w-max px-4 py-2 lg:px-5">
         <div className="flex min-h-[4rem] items-center gap-4">
           <img
