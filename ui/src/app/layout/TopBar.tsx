@@ -22,11 +22,8 @@ type TopBarProps = {
   personGroups: PersonGroupProjection[];
   personGroupCatalogState: "loading" | "ready" | "error";
   personGroupCatalogError: string | null;
-  resultSummary: string;
-  hasPersistentFilters: boolean;
   transportState: "loading" | "ready" | "error";
   transportError: string | null;
-  hoverLabel: string;
   onSelectMainView: (mainView: MainView) => void;
   onSelectGridView: (gridView: GridView) => void;
   onTogglePerson: (personId: string) => void;
@@ -48,11 +45,8 @@ export function TopBar({
   personGroups,
   personGroupCatalogState,
   personGroupCatalogError,
-  resultSummary,
-  hasPersistentFilters,
   transportState,
   transportError,
-  hoverLabel,
   onSelectMainView,
   onSelectGridView,
   onTogglePerson,
@@ -85,28 +79,22 @@ export function TopBar({
               onClear={onClearSelections}
             />
             <FilterBar
-              scopeLabel={
-                mainView === "day_grid"
-                  ? `Day Grid / ${activeGridViewLabel}`
-                  : mainView === "photo_album"
-                    ? "Photo Album"
-                    : "Social Graph"
-              }
               selectedPersons={selectedPersons}
               selectedPersonGroups={selectedPersonGroups}
               selectedTags={selectedTags}
-              resultSummary={resultSummary}
-              hasPersistentFilters={hasPersistentFilters}
-              transportState={transportState}
-              transportError={transportError}
-              hoverLabel={hoverLabel}
               onRemovePerson={onTogglePerson}
               onRemovePersonGroup={onTogglePersonGroup}
               onRemoveTag={onToggleTag}
-              onClear={onClearSelections}
             />
           </div>
-          <div className="ml-auto flex shrink-0 items-center">
+          <div className="ml-auto flex shrink-0 items-center gap-2">
+            <div className="rounded-full bg-white/70 px-3 py-1.5 text-[12px] text-slate-700">
+              {transportState === "loading"
+                ? "Data: updating"
+                : transportState === "error"
+                  ? transportError ?? "Data: request failed"
+                  : "Data: synced"}
+            </div>
             <button
               type="button"
               onClick={onToggleManageData}

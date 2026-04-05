@@ -254,11 +254,6 @@ export function AppShell({
     state.selectedTags.length > 0;
   const activeGridView =
     gridViews.find((gridView) => gridView.id === state.gridView) ?? null;
-  const matchingDayCount = useMemo(
-    () =>
-      heatmapDays.filter((day) => day.color !== "empty").length,
-    [heatmapDays],
-  );
 
   return (
     <main className="h-screen overflow-hidden">
@@ -273,16 +268,6 @@ export function AppShell({
         personGroups={personGroups}
         personGroupCatalogState={personGroupCatalogState}
         personGroupCatalogError={personGroupCatalogError}
-        resultSummary={
-          state.mainView === "day_grid"
-            ? `${matchingDayCount} matching day${matchingDayCount === 1 ? "" : "s"}`
-            : state.mainView === "photo_album"
-              ? albumChromeState.resultSummary
-              : `${socialGraph?.persons.length ?? 0} person node${
-                  (socialGraph?.persons.length ?? 0) === 1 ? "" : "s"
-                } in view`
-        }
-        hasPersistentFilters={hasPersistentFilters}
         transportState={
           state.mainView === "day_grid"
             ? timelineState
@@ -296,13 +281,6 @@ export function AppShell({
             : state.mainView === "photo_album"
               ? albumChromeState.transportError
               : socialGraphError
-        }
-        hoverLabel={
-          state.mainView === "day_grid"
-            ? state.hoveredDate ?? "none"
-            : state.mainView === "photo_album"
-              ? albumChromeState.hoverLabel
-              : "not active"
         }
         onSelectMainView={setMainView}
         onSelectGridView={setGridView}

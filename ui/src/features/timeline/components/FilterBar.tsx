@@ -6,56 +6,24 @@ import type { PersonGroupProjection } from "../../../api/personGroups";
 import { getPersonGroupColorOption } from "../../person-groups/palette";
 
 type FilterBarProps = {
-  scopeLabel: string;
   selectedPersons: PersonProjection[];
   selectedPersonGroups: PersonGroupProjection[];
   selectedTags: TagProjection[];
-  resultSummary: string;
-  hasPersistentFilters: boolean;
-  transportState: "loading" | "ready" | "error";
-  transportError: string | null;
-  hoverLabel: string;
   onRemovePerson: (personId: string) => void;
   onRemovePersonGroup: (groupId: string) => void;
   onRemoveTag: (tagPath: string) => void;
-  onClear: () => void;
 };
 
 export function FilterBar({
-  scopeLabel,
   selectedPersons,
   selectedPersonGroups,
   selectedTags,
-  resultSummary,
-  hasPersistentFilters,
-  transportState,
-  transportError,
-  hoverLabel,
   onRemovePerson,
   onRemovePersonGroup,
   onRemoveTag,
-  onClear,
 }: FilterBarProps) {
   return (
     <div className="flex items-center gap-2">
-      <div className="rounded-full bg-white/70 px-3 py-1.5 text-[12px] text-slate-700">
-        View: {scopeLabel}
-      </div>
-      <div className="rounded-full bg-white/70 px-3 py-1.5 text-[12px] text-slate-700">
-        {hasPersistentFilters
-          ? resultSummary
-          : `${resultSummary} · no persistent filters`}
-      </div>
-      <div className="rounded-full bg-white/70 px-3 py-1.5 text-[12px] text-slate-700">
-        {transportState === "loading"
-          ? "Data: updating"
-          : transportState === "error"
-            ? transportError ?? "Data: request failed"
-            : "Data: synced"}
-      </div>
-      <div className="rounded-full bg-white/70 px-3 py-1.5 text-[12px] text-slate-700">
-        Hover: {hoverLabel}
-      </div>
       {selectedPersons.map((person) => (
         <button
           key={person.id}
@@ -99,14 +67,6 @@ export function FilterBar({
           Tag: {tag.label} x
         </button>
       ))}
-      <button
-        type="button"
-        onClick={onClear}
-        disabled={!hasPersistentFilters}
-        className="rounded-full border border-[color:var(--pp-border)] px-3 py-1.5 text-[12px] text-slate-700 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-45"
-      >
-        Clear selections
-      </button>
     </div>
   );
 }
