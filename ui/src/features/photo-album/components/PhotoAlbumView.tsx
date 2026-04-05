@@ -253,52 +253,6 @@ function formatPersonGroupSummary(
   }`;
 }
 
-function PersonGroupChip({
-  group,
-  active,
-  onToggle,
-}: {
-  group: AlbumTreeNodeProjection["personGroups"][number];
-  active: boolean;
-  onToggle: (groupId: string) => void;
-}) {
-  const colorOption = getPersonGroupColorOption(group.colorIndex);
-
-  return (
-    <button
-      type="button"
-      onClick={() => onToggle(group.groupId)}
-      title={`${group.groupName} | ${formatPersonGroupSummary(group)}`}
-      className={[
-        "inline-flex max-w-full items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium transition",
-        active
-          ? "border-slate-900 bg-slate-900 text-white shadow-[0_8px_20px_rgba(15,23,42,0.16)]"
-          : "bg-white/90 text-slate-700 hover:bg-white",
-      ].join(" ")}
-      style={
-        active
-          ? undefined
-          : colorOption === null
-            ? undefined
-            : {
-                borderColor: colorOption.borderColor,
-                backgroundColor: colorOption.softColor,
-                color: colorOption.textColor,
-              }
-      }
-    >
-      <span
-        className={[
-          "h-1.5 w-1.5 shrink-0 rounded-full",
-          active ? "bg-white" : "",
-        ].join(" ")}
-        style={active ? undefined : { backgroundColor: colorOption?.color ?? "#7c6f64" }}
-      />
-      <span className="max-w-[7rem] truncate">{group.groupName}</span>
-    </button>
-  );
-}
-
 function PersonGroupDot({
   group,
   active,
@@ -1218,7 +1172,6 @@ export function PhotoAlbumView({
       : null;
   const activeSelectionLabel =
     listingSelection?.name ?? context?.selection.name ?? null;
-  const activeSelectionPersonGroups = context?.personGroups ?? [];
   const activeTransportState = useMemo(
     () =>
       resolveActiveTransportState([
@@ -1321,24 +1274,7 @@ export function PhotoAlbumView({
 
       <section className="panel-surface flex min-h-0 flex-col overflow-hidden p-1.5 lg:p-2">
         <div className="flex items-start justify-between gap-3 pb-1">
-          <div className="min-w-0 flex-1">
-            {activeSelectionPersonGroups.length > 0 ? (
-              <div className="flex flex-wrap items-center gap-1">
-                {activeSelectionPersonGroups.map((group) => (
-                  <PersonGroupChip
-                    key={group.groupId}
-                    group={group}
-                    active={selectedPersonGroupIds.includes(group.groupId)}
-                    onToggle={onTogglePersonGroup}
-                  />
-                ))}
-              </div>
-            ) : (
-              <div className="text-xs text-slate-500">
-                Relevant person groups for the current album selection appear here.
-              </div>
-            )}
-          </div>
+          <div className="min-w-0 flex-1" />
           {selectedAssetId !== null ? (
             <button
               type="button"

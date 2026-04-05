@@ -90,10 +90,10 @@ export function TopBar({
           <div className="ml-auto flex shrink-0 items-center gap-2">
             <div className="rounded-full bg-white/70 px-3 py-1.5 text-[12px] text-slate-700">
               {transportState === "loading"
-                ? "Data: updating"
+                ? "Updating"
                 : transportState === "error"
-                  ? transportError ?? "Data: request failed"
-                  : "Data: synced"}
+                  ? transportError ?? "Request failed"
+                  : "Synced"}
             </div>
             <button
               type="button"
